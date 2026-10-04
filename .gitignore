@@ -1,0 +1,14 @@
+# Root gitignore
+.dart_tool/
+.idea/
+*.iml
+*.apk
+*.aab
+build/
+cinemax/build/
+cinemax/*.apk
+cinemax/.dart_tool/
+
+# Logs and secrets
+*.log
+.env
