@@ -385,14 +385,18 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   List<ContentItem> _filterResults(List<ContentItem> list, String filter) {
     if (filter == 'Todos') return list;
-    if (filter == 'Filmes')
+    if (filter == 'Filmes') {
       return list.where((i) => i.type == ContentType.movie).toList();
-    if (filter == 'Séries')
+    }
+    if (filter == 'Séries') {
       return list.where((i) => i.type == ContentType.series).toList();
-    if (filter == 'Animes')
+    }
+    if (filter == 'Animes') {
       return list.where((i) => i.type == ContentType.anime).toList();
-    if (filter == 'Doramas')
+    }
+    if (filter == 'Doramas') {
       return list.where((i) => i.type == ContentType.dorama).toList();
+    }
     return list;
   }
 }
