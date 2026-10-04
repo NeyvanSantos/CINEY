@@ -101,7 +101,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               border: Border.all(color: AppColors.primary),
                             ),
                             child: const Text(
-                              'VIP PREMIUM • 100% SEM ANÚNCIOS',
+                              'VIP PREMIUM • AUTO-UPDATE ATIVO (v1.0.2) 🚀',
                               style: TextStyle(fontSize: 9, color: AppColors.primary, fontWeight: FontWeight.bold),
                             ),
                           ),
@@ -230,7 +230,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         color: AppColors.surfaceLight,
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: const Text('v1.1.0 (Build 2)', style: TextStyle(fontSize: 11, color: AppColors.primary)),
+                      child: const Text('v1.0.2 🚀 Atualizado via GitHub', style: TextStyle(fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.bold)),
                     ),
                   ],
                 ),
