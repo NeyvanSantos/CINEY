@@ -13,10 +13,10 @@
 
 ## 2. Política de Geração de APKs e Pacotes (Mandatória)
 
-> 🛑 **NUNCA GERE OU LANCE O APK AUTOMATICAMENTE.**
+> 🛑 **NUNCA GERE OU LANCE O APK AUTOMATICAMENTE SEM PERMISSÃO.**
 > 
-> - Só gere o APK quando o usuário solicitar expressamente.
-> - Ao final de CADA atividade concluída no app, pergunte ao usuário se ele deseja que o APK seja gerado naquele momento.
+> - Ao final de CADA alteração ou atividade concluída no app, pergunte ao usuário se ele deseja que o novo APK / instalador seja gerado.
+> - **QUANDO O USUÁRIO CONFIRMAR:** Execute imediatamente o fluxo de release (atualização de versão, tag Git e publicação nos Releases do GitHub via script/GitHub Actions) para disponibilizar o download.
 
 ---
 
