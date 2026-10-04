@@ -48,3 +48,13 @@ app.*.map.json
 *.apk
 *.aab
 /build/
+
+# Signing keys (NUNCA subir para o repositório!)
+android/key.properties
+android/app/*.jks
+android/app/*.keystore
+*.jks
+*.keystore
+
+# Release notes temporárias
+release-notes-temp.md

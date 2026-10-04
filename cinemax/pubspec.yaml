@@ -1,7 +1,7 @@
 name: cinemax
 description: "CineMax - Filmes e Séries com Sistema de Plugins"
 publish_to: 'none'
-version: 1.0.2+3
+version: 1.0.3+4
 
 environment:
   sdk: ^3.11.4
@@ -57,6 +57,7 @@ dependencies:
   # Auto Update
   package_info_plus: ^8.1.0
   open_filex: ^4.5.0
+  crypto: ^3.0.6
 
 dev_dependencies:
   flutter_test:

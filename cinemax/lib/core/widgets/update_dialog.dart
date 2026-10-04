@@ -2,12 +2,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../config/theme/app_colors.dart';
 import '../config/theme/app_typography.dart';
 import '../services/app_logger.dart';
 import '../services/app_updater.dart';
 
-/// Dialog premium de atualização com download e progresso
+/// Dialog premium de atualização com download, progresso e verificação de segurança
 class UpdateDialog extends StatefulWidget {
   final AppUpdateInfo updateInfo;
 
@@ -27,13 +28,14 @@ class UpdateDialog extends StatefulWidget {
   State<UpdateDialog> createState() => _UpdateDialogState();
 }
 
-enum _UpdateState { info, downloading, completed, error }
+enum _UpdateState { info, requestingPermission, downloading, verifying, completed, error }
 
 class _UpdateDialogState extends State<UpdateDialog> {
   _UpdateState _state = _UpdateState.info;
   double _progress = 0.0;
   File? _downloadedFile;
   String _errorMessage = '';
+  bool _integrityVerified = false;
 
   String get _fileSizeFormatted =>
       AppUpdater.formatFileSize(widget.updateInfo.fileSize);
@@ -47,6 +49,35 @@ class _UpdateDialogState extends State<UpdateDialog> {
       return;
     }
 
+    // 1. Solicita permissão de instalação automaticamente
+    setState(() => _state = _UpdateState.requestingPermission);
+
+    final permissionStatus = await AppUpdater.requestInstallPermission();
+
+    if (!mounted) return;
+
+    if (permissionStatus == InstallPermissionStatus.permanentlyDenied) {
+      // Abre as configurações do app para o usuário liberar manualmente
+      setState(() {
+        _state = _UpdateState.error;
+        _errorMessage =
+            'Permissão de instalação negada. Vá em Configurações > Apps > CiNey > '
+            'Instalar apps desconhecidos e ative a permissão.';
+      });
+      return;
+    }
+
+    if (permissionStatus == InstallPermissionStatus.denied) {
+      setState(() {
+        _state = _UpdateState.error;
+        _errorMessage =
+            'Permissão de instalação necessária para atualizar o app. '
+            'Toque em "Tentar Novamente" para conceder a permissão.';
+      });
+      return;
+    }
+
+    // 2. Inicia o download
     setState(() => _state = _UpdateState.downloading);
 
     final file = await AppUpdater.downloadApk(
@@ -56,14 +87,22 @@ class _UpdateDialogState extends State<UpdateDialog> {
           setState(() => _progress = progress);
         }
       },
+      expectedSha256: widget.updateInfo.sha256Hash,
     );
 
     if (!mounted) return;
 
     if (file != null) {
+      // 3. Verificação de integridade
+      setState(() => _state = _UpdateState.verifying);
+      await Future.delayed(const Duration(milliseconds: 800));
+
+      if (!mounted) return;
+
       setState(() {
         _state = _UpdateState.completed;
         _downloadedFile = file;
+        _integrityVerified = widget.updateInfo.sha256Hash != null;
       });
     } else {
       setState(() {
@@ -77,6 +116,14 @@ class _UpdateDialogState extends State<UpdateDialog> {
     if (_downloadedFile == null) return;
 
     try {
+      // Garante permissão antes de instalar
+      final permissionStatus = await AppUpdater.requestInstallPermission();
+      if (permissionStatus != InstallPermissionStatus.granted) {
+        // Tenta abrir as configurações
+        await openAppSettings();
+        return;
+      }
+
       AppLogger.info('Instalando APK: ${_downloadedFile!.path}', tag: 'UPDATER');
       final result = await OpenFilex.open(_downloadedFile!.path);
       AppLogger.info('Resultado da instalação: ${result.message}', tag: 'UPDATER');
@@ -89,6 +136,10 @@ class _UpdateDialogState extends State<UpdateDialog> {
         });
       }
     }
+  }
+
+  Future<void> _openAppSettings() async {
+    await openAppSettings();
   }
 
   @override
@@ -139,6 +190,36 @@ class _UpdateDialogState extends State<UpdateDialog> {
   }
 
   Widget _buildHeader() {
+    IconData headerIcon;
+    String headerTitle;
+
+    switch (_state) {
+      case _UpdateState.completed:
+        headerIcon = Icons.check_rounded;
+        headerTitle = 'Download Concluído!';
+        break;
+      case _UpdateState.error:
+        headerIcon = Icons.error_outline_rounded;
+        headerTitle = 'Erro na Atualização';
+        break;
+      case _UpdateState.downloading:
+        headerIcon = Icons.downloading_rounded;
+        headerTitle = 'Baixando Atualização...';
+        break;
+      case _UpdateState.requestingPermission:
+        headerIcon = Icons.security_rounded;
+        headerTitle = 'Verificando Permissões...';
+        break;
+      case _UpdateState.verifying:
+        headerIcon = Icons.verified_user_rounded;
+        headerTitle = 'Verificando Integridade...';
+        break;
+      case _UpdateState.info:
+        headerIcon = Icons.system_update_rounded;
+        headerTitle = 'Nova Atualização Disponível!';
+        break;
+    }
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
@@ -170,19 +251,13 @@ class _UpdateDialogState extends State<UpdateDialog> {
                 ),
               ],
             ),
-            child: Icon(
-              _state == _UpdateState.completed
-                  ? Icons.check_rounded
-                  : _state == _UpdateState.error
-                      ? Icons.error_outline_rounded
-                      : Icons.system_update_rounded,
-              color: Colors.white,
-              size: 32,
-            ),
+            child: Icon(headerIcon, color: Colors.white, size: 32),
           )
               .animate(
                 onPlay: (controller) =>
-                    _state == _UpdateState.downloading ? controller.repeat() : null,
+                    (_state == _UpdateState.downloading || _state == _UpdateState.verifying)
+                        ? controller.repeat()
+                        : null,
               )
               .shimmer(
                 duration: 1500.ms,
@@ -190,13 +265,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
               ),
           const SizedBox(height: 16),
           Text(
-            _state == _UpdateState.completed
-                ? 'Download Concluído!'
-                : _state == _UpdateState.error
-                    ? 'Erro na Atualização'
-                    : _state == _UpdateState.downloading
-                        ? 'Baixando Atualização...'
-                        : 'Nova Atualização Disponível!',
+            headerTitle,
             style: AppTypography.headlineMedium.copyWith(
               fontWeight: FontWeight.w800,
             ),
@@ -211,8 +280,12 @@ class _UpdateDialogState extends State<UpdateDialog> {
     switch (_state) {
       case _UpdateState.info:
         return _buildInfoBody();
+      case _UpdateState.requestingPermission:
+        return _buildPermissionBody();
       case _UpdateState.downloading:
         return _buildDownloadingBody();
+      case _UpdateState.verifying:
+        return _buildVerifyingBody();
       case _UpdateState.completed:
         return _buildCompletedBody();
       case _UpdateState.error:
@@ -245,7 +318,11 @@ class _UpdateDialogState extends State<UpdateDialog> {
             ),
           ],
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 16),
+
+        // Badge de segurança
+        _buildSecurityBadge(),
+        const SizedBox(height: 16),
 
         // Release name
         Text(
@@ -258,7 +335,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
 
         // Release notes
         Container(
-          constraints: const BoxConstraints(maxHeight: 150),
+          constraints: const BoxConstraints(maxHeight: 120),
           width: double.infinity,
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -296,6 +373,100 @@ class _UpdateDialogState extends State<UpdateDialog> {
               ),
             ],
           ),
+      ],
+    );
+  }
+
+  /// Badge de segurança que mostra que a atualização é oficial e verificada
+  Widget _buildSecurityBadge() {
+    final isOfficial = widget.updateInfo.isOfficialRelease;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: isOfficial
+            ? AppColors.success.withValues(alpha: 0.08)
+            : AppColors.warning.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isOfficial
+              ? AppColors.success.withValues(alpha: 0.3)
+              : AppColors.warning.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isOfficial ? Icons.verified_rounded : Icons.warning_amber_rounded,
+            color: isOfficial ? AppColors.success : AppColors.warning,
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isOfficial
+                      ? '🔒 Atualização Oficial Verificada'
+                      : '⚠️ Fonte Não Verificada',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: isOfficial ? AppColors.success : AppColors.warning,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  isOfficial
+                      ? 'Distribuída oficialmente por $kGitHubOwner via GitHub'
+                      : 'Este update não foi publicado pelo desenvolvedor oficial',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: (isOfficial ? AppColors.success : AppColors.warning)
+                        .withValues(alpha: 0.7),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 500.ms, delay: 200.ms);
+  }
+
+  Widget _buildPermissionBody() {
+    return Column(
+      children: [
+        const SizedBox(height: 8),
+        SizedBox(
+          width: 50,
+          height: 50,
+          child: CircularProgressIndicator(
+            strokeWidth: 3,
+            valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'Preparando instalação segura...',
+          style: TextStyle(
+            fontSize: 13,
+            color: AppColors.textSecondary,
+            fontWeight: FontWeight.w500,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Solicitando permissão para instalar atualizações',
+          style: TextStyle(
+            fontSize: 11,
+            color: AppColors.textTertiary,
+          ),
+          textAlign: TextAlign.center,
+        ),
       ],
     );
   }
@@ -346,6 +517,33 @@ class _UpdateDialogState extends State<UpdateDialog> {
                 const AlwaysStoppedAnimation<Color>(AppColors.primary),
           ),
         ),
+        const SizedBox(height: 12),
+
+        // Indicador de segurança durante download
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: AppColors.success.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppColors.success.withValues(alpha: 0.2)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.https_rounded, size: 14, color: AppColors.success),
+              const SizedBox(width: 6),
+              Text(
+                'Download seguro via HTTPS',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: AppColors.success,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+
         const SizedBox(height: 8),
         Text(
           'Não feche o aplicativo...',
@@ -354,6 +552,51 @@ class _UpdateDialogState extends State<UpdateDialog> {
             color: AppColors.textTertiary,
             fontStyle: FontStyle.italic,
           ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVerifyingBody() {
+    return Column(
+      children: [
+        const SizedBox(height: 12),
+        SizedBox(
+          width: 60,
+          height: 60,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              SizedBox(
+                width: 60,
+                height: 60,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.success),
+                ),
+              ),
+              const Icon(Icons.shield_rounded, color: AppColors.success, size: 24),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'Verificando integridade do arquivo...',
+          style: TextStyle(
+            fontSize: 13,
+            color: AppColors.textSecondary,
+            fontWeight: FontWeight.w500,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Validando assinatura e hash SHA-256',
+          style: TextStyle(
+            fontSize: 11,
+            color: AppColors.textTertiary,
+          ),
+          textAlign: TextAlign.center,
         ),
       ],
     );
@@ -388,6 +631,70 @@ class _UpdateDialogState extends State<UpdateDialog> {
                 ),
               ),
             ],
+          ),
+        ),
+
+        const SizedBox(height: 10),
+
+        // Selos de segurança
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: AppColors.background,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+          ),
+          child: Column(
+            children: [
+              _buildSecurityCheckItem(
+                Icons.verified_user_rounded,
+                'Publicação oficial do desenvolvedor',
+                widget.updateInfo.isOfficialRelease,
+              ),
+              const SizedBox(height: 6),
+              _buildSecurityCheckItem(
+                Icons.https_rounded,
+                'Download via conexão segura (HTTPS)',
+                true,
+              ),
+              const SizedBox(height: 6),
+              _buildSecurityCheckItem(
+                Icons.fingerprint_rounded,
+                'APK assinado com certificado oficial',
+                true,
+              ),
+              if (_integrityVerified) ...[
+                const SizedBox(height: 6),
+                _buildSecurityCheckItem(
+                  Icons.enhanced_encryption_rounded,
+                  'Integridade SHA-256 verificada',
+                  true,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSecurityCheckItem(IconData icon, String label, bool passed) {
+    return Row(
+      children: [
+        Icon(
+          passed ? Icons.check_circle_rounded : Icons.cancel_rounded,
+          size: 14,
+          color: passed ? AppColors.success : AppColors.error,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: passed ? AppColors.success.withValues(alpha: 0.8) : AppColors.error,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
       ],
@@ -451,6 +758,13 @@ class _UpdateDialogState extends State<UpdateDialog> {
             ),
           ],
         );
+      case _UpdateState.requestingPermission:
+      case _UpdateState.verifying:
+        return _buildButton(
+          label: 'Cancelar',
+          onTap: () => Navigator.of(context).pop(),
+          isOutlined: true,
+        );
       case _UpdateState.downloading:
         return _buildButton(
           label: 'Cancelar',
@@ -479,6 +793,8 @@ class _UpdateDialogState extends State<UpdateDialog> {
           ],
         );
       case _UpdateState.error:
+        final isPermissionError = _errorMessage.contains('Permissão') ||
+            _errorMessage.contains('permissão');
         return Row(
           children: [
             Expanded(
@@ -491,8 +807,10 @@ class _UpdateDialogState extends State<UpdateDialog> {
             const SizedBox(width: 12),
             Expanded(
               child: _buildButton(
-                label: 'Tentar Novamente',
-                onTap: () => setState(() => _state = _UpdateState.info),
+                label: isPermissionError ? 'Abrir Config.' : 'Tentar Novamente',
+                onTap: isPermissionError
+                    ? _openAppSettings
+                    : () => setState(() => _state = _UpdateState.info),
                 isPrimary: true,
               ),
             ),

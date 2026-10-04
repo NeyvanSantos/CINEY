@@ -1,8 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
+import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'app_logger.dart';
 
 // ═══════════════════════════════════════════════════════════════
@@ -21,6 +24,8 @@ class AppUpdateInfo {
   final int fileSize;
   final bool hasUpdate;
   final String htmlUrl;
+  final String? sha256Hash;
+  final bool isOfficialRelease;
 
   const AppUpdateInfo({
     required this.latestVersion,
@@ -31,7 +36,15 @@ class AppUpdateInfo {
     required this.fileSize,
     required this.hasUpdate,
     required this.htmlUrl,
+    this.sha256Hash,
+    this.isOfficialRelease = true,
   });
+}
+
+enum InstallPermissionStatus {
+  granted,
+  denied,
+  permanentlyDenied,
 }
 
 class AppUpdater {
@@ -71,15 +84,34 @@ class AppUpdater {
       final releaseNotes = (data['body'] as String?) ?? 'Sem notas de versão.';
       final htmlUrl = (data['html_url'] as String?) ?? '';
       final assets = (data['assets'] as List<dynamic>?) ?? [];
+      final author = data['author'] as Map<String, dynamic>?;
+
+      // Verifica se a release é do autor oficial
+      final isOfficial = author?['login'] == kGitHubOwner;
 
       // Procura o APK nos assets da release
       String downloadUrl = '';
       int fileSize = 0;
+      String? sha256Hash;
+
       for (final asset in assets) {
         final name = (asset['name'] as String?) ?? '';
         if (name.toLowerCase().endsWith('.apk')) {
           downloadUrl = (asset['browser_download_url'] as String?) ?? '';
           fileSize = (asset['size'] as int?) ?? 0;
+
+          // Extrai hash SHA-256 se presente no label do asset
+          final label = (asset['label'] as String?) ?? '';
+          if (label.startsWith('sha256:')) {
+            sha256Hash = label.replaceFirst('sha256:', '');
+          }
+
+          // Procura hash no digest do asset (GitHub gera automaticamente)
+          final digest = (asset['digest'] as String?) ?? '';
+          if (digest.startsWith('sha256:')) {
+            sha256Hash = digest.replaceFirst('sha256:', '');
+          }
+
           break;
         }
       }
@@ -88,7 +120,8 @@ class AppUpdater {
 
       AppLogger.info(
         'Versão atual: $currentVersion | Última: $latestVersion | '
-        'Atualização: ${hasUpdate ? "SIM" : "NÃO"}',
+        'Atualização: ${hasUpdate ? "SIM" : "NÃO"} | '
+        'Oficial: ${isOfficial ? "SIM ✅" : "NÃO ⚠️"}',
         tag: 'UPDATER',
       );
 
@@ -101,6 +134,8 @@ class AppUpdater {
         fileSize: fileSize,
         hasUpdate: hasUpdate,
         htmlUrl: htmlUrl,
+        sha256Hash: sha256Hash,
+        isOfficialRelease: isOfficial,
       );
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) {
@@ -124,10 +159,43 @@ class AppUpdater {
     }
   }
 
-  /// Baixa o APK com callback de progresso (0.0 a 1.0)
+  /// Solicita permissão para instalar apps de fontes externas
+  static Future<InstallPermissionStatus> requestInstallPermission() async {
+    if (!Platform.isAndroid) return InstallPermissionStatus.granted;
+
+    try {
+      final status = await Permission.requestInstallPackages.status;
+
+      if (status.isGranted) {
+        AppLogger.info('Permissão de instalação já concedida ✅', tag: 'UPDATER');
+        return InstallPermissionStatus.granted;
+      }
+
+      // Solicita a permissão
+      AppLogger.info('Solicitando permissão de instalação...', tag: 'UPDATER');
+      final result = await Permission.requestInstallPackages.request();
+
+      if (result.isGranted) {
+        AppLogger.info('Permissão de instalação concedida ✅', tag: 'UPDATER');
+        return InstallPermissionStatus.granted;
+      } else if (result.isPermanentlyDenied) {
+        AppLogger.warn('Permissão negada permanentemente', tag: 'UPDATER');
+        return InstallPermissionStatus.permanentlyDenied;
+      } else {
+        AppLogger.warn('Permissão negada pelo usuário', tag: 'UPDATER');
+        return InstallPermissionStatus.denied;
+      }
+    } catch (e) {
+      AppLogger.error('Erro ao solicitar permissão: $e', tag: 'UPDATER');
+      return InstallPermissionStatus.granted; // Tenta prosseguir
+    }
+  }
+
+  /// Baixa o APK com callback de progresso (0.0 a 1.0) e verifica integridade
   static Future<File?> downloadApk(
     String downloadUrl, {
     required ValueChanged<double> onProgress,
+    String? expectedSha256,
   }) async {
     try {
       AppLogger.info('Iniciando download do APK...', tag: 'UPDATER');
@@ -158,6 +226,24 @@ class AppUpdater {
           'Download completo! Tamanho: ${sizeInMb.toStringAsFixed(1)} MB',
           tag: 'UPDATER',
         );
+
+        // Verificação de integridade SHA-256
+        if (expectedSha256 != null && expectedSha256.isNotEmpty) {
+          AppLogger.info('Verificando integridade SHA-256...', tag: 'UPDATER');
+          final fileBytes = await file.readAsBytes();
+          final computedHash = sha256.convert(fileBytes).toString();
+
+          if (computedHash.toLowerCase() != expectedSha256.toLowerCase()) {
+            AppLogger.error(
+              'FALHA NA VERIFICAÇÃO! Hash esperado: $expectedSha256 | Calculado: $computedHash',
+              tag: 'SECURITY',
+            );
+            await file.delete();
+            return null;
+          }
+          AppLogger.info('Integridade verificada com sucesso ✅', tag: 'SECURITY');
+        }
+
         return file;
       }
 
