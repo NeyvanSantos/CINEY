@@ -9,10 +9,12 @@ plugins {
 
 // Carrega propriedades da keystore de release
 val keystoreProperties = Properties().apply {
-    val keystoreFile = rootProject.file("app/key.properties")
-    if (keystoreFile.exists()) {
-        load(keystoreFile.inputStream())
-    }
+    val keystoreFile = sequenceOf(
+        rootProject.file("key.properties"),
+        rootProject.file("app/key.properties"),
+        file("key.properties")
+    ).firstOrNull { it.exists() }
+    keystoreFile?.let { load(it.inputStream()) }
 }
 
 android {
