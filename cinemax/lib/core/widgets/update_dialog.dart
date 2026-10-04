@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../config/theme/app_colors.dart';
 import '../config/theme/app_typography.dart';
 import '../services/app_logger.dart';
@@ -41,6 +42,18 @@ class _UpdateDialogState extends State<UpdateDialog> {
       AppUpdater.formatFileSize(widget.updateInfo.fileSize);
 
   Future<void> _startDownload() async {
+    // No iOS, redireciona diretamente para o link oficial da release
+    if (Platform.isIOS) {
+      final url = Uri.tryParse(widget.updateInfo.htmlUrl);
+      if (url != null) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      }
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+      return;
+    }
+
     if (widget.updateInfo.downloadUrl.isEmpty) {
       setState(() {
         _state = _UpdateState.error;
