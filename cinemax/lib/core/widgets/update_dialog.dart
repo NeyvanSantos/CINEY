@@ -686,6 +686,30 @@ class _UpdateDialogState extends State<UpdateDialog> {
               ],
             ],
           ),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppColors.primary.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.info_outline_rounded, size: 14, color: AppColors.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Se o Android avisar "conflito com pacote existente", desinstale a versão antiga uma única vez para aplicar o certificado oficial definitivo.',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: AppColors.textSecondary,
+                    height: 1.3,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );
