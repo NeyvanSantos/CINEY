@@ -1350,7 +1350,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           icon: Icons.dns_rounded,
           title: 'Servidores & Fontes',
           subtitle: _sources.isNotEmpty
-              ? _sources[_currentSourceIndex].server
+              ? '${_sources[_currentSourceIndex].server} • ${_sources[_currentSourceIndex].audioType.label}'
               : 'Padrão',
           onTap: () {
             Navigator.pop(context);
@@ -1487,32 +1487,57 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   void _showServerSelectorModal() {
+    // Determina a cor e ícone baseado no tipo de áudio do servidor
+    Color _badgeColorFor(AudioType type) {
+      switch (type) {
+        case AudioType.dubbed:
+          return const Color(0xFF00C853); // Verde vibrante
+        case AudioType.subtitled:
+          return const Color(0xFFFF9100); // Laranja
+        case AudioType.mixed:
+          return const Color(0xFF448AFF); // Azul
+      }
+    }
+
+    IconData _iconFor(AudioType type, bool isSelected) {
+      if (isSelected) return Icons.play_circle_fill_rounded;
+      switch (type) {
+        case AudioType.dubbed:
+          return Icons.record_voice_over_rounded;
+        case AudioType.subtitled:
+          return Icons.subtitles_rounded;
+        case AudioType.mixed:
+          return Icons.language_rounded;
+      }
+    }
+
+    String _subtitleFor(StreamSource source) {
+      switch (source.audioType) {
+        case AudioType.dubbed:
+          return 'Áudio Dublado PT-BR • ${source.quality}';
+        case AudioType.subtitled:
+          return 'Áudio Original + Legendas • ${source.quality}';
+        case AudioType.mixed:
+          return 'Múltiplas opções de áudio • ${source.quality}';
+      }
+    }
+
     _showAppModal(
       title: 'Servidores de Transmissão',
-      subtitle: 'Se um servidor oscilar, selecione outro da lista',
+      subtitle: '🇧🇷 Servidores dublados são priorizados automaticamente',
       children: _sources.asMap().entries.map((entry) {
         final index = entry.key;
         final source = entry.value;
         final isSelected = _currentSourceIndex == index;
+        final badgeColor = _badgeColorFor(source.audioType);
 
         return _buildSelectableTile(
-          icon: isSelected
-              ? Icons.play_circle_fill_rounded
-              : source.server.contains('EmbedMovies')
-              ? Icons.star_rounded
-              : source.server.contains('SuperFlix')
-              ? Icons.record_voice_over_rounded
-              : Icons.dns_rounded,
+          icon: _iconFor(source.audioType, isSelected),
           title: source.server,
-          subtitle: source.server.contains('SuperFlix')
-              ? 'Dublado PT-BR • Full HD 1080p'
-              : '${source.quality} • ${source.isEmbed ? "Embed" : "Direto"}',
+          subtitle: _subtitleFor(source),
           isSelected: isSelected,
-          badge: source.server.contains('EmbedMovies')
-              ? 'Recomendado PT-BR'
-              : source.server.contains('SuperFlix')
-              ? 'Dublado 1080p'
-              : null,
+          badge: '${source.audioType.icon} ${source.audioType.label}',
+          badgeColor: badgeColor,
           onTap: () {
             Navigator.pop(context);
             _initPlayerWithIndex(index);
@@ -1632,8 +1657,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     required String subtitle,
     required bool isSelected,
     String? badge,
+    Color? badgeColor,
     required VoidCallback onTap,
   }) {
+    final effectiveBadgeColor = badgeColor ?? AppColors.primary;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
@@ -1658,12 +1685,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             ),
         title: Row(
           children: [
-            Text(
-              title,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-                color: isSelected ? AppColors.primary : Colors.white,
+            Flexible(
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: isSelected ? AppColors.primary : Colors.white,
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
             if (badge != null) ...[
@@ -1671,13 +1701,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.2),
+                  color: effectiveBadgeColor.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
                   badge,
-                  style: const TextStyle(
-                    color: AppColors.primary,
+                  style: TextStyle(
+                    color: effectiveBadgeColor,
                     fontSize: 9,
                     fontWeight: FontWeight.bold,
                   ),

@@ -3,45 +3,88 @@ import '../models/stream_source.dart';
 /// Resolve os endereços do player EmbedMovies a partir dos IDs do catálogo.
 /// Os endereços devem ser incorporados em iframe, conforme embedmovies.org.
 class StreamResolverService {
-  /// Gera as fontes de streaming; a disponibilidade depende de cada fornecedor.
+  /// Gera as fontes de streaming priorizando servidores com áudio Dublado PT-BR.
+  /// A ordem de prioridade é: Dublado > Multi-Áudio > Legendado.
+  /// A disponibilidade real depende de cada fornecedor.
   static List<StreamSource> resolveFromTmdbId({
     required String tmdbId,
     required bool isTv,
     int? season,
     int? episode,
   }) {
-    // ── Fonte 1: EmbedMovies (existente, inalterada) ──
     final episodePath = season != null && episode != null
         ? '/$season/$episode'
         : '';
+
+    // ── Prioridade 1: SuperFlix (Dublado PT-BR / Full HD) ──
+    // Servidor brasileiro focado em conteúdo dublado em português.
+    final superFlixUrl = isTv
+        ? 'https://superflixapi.quest/serie/$tmdbId$episodePath'
+        : 'https://superflixapi.quest/filme/$tmdbId';
+
+    // ── Prioridade 2: EmbedMovies (Multi-Áudio / Fallback) ──
+    // Servidor com múltiplas opções, geralmente inclui PT-BR quando disponível.
     final embedUrl = isTv
         ? 'https://myembed.biz/serie/$tmdbId$episodePath'
         : 'https://myembed.biz/filme/$tmdbId';
 
-    // ── Fonte 2: SuperFlix (Dublado PT-BR / 1080p Full HD) ──
-    final superFlixUrl = isTv
-        ? 'https://superflixapi.monster/serie/$tmdbId${season != null && episode != null ? '/$season/$episode' : ''}'
-        : 'https://superflixapi.monster/filme/$tmdbId';
+    // ── Prioridade 3: WarezCDN (Dublado PT-BR / Alternativo) ──
+    // CDN brasileiro com foco em conteúdo dublado.
+    final warezUrl = isTv
+        ? 'https://embed.warezcdn.net/serie/$tmdbId$episodePath'
+        : 'https://embed.warezcdn.net/filme/$tmdbId';
+
+    // ── Prioridade 4: VidSrc (Legendado / Internacional) ──
+    // Servidor internacional, normalmente áudio original + legendas.
+    final vidSrcUrl = isTv
+        ? 'https://vidsrc.cc/v2/embed/tv/$tmdbId${season != null && episode != null ? '/$season/$episode' : ''}'
+        : 'https://vidsrc.cc/v2/embed/movie/$tmdbId';
 
     return [
-      StreamSource(
-        url: embedUrl,
-        quality: 'Conforme o fornecedor',
-        server: 'EmbedMovies',
-        isEmbed: true,
-        isDirect: false,
-        priority: 1,
-      ),
+      // 🇧🇷 Servidores Dublados PT-BR (prioridade máxima)
       StreamSource(
         url: superFlixUrl,
         quality: '1080p Full HD',
         server: 'SuperFlix',
         isEmbed: true,
         isDirect: false,
+        priority: 1,
+        audioType: AudioType.dubbed,
+      ),
+      StreamSource(
+        url: warezUrl,
+        quality: '1080p Full HD',
+        server: 'WarezCDN',
+        isEmbed: true,
+        isDirect: false,
         priority: 2,
+        audioType: AudioType.dubbed,
+      ),
+
+      // 🌐 Servidores Multi-Áudio (fallback intermediário)
+      StreamSource(
+        url: embedUrl,
+        quality: 'Conforme o fornecedor',
+        server: 'EmbedMovies',
+        isEmbed: true,
+        isDirect: false,
+        priority: 3,
+        audioType: AudioType.mixed,
+      ),
+
+      // 💬 Servidores Legendados (fallback final)
+      StreamSource(
+        url: vidSrcUrl,
+        quality: 'Auto',
+        server: 'VidSrc',
+        isEmbed: true,
+        isDirect: false,
+        priority: 4,
+        audioType: AudioType.subtitled,
       ),
     ];
   }
+
 
   /// Extrai o TMDB ID numérico de um contentId no formato tmdb_123456_movie
   static String? extractTmdbId(String contentId) {

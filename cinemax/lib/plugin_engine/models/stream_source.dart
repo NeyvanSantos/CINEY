@@ -1,3 +1,25 @@
+/// Tipo de áudio do servidor de streaming
+enum AudioType {
+  /// Áudio dublado em PT-BR
+  dubbed('dubbed', 'Dublado PT-BR', '🇧🇷'),
+  /// Legendado (áudio original com legendas)
+  subtitled('subtitled', 'Legendado', '💬'),
+  /// Servidor com múltiplas opções de áudio
+  mixed('mixed', 'Multi-Áudio', '🌐');
+
+  final String value;
+  final String label;
+  final String icon;
+  const AudioType(this.value, this.label, this.icon);
+
+  static AudioType fromString(String value) {
+    return AudioType.values.firstWhere(
+      (e) => e.value == value.toLowerCase(),
+      orElse: () => AudioType.mixed,
+    );
+  }
+}
+
 /// Fonte de stream de vídeo
 /// Retornado pela função getStreams() do plugin
 class StreamSource {
@@ -12,6 +34,8 @@ class StreamSource {
   /// Prioridade do servidor (menor = melhor). Usado para ordenar do melhor ao pior.
   /// O player tenta o de menor priority primeiro e faz fallback automático.
   final int priority;
+  /// Tipo de áudio oferecido pelo servidor (dublado, legendado ou multi-áudio)
+  final AudioType audioType;
 
   const StreamSource({
     required this.url,
@@ -23,6 +47,7 @@ class StreamSource {
     this.isDirect = true,
     this.isEmbed = false,
     this.priority = 100,
+    this.audioType = AudioType.mixed,
   });
 
   factory StreamSource.fromJson(Map<String, dynamic> json) {
@@ -40,6 +65,8 @@ class StreamSource {
       isDirect: json['isDirect'] != false,
       isEmbed: json['isEmbed'] == true,
       priority: (json['priority'] as int?) ?? 100,
+      audioType: AudioType.fromString(
+          json['audioType']?.toString() ?? 'mixed'),
     );
   }
 
@@ -54,6 +81,7 @@ class StreamSource {
       'isDirect': isDirect,
       'isEmbed': isEmbed,
       'priority': priority,
+      'audioType': audioType.value,
     };
   }
 }
