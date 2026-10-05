@@ -32,7 +32,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.cinemax.cinemax"
+        applicationId = "com.ciney.app"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
