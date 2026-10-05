@@ -50,28 +50,28 @@ class MainNavScreen extends StatelessWidget {
               children: [
                 _buildNavItem(
                   icon: Iconsax.home_2,
-                  activeIcon: Iconsax.home_25,
+                  activeIcon: Iconsax.home_21,
                   label: 'Início',
                   isSelected: currentIndex == 0,
                   onTap: () => _onTap(0),
                 ),
                 _buildNavItem(
                   icon: Iconsax.search_normal_1,
-                  activeIcon: Iconsax.search_normal_15,
+                  activeIcon: Iconsax.search_normal_11,
                   label: 'Buscar',
                   isSelected: currentIndex == 1,
                   onTap: () => _onTap(1),
                 ),
                 _buildNavItem(
                   icon: Iconsax.receive_square_2,
-                  activeIcon: Iconsax.receive_square_25,
+                  activeIcon: Iconsax.receive_square_21,
                   label: 'Downloads',
                   isSelected: currentIndex == 2,
                   onTap: () => _onTap(2),
                 ),
                 _buildNavItem(
                   icon: Iconsax.setting_2,
-                  activeIcon: Iconsax.setting_25,
+                  activeIcon: Iconsax.setting_21,
                   label: 'Perfil',
                   isSelected: currentIndex == 3,
                   onTap: () => _onTap(3),
@@ -99,6 +99,7 @@ class MainNavScreen extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               AnimatedContainer(
                 duration: const Duration(milliseconds: 220),
@@ -112,10 +113,12 @@ class MainNavScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16),
                 ),
                 alignment: Alignment.center,
-                child: Icon(
-                  isSelected ? activeIcon : icon,
-                  color: isSelected ? AppColors.primary : AppColors.textTertiary,
-                  size: 21,
+                child: Center(
+                  child: Icon(
+                    isSelected ? activeIcon : icon,
+                    color: isSelected ? AppColors.primary : AppColors.textTertiary,
+                    size: 21,
+                  ),
                 ),
               ),
               const SizedBox(height: 4),
