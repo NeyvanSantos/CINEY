@@ -276,6 +276,63 @@ class TmdbService {
     }
   }
 
+  /// Busca títulos parametrizados no TMDB para o feed procedural infinito
+  static Future<List<ContentItem>> getDiscoverContent({
+    required String mediaType,
+    String? withGenres,
+    String? withOriginalLanguage,
+    String? sortBy = 'popularity.desc',
+    String? releaseDateLte,
+    int? voteCountGte,
+    int page = 1,
+    String pluginId = 'com.megaflix',
+    ContentType? defaultType,
+  }) async {
+    try {
+      final queryParams = <String, dynamic>{
+        'page': page,
+        'sort_by': sortBy ?? 'popularity.desc',
+        'include_adult': 'false',
+        'language': 'pt-BR',
+      };
+      if (withGenres != null && withGenres.isNotEmpty) {
+        queryParams['with_genres'] = withGenres;
+      }
+      if (withOriginalLanguage != null && withOriginalLanguage.isNotEmpty) {
+        queryParams['with_original_language'] = withOriginalLanguage;
+      }
+      if (releaseDateLte != null && releaseDateLte.isNotEmpty) {
+        if (mediaType == 'movie') {
+          queryParams['primary_release_date.lte'] = releaseDateLte;
+        } else {
+          queryParams['first_air_date.lte'] = releaseDateLte;
+        }
+      }
+      if (voteCountGte != null && voteCountGte > 0) {
+        queryParams['vote_count.gte'] = voteCountGte;
+      }
+
+      final response = await _dio.get(
+        '/discover/$mediaType',
+        queryParameters: queryParams,
+      );
+      final results = response.data['results'] as List<dynamic>? ?? [];
+      return results
+          .map(
+            (j) => _mapJsonToItem(
+              j as Map<String, dynamic>,
+              pluginId,
+              defaultType: defaultType ??
+                  (mediaType == 'tv' ? ContentType.series : ContentType.movie),
+            ),
+          )
+          .whereType<ContentItem>()
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
   /// Realiza pesquisa geral no TMDB (Filmes, Séries, Animes, Doramas)
   static Future<List<ContentItem>> search(
     String query, {

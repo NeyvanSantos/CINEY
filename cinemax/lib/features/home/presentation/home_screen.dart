@@ -8,6 +8,29 @@ import '../../../core/widgets/gradient_poster.dart';
 import '../../../core/widgets/shimmer_loading.dart';
 import '../../../plugin_engine/manager/plugin_manager.dart';
 import '../../../plugin_engine/models/content_item.dart';
+import '../../../plugin_engine/runtime/tmdb_service.dart';
+
+class _ProceduralTheme {
+  final String title;
+  final String mediaType; // 'movie' ou 'tv'
+  final String? withGenres;
+  final String? withOriginalLanguage;
+  final String? sortBy;
+  final String? releaseDateLte;
+  final int? voteCountGte;
+  final ContentType? defaultType;
+
+  const _ProceduralTheme({
+    required this.title,
+    required this.mediaType,
+    this.withGenres,
+    this.withOriginalLanguage,
+    this.sortBy = 'popularity.desc',
+    this.releaseDateLte,
+    this.voteCountGte,
+    this.defaultType,
+  });
+}
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -22,6 +45,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   String _selectedCategoryFilter = 'Todos';
   Future<void>? _homeLoadRequest;
   final PageController _heroController = PageController();
+  final ScrollController _scrollController = ScrollController();
 
   final List<String> _categoryFilters = [
     'Todos',
@@ -31,10 +55,172 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     'Doramas',
   ];
 
+  // Feed procedural infinito
+  final List<ContentCategory> _proceduralSections = [];
+  final Set<String> _displayedItemIds = {};
+  int _themeIndex = 0;
+  int _themePage = 1;
+  bool _isLoadingProcedural = false;
+
+  // Catálogo procedural infinito por temas TMDB
+  static const List<_ProceduralTheme> _allThemes = [
+    _ProceduralTheme(title: 'Filmes de Ação & Pura Adrenalina', mediaType: 'movie', withGenres: '28'),
+    _ProceduralTheme(title: 'Séries Mais Assistidas', mediaType: 'tv', sortBy: 'popularity.desc'),
+    _ProceduralTheme(title: 'Comédias Imperdíveis', mediaType: 'movie', withGenres: '35'),
+    _ProceduralTheme(title: 'Ficção Científica & Futuro', mediaType: 'movie', withGenres: '878'),
+    _ProceduralTheme(title: 'Animes em Destaque', mediaType: 'tv', withGenres: '16', withOriginalLanguage: 'ja', defaultType: ContentType.anime),
+    _ProceduralTheme(title: 'Suspense & Mistério', mediaType: 'movie', withGenres: '53,9648'),
+    _ProceduralTheme(title: 'Doramas Coreanos Favoritos', mediaType: 'tv', withOriginalLanguage: 'ko', defaultType: ContentType.dorama),
+    _ProceduralTheme(title: 'Aventura & Fantasia', mediaType: 'movie', withGenres: '12,14'),
+    _ProceduralTheme(title: 'Terror & Sobrenatural', mediaType: 'movie', withGenres: '27'),
+    _ProceduralTheme(title: 'Séries Policiais & Investigação', mediaType: 'tv', withGenres: '80'),
+    _ProceduralTheme(title: 'Animações para Toda Família', mediaType: 'movie', withGenres: '16,10751'),
+    _ProceduralTheme(title: 'Dramas Aclamados pela Crítica', mediaType: 'movie', withGenres: '18', sortBy: 'vote_average.desc', voteCountGte: 800),
+    _ProceduralTheme(title: 'Séries de Mistério & Ficção', mediaType: 'tv', withGenres: '10765,9648'),
+    _ProceduralTheme(title: 'Romances Apaixonantes', mediaType: 'movie', withGenres: '10749'),
+    _ProceduralTheme(title: 'Documentários & Histórias Reais', mediaType: 'movie', withGenres: '99'),
+    _ProceduralTheme(title: 'Clássicos Inesquecíveis', mediaType: 'movie', releaseDateLte: '2005-01-01', sortBy: 'vote_average.desc', voteCountGte: 1500),
+  ];
+
+  static const List<_ProceduralTheme> _movieThemes = [
+    _ProceduralTheme(title: 'Filmes de Ação Explosiva', mediaType: 'movie', withGenres: '28'),
+    _ProceduralTheme(title: 'Comédias Divertidas', mediaType: 'movie', withGenres: '35'),
+    _ProceduralTheme(title: 'Ficção Científica & Espaço', mediaType: 'movie', withGenres: '878'),
+    _ProceduralTheme(title: 'Suspense Eletrizante', mediaType: 'movie', withGenres: '53'),
+    _ProceduralTheme(title: 'Terror de Arrepiar', mediaType: 'movie', withGenres: '27'),
+    _ProceduralTheme(title: 'Aventura & Exploração', mediaType: 'movie', withGenres: '12'),
+    _ProceduralTheme(title: 'Mundos Mágicos & Fantasia', mediaType: 'movie', withGenres: '14'),
+    _ProceduralTheme(title: 'Animações Cinematográficas', mediaType: 'movie', withGenres: '16,10751'),
+    _ProceduralTheme(title: 'Dramas Profundos & Emocionantes', mediaType: 'movie', withGenres: '18'),
+    _ProceduralTheme(title: 'Romances Apaixonados', mediaType: 'movie', withGenres: '10749'),
+    _ProceduralTheme(title: 'Guerra & Batalhas Épicas', mediaType: 'movie', withGenres: '10752'),
+    _ProceduralTheme(title: 'Filmes Mais Bem Avaliados', mediaType: 'movie', sortBy: 'vote_average.desc', voteCountGte: 1000),
+    _ProceduralTheme(title: 'Clássicos de Ouro do Cinema', mediaType: 'movie', releaseDateLte: '2005-01-01', sortBy: 'vote_average.desc', voteCountGte: 1500),
+  ];
+
+  static const List<_ProceduralTheme> _seriesThemes = [
+    _ProceduralTheme(title: 'Séries do Momento', mediaType: 'tv', sortBy: 'popularity.desc'),
+    _ProceduralTheme(title: 'Séries de Ação & Aventura', mediaType: 'tv', withGenres: '10759'),
+    _ProceduralTheme(title: 'Dramas Envolventes & Premiados', mediaType: 'tv', withGenres: '18'),
+    _ProceduralTheme(title: 'Mistério & Ficção Científica', mediaType: 'tv', withGenres: '10765,9648'),
+    _ProceduralTheme(title: 'Comédias & Sitcoms', mediaType: 'tv', withGenres: '35'),
+    _ProceduralTheme(title: 'Séries Policiais & Crimes Reais', mediaType: 'tv', withGenres: '80'),
+    _ProceduralTheme(title: 'Séries Documentais', mediaType: 'tv', withGenres: '99'),
+    _ProceduralTheme(title: 'Séries Mais Bem Avaliadas', mediaType: 'tv', sortBy: 'vote_average.desc', voteCountGte: 500),
+  ];
+
+  static const List<_ProceduralTheme> _animeThemes = [
+    _ProceduralTheme(title: 'Animes Populares no Japão', mediaType: 'tv', withGenres: '16', withOriginalLanguage: 'ja', defaultType: ContentType.anime),
+    _ProceduralTheme(title: 'Animes de Ação & Batalhas Épicas', mediaType: 'tv', withGenres: '16,10759', withOriginalLanguage: 'ja', defaultType: ContentType.anime),
+    _ProceduralTheme(title: 'Animes de Fantasia & Isekai', mediaType: 'tv', withGenres: '16,10765', withOriginalLanguage: 'ja', defaultType: ContentType.anime),
+    _ProceduralTheme(title: 'Comédias & Vida Cotidiana em Anime', mediaType: 'tv', withGenres: '16,35', withOriginalLanguage: 'ja', defaultType: ContentType.anime),
+    _ProceduralTheme(title: 'Filmes em Anime', mediaType: 'movie', withGenres: '16', withOriginalLanguage: 'ja', defaultType: ContentType.anime),
+    _ProceduralTheme(title: 'Animes Mais Bem Avaliados', mediaType: 'tv', withGenres: '16', withOriginalLanguage: 'ja', sortBy: 'vote_average.desc', voteCountGte: 100, defaultType: ContentType.anime),
+  ];
+
+  static const List<_ProceduralTheme> _doramaThemes = [
+    _ProceduralTheme(title: 'K-Dramas Românticos Mais Amados', mediaType: 'tv', withOriginalLanguage: 'ko', defaultType: ContentType.dorama),
+    _ProceduralTheme(title: 'Dramas Coreanos Emocionantes', mediaType: 'tv', withGenres: '18', withOriginalLanguage: 'ko', defaultType: ContentType.dorama),
+    _ProceduralTheme(title: 'Comédias Românticas Coreanas', mediaType: 'tv', withGenres: '35', withOriginalLanguage: 'ko', defaultType: ContentType.dorama),
+    _ProceduralTheme(title: 'Doramas de Suspense & Investigação', mediaType: 'tv', withGenres: '80,9648', withOriginalLanguage: 'ko', defaultType: ContentType.dorama),
+    _ProceduralTheme(title: 'Doramas Populares do Momento', mediaType: 'tv', withOriginalLanguage: 'ko', sortBy: 'popularity.desc', defaultType: ContentType.dorama),
+    _ProceduralTheme(title: 'Doramas Aclamados pelo Público', mediaType: 'tv', withOriginalLanguage: 'ko', sortBy: 'vote_average.desc', voteCountGte: 50, defaultType: ContentType.dorama),
+  ];
+
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     _loadHomeData();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
+    if (maxScroll - currentScroll <= 600) {
+      _loadNextProceduralBatch(count: 2);
+    }
+  }
+
+  List<_ProceduralTheme> _getActiveThemeList() {
+    switch (_selectedCategoryFilter) {
+      case 'Filmes':
+        return _movieThemes;
+      case 'Séries':
+        return _seriesThemes;
+      case 'Animes':
+        return _animeThemes;
+      case 'Doramas':
+        return _doramaThemes;
+      default:
+        return _allThemes;
+    }
+  }
+
+  Future<void> _loadNextProceduralBatch({int count = 2}) async {
+    if (_isLoadingProcedural) return;
+    _isLoadingProcedural = true;
+    if (mounted) setState(() {});
+
+    final themes = _getActiveThemeList();
+    if (themes.isEmpty) {
+      _isLoadingProcedural = false;
+      if (mounted) setState(() {});
+      return;
+    }
+
+    final newSections = <ContentCategory>[];
+
+    for (int i = 0; i < count; i++) {
+      if (_themeIndex >= themes.length) {
+        _themeIndex = 0;
+        _themePage++;
+      }
+
+      final theme = themes[_themeIndex];
+      _themeIndex++;
+
+      try {
+        final items = await TmdbService.getDiscoverContent(
+          mediaType: theme.mediaType,
+          withGenres: theme.withGenres,
+          withOriginalLanguage: theme.withOriginalLanguage,
+          sortBy: theme.sortBy,
+          releaseDateLte: theme.releaseDateLte,
+          voteCountGte: theme.voteCountGte,
+          page: _themePage,
+          defaultType: theme.defaultType,
+        );
+
+        final uniqueItems = <ContentItem>[];
+        for (final item in items) {
+          final key = item.id;
+          if (_displayedItemIds.add(key)) {
+            uniqueItems.add(item);
+          }
+        }
+
+        if (uniqueItems.isNotEmpty) {
+          final sectionTitle = _themePage > 1
+              ? '${theme.title} • Lote $_themePage'
+              : theme.title;
+          newSections.add(ContentCategory(
+            name: sectionTitle,
+            items: uniqueItems,
+          ));
+        }
+      } catch (_) {
+        // Ignora erros pontuais de conexão
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _proceduralSections.addAll(newSections);
+        _isLoadingProcedural = false;
+      });
+    }
   }
 
   Future<void> _loadHomeData() {
@@ -56,56 +242,45 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       setState(() {
         _sections = sections;
         _isLoading = false;
+        _themeIndex = 0;
+        _themePage = 1;
+        _displayedItemIds.clear();
+        _proceduralSections.clear();
       });
+
+      // Registra itens do topo para não repetir no procedural
+      for (final s in _filteredBaseSections) {
+        for (final item in s.items) {
+          _displayedItemIds.add(item.id);
+        }
+      }
+
+      // Inicia imediatamente o primeiro lote de seções procedurais
+      _loadNextProceduralBatch(count: 3);
     }
   }
 
-  List<ContentCategory> get _filteredSections {
-    final sections = _organizedSections;
-    if (_selectedCategoryFilter == 'Todos') return sections;
+  void _onCategoryFilterChanged(String category) {
+    if (_selectedCategoryFilter == category) return;
+    setState(() {
+      _selectedCategoryFilter = category;
+      _themeIndex = 0;
+      _themePage = 1;
+      _displayedItemIds.clear();
+      _proceduralSections.clear();
+    });
 
-    if (_selectedCategoryFilter == 'Filmes') {
-      return sections
-          .where((s) => s.name.contains('Filmes') || s.name.contains('Em Alta'))
-          .map(
-            (s) => ContentCategory(
-              name: s.name,
-              items: s.items.where((i) => i.type == ContentType.movie).toList(),
-            ),
-          )
-          .where((s) => s.items.isNotEmpty)
-          .toList();
+    for (final s in _filteredBaseSections) {
+      for (final item in s.items) {
+        _displayedItemIds.add(item.id);
+      }
     }
 
-    if (_selectedCategoryFilter == 'Séries') {
-      return sections
-          .where((s) => s.name.contains('Séries') || s.name.contains('Em Alta'))
-          .map(
-            (s) => ContentCategory(
-              name: s.name,
-              items: s.items
-                  .where((i) => i.type == ContentType.series)
-                  .toList(),
-            ),
-          )
-          .where((s) => s.items.isNotEmpty)
-          .toList();
-    }
-
-    if (_selectedCategoryFilter == 'Animes') {
-      return sections.where((s) => s.name.contains('Anime')).toList();
-    }
-
-    if (_selectedCategoryFilter == 'Doramas') {
-      return sections
-          .where((s) => s.name.contains('Dorama') || s.name.contains('K-Drama'))
-          .toList();
-    }
-
-    return _sections;
+    _loadNextProceduralBatch(count: 3);
   }
 
-  List<ContentCategory> get _organizedSections {
+  /// Seções fixas do topo: Lançamentos e Em Alta em destaque prioritário
+  List<ContentCategory> get _filteredBaseSections {
     final source = _sections
         .where(
           (section) =>
@@ -114,38 +289,63 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         )
         .toList();
     final items = _uniqueItems(source.expand((section) => section.items));
-    final highlights = _uniqueItems(
-      source.expand((section) => section.items).take(18),
-    );
     final launches = [...items]
       ..sort((a, b) => (b.year ?? '').compareTo(a.year ?? ''));
-    final mostWatched = [...items]
+    final trending = [...items]
       ..sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
-    final actionSource = source
-        .where(
-          (section) =>
-              section.name.toLowerCase().contains('ação') ||
-              section.name.toLowerCase().contains('acao') ||
-              section.name.toLowerCase().contains('blockbuster'),
-        )
-        .expand((section) => section.items);
 
-    return [
-      if (highlights.isNotEmpty)
-        ContentCategory(name: 'Destaques', items: highlights),
-      if (launches.isNotEmpty)
-        ContentCategory(name: 'Lançamentos', items: launches.take(18).toList()),
-      if (mostWatched.isNotEmpty)
-        ContentCategory(
-          name: 'Mais assistidos',
-          items: mostWatched.take(18).toList(),
-        ),
-      if (actionSource.isNotEmpty)
-        ContentCategory(
-          name: 'Filmes de Ação',
-          items: _uniqueItems(actionSource).take(18).toList(),
-        ),
-    ];
+    if (_selectedCategoryFilter == 'Todos') {
+      return [
+        if (launches.isNotEmpty)
+          ContentCategory(name: 'Lançamentos', items: launches.take(18).toList()),
+        if (trending.isNotEmpty)
+          ContentCategory(name: 'Em Alta', items: trending.take(18).toList()),
+      ];
+    }
+
+    if (_selectedCategoryFilter == 'Filmes') {
+      final movieLaunches = launches.where((i) => i.type == ContentType.movie).take(18).toList();
+      final movieTrending = trending.where((i) => i.type == ContentType.movie).take(18).toList();
+      return [
+        if (movieLaunches.isNotEmpty)
+          ContentCategory(name: 'Lançamentos em Filmes', items: movieLaunches),
+        if (movieTrending.isNotEmpty)
+          ContentCategory(name: 'Filmes em Alta', items: movieTrending),
+      ];
+    }
+
+    if (_selectedCategoryFilter == 'Séries') {
+      final seriesLaunches = launches.where((i) => i.type == ContentType.series).take(18).toList();
+      final seriesTrending = trending.where((i) => i.type == ContentType.series).take(18).toList();
+      return [
+        if (seriesLaunches.isNotEmpty)
+          ContentCategory(name: 'Lançamentos em Séries', items: seriesLaunches),
+        if (seriesTrending.isNotEmpty)
+          ContentCategory(name: 'Séries em Alta', items: seriesTrending),
+      ];
+    }
+
+    if (_selectedCategoryFilter == 'Animes') {
+      final animes = items.where((i) => i.type == ContentType.anime).take(18).toList();
+      return [
+        if (animes.isNotEmpty)
+          ContentCategory(name: 'Animes em Destaque', items: animes),
+      ];
+    }
+
+    if (_selectedCategoryFilter == 'Doramas') {
+      final doramas = items.where((i) => i.type == ContentType.dorama).take(18).toList();
+      return [
+        if (doramas.isNotEmpty)
+          ContentCategory(name: 'Doramas em Destaque', items: doramas),
+      ];
+    }
+
+    return [];
+  }
+
+  List<ContentCategory> get _allVisibleSections {
+    return [..._filteredBaseSections, ..._proceduralSections];
   }
 
   List<ContentItem> _uniqueItems(Iterable<ContentItem> source) {
@@ -155,24 +355,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         .toList();
   }
 
-  List<ContentItem> get _heroItems => _organizedSections
-      .firstWhere(
-        (section) => section.name == 'Destaques',
-        orElse: () => const ContentCategory(name: 'Destaques', items: []),
-      )
-      .items
-      .take(6)
-      .toList();
+  List<ContentItem> get _heroItems {
+    final source = _sections
+        .where(
+          (section) =>
+              !section.name.toLowerCase().contains('domínio público') &&
+              !section.name.toLowerCase().contains('dominio publico'),
+        )
+        .toList();
+    final items = _uniqueItems(source.expand((section) => section.items));
+    if (items.isEmpty) return const [];
+    return items.take(6).toList();
+  }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     _heroController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final filtered = _filteredSections;
+    final sections = _allVisibleSections;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -181,6 +387,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         color: AppColors.primary,
         backgroundColor: AppColors.surface,
         child: CustomScrollView(
+          controller: _scrollController,
           physics: const BouncingScrollPhysics(),
           slivers: [
             // App Bar transparente com logo CiNey
@@ -283,7 +490,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       ),
                       onSelected: (selected) {
                         if (selected) {
-                          setState(() => _selectedCategoryFilter = category);
+                          _onCategoryFilterChanged(category);
                         }
                       },
                     );
@@ -296,7 +503,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
             const SliverToBoxAdapter(child: SizedBox(height: 16)),
 
-            // Seções de Conteúdo Dinâmicas e Unificadas
+            // Seções de Conteúdo Dinâmicas, Lançamentos/Em Alta no topo e Procedural Infinito
             if (_isLoading)
               SliverList(
                 delegate: SliverChildBuilderDelegate(
@@ -307,7 +514,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   childCount: 3,
                 ),
               )
-            else if (filtered.isEmpty)
+            else if (sections.isEmpty)
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.all(32),
@@ -339,9 +546,41 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             else
               SliverList(
                 delegate: SliverChildBuilderDelegate((context, index) {
-                  final section = filtered[index];
+                  final section = sections[index];
                   return _buildCarouselSection(section);
-                }, childCount: filtered.length),
+                }, childCount: sections.length),
+              ),
+
+            // Indicador sutil de carregamento procedural sob demanda
+            if (_isLoadingProcedural)
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.2,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        SizedBox(width: 12),
+                        Text(
+                          'Descobrindo novos títulos...',
+                          style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
 
             const SliverToBoxAdapter(child: SizedBox(height: 40)),
@@ -477,6 +716,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 TextButton(
                   onPressed: () => context.push(
                     '/section?name=${Uri.encodeQueryComponent(category.name)}',
+                    extra: category.items,
                   ),
                   child: const Text(
                     'Ver todos',

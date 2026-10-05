@@ -9,11 +9,47 @@ import '../../../plugin_engine/models/content_item.dart';
 
 class CatalogSectionScreen extends ConsumerWidget {
   final String sectionName;
+  final List<ContentItem>? initialItems;
 
-  const CatalogSectionScreen({super.key, required this.sectionName});
+  const CatalogSectionScreen({
+    super.key,
+    required this.sectionName,
+    this.initialItems,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (initialItems != null && initialItems!.isNotEmpty) {
+      final items = _uniqueItems(initialItems!);
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          title: Text(sectionName, style: AppTypography.headlineMedium),
+          backgroundColor: AppColors.background,
+        ),
+        body: GridView.builder(
+          padding: const EdgeInsets.all(16),
+          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+            maxCrossAxisExtent: 170,
+            childAspectRatio: 0.66,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 16,
+          ),
+          itemCount: items.length,
+          itemBuilder: (context, index) {
+            final item = items[index];
+            return GradientPoster(
+              title: item.title,
+              posterUrl: item.posterUrl,
+              rating: item.rating,
+              year: item.year,
+              onTap: () => context.push(_detailsRoute(item)),
+            );
+          },
+        ),
+      );
+    }
+
     return FutureBuilder<List<ContentCategory>>(
       future: ref.read(pluginManagerProvider.notifier).getAllHomeSections(),
       builder: (context, snapshot) {

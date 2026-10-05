@@ -90,6 +90,9 @@ final appRouter = GoRouter(
       path: '/section',
       builder: (context, state) => CatalogSectionScreen(
         sectionName: state.uri.queryParameters['name'] ?? 'Catálogo',
+        initialItems: state.extra is List<ContentItem>
+            ? state.extra as List<ContentItem>
+            : null,
       ),
     ),
 
