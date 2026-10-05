@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>CineMax Receiver</title>
+  <style>
+    html, body, #stage { width: 100%; height: 100%; margin: 0; background: #000; overflow: hidden; }
+    #stage { display: flex; align-items: center; justify-content: center; }
+    video, iframe { width: 100%; height: 100%; border: 0; object-fit: contain; }
+    #status { color: #fff; font: 20px sans-serif; opacity: .75; }
+  </style>
+</head>
+<body>
+  <main id="stage"><div id="status">Aguardando reprodução...</div></main>
+  <script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+  <script>
+    const NAMESPACE = 'urn:x-cast:com.cinemax.receiver';
+    const context = cast.framework.CastReceiverContext.getInstance();
+    const stage = document.getElementById('stage');
+    let activeMedia = null;
+
+    function clearStage() {
+      stage.replaceChildren();
+    }
+
+    function showVideo(command) {
+      clearStage();
+      const video = document.createElement('video');
+      video.autoplay = true;
+      video.controls = true;
+      video.playsInline = true;
+      video.src = command.url;
+      if (command.poster) video.poster = command.poster;
+      stage.appendChild(video);
+      activeMedia = video;
+      video.play().catch(() => {});
+    }
+
+    function showEmbed(command) {
+      clearStage();
+      const frame = document.createElement('iframe');
+      frame.src = command.url;
+      frame.allow = 'autoplay; fullscreen; encrypted-media; picture-in-picture';
+      frame.allowFullscreen = true;
+      frame.title = command.title || 'CineMax';
+      stage.appendChild(frame);
+      activeMedia = frame;
+    }
+
+    function load(command) {
+      if (!command.url) return;
+      document.title = command.title || 'CineMax';
+      if (/\.(mp4|m3u8|mpd|webm|mkv)(\?|$)/i.test(command.url)) showVideo(command);
+      else showEmbed(command);
+    }
+
+    context.addCustomMessageListener(NAMESPACE, event => {
+      try {
+        const command = JSON.parse(event.data);
+        if (command.type === 'LOAD') load(command);
+        if (command.type === 'PLAY' && activeMedia?.play) activeMedia.play().catch(() => {});
+        if (command.type === 'PAUSE' && activeMedia?.pause) activeMedia.pause();
+        if (command.type === 'SEEK' && 'currentTime' in activeMedia) activeMedia.currentTime = command.time;
+      } catch (_) {}
+    });
+
+    context.start();
+  </script>
+</body>
+</html>
