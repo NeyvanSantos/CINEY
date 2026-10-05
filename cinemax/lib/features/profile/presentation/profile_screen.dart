@@ -233,11 +233,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         const SizedBox(width: 8),
                         RichText(
                           text: TextSpan(
-                            text: 'CINE',
+                            text: 'CI',
                             style: AppTypography.headlineMedium.copyWith(fontSize: 16, fontWeight: FontWeight.w900),
                             children: const [
                               TextSpan(
-                                text: 'MAX',
+                                text: 'NEY',
                                 style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.w900),
                               ),
                             ],
@@ -333,7 +333,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Text(
                     _checkingUpdate
                         ? 'Consultando GitHub Releases...'
-                        : 'Verificar se há nova versão do CineMax',
+                        : 'Verificar se há nova versão do CiNey',
                     style: const TextStyle(fontSize: 11, color: AppColors.textTertiary),
                   ),
                 ],

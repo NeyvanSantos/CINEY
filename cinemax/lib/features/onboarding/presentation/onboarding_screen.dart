@@ -213,7 +213,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       children: [
         const SizedBox(height: 10),
         Text(
-          'Bem-vindo ao Cinemax! 👋',
+          'Bem-vindo ao CiNey! 👋',
           style: AppTypography.displaySmall,
         ).animate().fadeIn().slideY(begin: 0.2, end: 0),
         const SizedBox(height: 8),

@@ -214,13 +214,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   const SizedBox(width: 8),
                   RichText(
                     text: TextSpan(
-                      text: 'CINE',
+                      text: 'CI',
                       style: AppTypography.headlineMedium.copyWith(
                         fontWeight: FontWeight.w900,
                       ),
                       children: const [
                         TextSpan(
-                          text: 'MAX',
+                          text: 'NEY',
                           style: TextStyle(
                             color: AppColors.primary,
                             fontWeight: FontWeight.w900,

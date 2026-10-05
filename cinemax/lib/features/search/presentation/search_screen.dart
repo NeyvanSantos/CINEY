@@ -231,7 +231,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'Explore o Catálogo Cinemax',
+                    'Explore o Catálogo CiNey',
                     style: AppTypography.headlineSmall.copyWith(
                       color: Colors.white,
                     ),
