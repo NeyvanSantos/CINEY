@@ -686,6 +686,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
               ],
             ],
           ),
+        ),
         const SizedBox(height: 8),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
