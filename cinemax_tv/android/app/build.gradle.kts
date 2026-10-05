@@ -50,6 +50,8 @@ android {
             keyPassword = keystoreProperties["keyPassword"] as String?
             storeFile = file(keystoreProperties["storeFile"] as String? ?: "cinemax-release-key.jks")
             storePassword = keystoreProperties["storePassword"] as String?
+            enableV1Signing = true
+            enableV2Signing = true
         }
     }
 
