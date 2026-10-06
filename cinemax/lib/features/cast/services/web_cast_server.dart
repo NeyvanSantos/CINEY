@@ -146,9 +146,32 @@ class WebCastServer {
         type: InternetAddressType.IPv4,
         includeLinkLocal: false,
       );
+
+      // Prioridade 1: interface Wi-Fi / Ethernet comum em smartphones Android
+      for (var interface in interfaces) {
+        final name = interface.name.toLowerCase();
+        if (name.contains('wlan') || name.contains('eth') || name.contains('en') || name.contains('wl')) {
+          for (var addr in interface.addresses) {
+            if (!addr.isLoopback && !addr.address.startsWith('127.')) {
+              return addr.address;
+            }
+          }
+        }
+      }
+
+      // Prioridade 2: Sub-rede doméstica padrão 192.168.x.x
       for (var interface in interfaces) {
         for (var addr in interface.addresses) {
-          if (!addr.isLoopback) {
+          if (addr.address.startsWith('192.168.')) {
+            return addr.address;
+          }
+        }
+      }
+
+      // Prioridade 3: Qualquer endereço IPv4 válido não-loopback
+      for (var interface in interfaces) {
+        for (var addr in interface.addresses) {
+          if (!addr.isLoopback && !addr.address.startsWith('127.')) {
             return addr.address;
           }
         }
@@ -284,7 +307,20 @@ class WebCastServer {
       request.response.headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
       request.response.headers.set('Access-Control-Allow-Headers', '*');
 
-      await clientRes.pipe(request.response);
+      // Para playlists HLS (.m3u8), reescreve URLs dos segmentos para passarem pelo proxy
+      final isM3u8 = targetUrl.contains('.m3u8') ||
+          (clientRes.headers.contentType?.mimeType.contains('mpegurl') ?? false) ||
+          (clientRes.headers.contentType?.mimeType.contains('mpegURL') ?? false);
+
+      if (isM3u8) {
+        request.response.headers.set('Content-Type', 'application/vnd.apple.mpegurl');
+        final body = await utf8.decodeStream(clientRes);
+        final rewritten = _rewriteM3u8(body, targetUrl, referer, origin, userAgent);
+        request.response.write(rewritten);
+        await request.response.close();
+      } else {
+        await clientRes.pipe(request.response);
+      }
     } catch (e) {
       AppLogger.warn('Erro no proxy de streaming: $e', tag: 'PROXY');
       try {
@@ -295,6 +331,70 @@ class WebCastServer {
       client.close();
     }
   }
+
+  /// Reescreve URLs dentro de uma playlist M3U8 para serem canalizadas pelo proxy local.
+  /// Isso garante que segmentos .ts, sub-playlists, e chaves de DRM passem pelo proxy
+  /// com os headers anti-hotlink corretos.
+  String _rewriteM3u8(String content, String baseUrl, String? referer, String? origin, String userAgent) {
+    final baseUri = Uri.parse(baseUrl);
+    final lines = content.split('\n');
+    final result = StringBuffer();
+
+    for (final line in lines) {
+      final trimmed = line.trim();
+
+      // Linhas de comentário/diretivas: passar direto, exceto URI= em #EXT-X-KEY
+      if (trimmed.startsWith('#')) {
+        if (trimmed.contains('URI="')) {
+          // Reescreve URI de chaves de criptografia
+          final rewritten = trimmed.replaceAllMapped(
+            RegExp(r'URI="([^"]+)"'),
+            (match) {
+              final keyUrl = _resolveUrl(match.group(1)!, baseUri);
+              final proxied = _buildProxyUrl(keyUrl, referer, origin, userAgent);
+              return 'URI="$proxied"';
+            },
+          );
+          result.writeln(rewritten);
+        } else {
+          result.writeln(trimmed);
+        }
+        continue;
+      }
+
+      // Linhas vazias
+      if (trimmed.isEmpty) {
+        result.writeln();
+        continue;
+      }
+
+      // Linhas de dados (URLs de segmento ou sub-playlist)
+      final segmentUrl = _resolveUrl(trimmed, baseUri);
+      final proxied = _buildProxyUrl(segmentUrl, referer, origin, userAgent);
+      result.writeln(proxied);
+    }
+
+    return result.toString();
+  }
+
+  /// Resolve uma URL relativa contra a URL base
+  String _resolveUrl(String url, Uri baseUri) {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    return baseUri.resolve(url).toString();
+  }
+
+  /// Constrói a URL do proxy local com os parâmetros de header
+  String _buildProxyUrl(String targetUrl, String? referer, String? origin, String userAgent) {
+    final host = _localIp ?? '127.0.0.1';
+    final params = <String, String>{'url': targetUrl};
+    if (referer != null && referer.isNotEmpty) params['referer'] = referer;
+    if (origin != null && origin.isNotEmpty) params['origin'] = origin;
+    params['ua'] = userAgent;
+    return Uri(scheme: 'http', host: host, port: _port, path: '/stream', queryParameters: params).toString();
+  }
+
 
   String _getTvPlayerHtml() {
     return '''

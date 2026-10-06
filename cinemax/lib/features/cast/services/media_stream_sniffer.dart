@@ -1,6 +1,4 @@
-import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/widgets.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../../core/services/app_logger.dart';
@@ -33,10 +31,7 @@ class MediaStreamSniffer {
     caseSensitive: false,
   );
 
-  static final RegExp _captionRegex = RegExp(
-    r'\.(vtt|srt)(\?.*)?$',
-    caseSensitive: false,
-  );
+
 
   /// Script de injeção JavaScript para interceptação profunda de chamadas de rede e tags de mídia
   static const String _snifferJsHook = '''

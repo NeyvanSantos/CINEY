@@ -2,12 +2,7 @@ import 'package:flutter/material.dart';
 
 enum CastDeviceType {
   chromecast('Chromecast / Google TV', Icons.tv_rounded, 'Google Cast'),
-  samsung('Samsung Smart TV', Icons.tv_rounded, 'Tizen / Smart View'),
-  lg('LG Smart TV', Icons.tv_rounded, 'webOS / SmartShare'),
-  roku('Roku TV / Express', Icons.tv_rounded, 'Roku ECP'),
-  fireTv('Amazon Fire TV', Icons.tv_rounded, 'Fire OS'),
-  dlna('Smart TV / DLNA', Icons.connected_tv_rounded, 'DLNA / UPnP'),
-  webCast('Qualquer TV (Navegador Web)', Icons.language_rounded, 'Web Browser / QR Code');
+  webCast('Qualquer TV (Navegador Web)', Icons.language_rounded, 'Web Browser');
 
   final String label;
   final IconData icon;

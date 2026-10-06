@@ -7,11 +7,8 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../../../core/config/theme/app_colors.dart';
 import '../../../core/services/app_logger.dart';
 import '../../../plugin_engine/models/stream_source.dart';
-import '../models/cast_device.dart';
-import '../services/dlna_discovery_service.dart';
 import '../services/media_stream_sniffer.dart';
 import '../services/native_cast_bridge.dart';
-import '../services/universal_cast_service.dart';
 import '../services/web_cast_server.dart';
 
 class CastDialog extends StatefulWidget {
@@ -63,13 +60,6 @@ class _CastDialogState extends State<CastDialog> {
   WebViewController? _snifferController;
   Completer<SniffedStreamResult?>? _snifferCompleter;
 
-  // DLNA Discovery & Cast Service
-  final _dlnaService = DlnaDiscoveryService.instance;
-  final _castService = UniversalCastService();
-  List<CastDevice> _dlnaDevices = [];
-  StreamSubscription<List<CastDevice>>? _devicesSub;
-  bool _isScanning = false;
-
   StreamSource? get _activeSource =>
       widget.sources.isNotEmpty && _selectedServerIndex < widget.sources.length
       ? widget.sources[_selectedServerIndex]
@@ -79,7 +69,6 @@ class _CastDialogState extends State<CastDialog> {
   void initState() {
     super.initState();
     _initSniffer();
-    _startDlnaScan();
   }
 
   void _initSniffer() {
@@ -98,21 +87,7 @@ class _CastDialogState extends State<CastDialog> {
   @override
   void dispose() {
     _countdownTimer?.cancel();
-    _devicesSub?.cancel();
-    _dlnaService.stopDiscovery();
     super.dispose();
-  }
-
-  void _startDlnaScan() {
-    setState(() => _isScanning = true);
-    _devicesSub = _dlnaService.devicesStream.listen((devices) {
-      if (mounted) {
-        setState(() => _dlnaDevices = devices);
-      }
-    });
-    _dlnaService.startDiscovery(timeout: const Duration(seconds: 15)).then((_) {
-      if (mounted) setState(() => _isScanning = false);
-    });
   }
 
   void _startCountdown() {
@@ -150,6 +125,7 @@ class _CastDialogState extends State<CastDialog> {
     if (MediaStreamSniffer.isDirectMediaUrl(source.url)) {
       return SniffedStreamResult(
         url: source.url,
+        headers: source.headers ?? const {},
         isM3U8: source.url.contains('.m3u8'),
         mimeType: MediaStreamSniffer.getContentType(source.url),
       );
@@ -214,22 +190,27 @@ class _CastDialogState extends State<CastDialog> {
     try {
       // 1. Resolve o link real do vídeo
       final streamResult = await _resolveActiveStream(source);
+      final rawUrl = streamResult?.url ?? source.url;
+      final effectiveHeaders = <String, String>{
+        if (source.headers != null) ...source.headers!,
+        if (streamResult != null) ...streamResult.headers,
+      };
+
+      // Inicia o servidor WebCast para servir o proxy local com CORS
+      await WebCastServer.instance.start();
 
       String targetUrl;
-      if (streamResult != null) {
-        // Se a fonte possui restrição de cabeçalhos (anti-hotlink), canaliza via proxy local
-        if (streamResult.headers.isNotEmpty) {
-          await WebCastServer.instance.start();
-          targetUrl = WebCastServer.instance.getProxiedStreamUrl(
-            streamResult.url,
-            headers: streamResult.headers,
-          );
-        } else {
-          targetUrl = streamResult.url;
-        }
+      // Para o Chromecast funcionar de forma 100% infalível:
+      // Se houver cabeçalhos anti-hotlink OU se o vídeo for M3U8/HLS, canalizamos pelo
+      // proxy local. O proxy injeta os headers CORS e reescreve os segmentos .ts,
+      // permitindo que o receiver padrão do Google Cast toque streams de qualquer fonte!
+      if (effectiveHeaders.isNotEmpty || rawUrl.contains('.m3u8') || rawUrl.contains('/hls/')) {
+        targetUrl = WebCastServer.instance.getProxiedStreamUrl(
+          rawUrl,
+          headers: effectiveHeaders,
+        );
       } else {
-        // Fallback: se não capturou m3u8 direto, usa a URL original
-        targetUrl = source.url;
+        targetUrl = rawUrl;
       }
 
       final opened = await NativeCastBridge.castMedia(
@@ -273,56 +254,6 @@ class _CastDialogState extends State<CastDialog> {
     }
   }
 
-  /// Transmite via DLNA / UPnP nativo para Smart TVs (Samsung, LG, etc.)
-  Future<void> _castViaDlna(CastDevice device) async {
-    final source = _activeSource;
-    if (source == null) {
-      setState(() => _error = 'Nenhuma URL disponível para transmitir.');
-      return;
-    }
-
-    setState(() {
-      _opening = true;
-      _error = null;
-    });
-
-    try {
-      final streamResult = await _resolveActiveStream(source);
-      final mediaUrl = streamResult?.url ?? source.url;
-      final headers = streamResult?.headers;
-
-      final success = await _castService.connectAndCast(
-        device: device,
-        title: widget.title,
-        mediaUrl: mediaUrl,
-        headers: headers,
-        forceProxy: headers != null && headers.isNotEmpty,
-      );
-
-      if (!mounted) return;
-      if (success) {
-        AppLogger.info(
-          'DLNA: Transmitindo para ${device.name} ($mediaUrl)',
-          tag: 'CAST',
-        );
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
-      } else {
-        setState(
-          () =>
-              _error = 'A TV "${device.name}" não aceitou a transmissão DLNA.',
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _error = 'Erro ao transmitir via DLNA: $e');
-      }
-    } finally {
-      if (mounted) setState(() => _opening = false);
-    }
-  }
-
   /// Abre o modo WebCast (Player HTML5 para navegador de qualquer TV)
   Future<void> _openWebCastPlayer() async {
     final source = _activeSource;
@@ -335,13 +266,26 @@ class _CastDialogState extends State<CastDialog> {
 
     try {
       final streamResult = await _resolveActiveStream(source);
-      final mediaUrl = streamResult?.url ?? source.url;
+      final rawUrl = streamResult?.url ?? source.url;
+      final effectiveHeaders = <String, String>{
+        if (source.headers != null) ...source.headers!,
+        if (streamResult != null) ...streamResult.headers,
+      };
 
       await WebCastServer.instance.start();
+
+      // Se houver headers anti-hotlink ou HLS, roteia pelo proxy local para a TV acessar sem bloqueio
+      String effectiveUrl;
+      if (effectiveHeaders.isNotEmpty || rawUrl.contains('.m3u8') || rawUrl.contains('/hls/')) {
+        effectiveUrl = WebCastServer.instance.getProxiedStreamUrl(rawUrl, headers: effectiveHeaders);
+      } else {
+        effectiveUrl = rawUrl;
+      }
+
       WebCastServer.instance.updateMedia(
         title: widget.title,
-        mediaUrl: mediaUrl,
-        headers: streamResult?.headers,
+        mediaUrl: effectiveUrl,
+        headers: effectiveHeaders.isNotEmpty ? effectiveHeaders : null,
       );
 
       if (!mounted) return;
@@ -398,7 +342,21 @@ class _CastDialogState extends State<CastDialog> {
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: tvUrl));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Endereço copiado para a área de transferência!'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.copy_rounded, size: 18),
+              label: const Text('Copiar Endereço'),
+            ),
+            const SizedBox(height: 12),
             const Text(
               'O filme começará a rodar automaticamente na tela da TV assim que você entrar.',
               textAlign: TextAlign.center,
@@ -462,7 +420,7 @@ class _CastDialogState extends State<CastDialog> {
                 ),
                 const SizedBox(height: 4),
                 const Text(
-                  'Chromecast • Smart TV (DLNA) • WebCast',
+                  'Chromecast / Google TV • WebCast (Link Direto)',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
                 ),
@@ -559,7 +517,7 @@ class _CastDialogState extends State<CastDialog> {
                 ],
                 const SizedBox(height: 18),
 
-                // 1. Botão Principal: Chromecast / Google TV Nativo
+                // ── 1. Botão Principal: Chromecast / Google TV Nativo ──
                 FilledButton.icon(
                   onPressed: (_opening || _activeSource == null)
                       ? null
@@ -587,7 +545,7 @@ class _CastDialogState extends State<CastDialog> {
 
                 const SizedBox(height: 10),
 
-                // 2. Opção WebCast: Abrir no Navegador da TV
+                // ── 2. Navegador da TV (WebCast / Link Direto) ──
                 OutlinedButton.icon(
                   onPressed: _opening ? null : () => _openWebCastPlayer(),
                   icon: const Icon(Icons.language_rounded, size: 20),
@@ -596,10 +554,6 @@ class _CastDialogState extends State<CastDialog> {
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                 ),
-
-                // 3. Seção DLNA - Smart TVs na rede
-                const SizedBox(height: 16),
-                _buildDlnaSection(),
 
                 const SizedBox(height: 12),
                 OutlinedButton(
@@ -751,128 +705,6 @@ class _CastDialogState extends State<CastDialog> {
             fontSize: 12,
           ),
         ),
-      ],
-    );
-  }
-
-  Widget _buildDlnaSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const Icon(
-              Icons.connected_tv_rounded,
-              color: AppColors.primary,
-              size: 18,
-            ),
-            const SizedBox(width: 8),
-            const Text(
-              'Smart TVs na Rede (DLNA)',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-              ),
-            ),
-            const Spacer(),
-            if (_isScanning)
-              const SizedBox(
-                width: 14,
-                height: 14,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: AppColors.primary,
-                ),
-              )
-            else
-              IconButton(
-                tooltip: 'Buscar Smart TVs',
-                visualDensity: VisualDensity.compact,
-                onPressed: _startDlnaScan,
-                icon: const Icon(
-                  Icons.refresh_rounded,
-                  color: AppColors.textSecondary,
-                  size: 18,
-                ),
-              ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        if (_dlnaDevices.isEmpty && _isScanning)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
-            child: Text(
-              'Buscando Smart TVs no Wi-Fi...',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
-            ),
-          )
-        else if (_dlnaDevices.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 6),
-            child: Text(
-              'Nenhuma Smart TV DLNA detectada no momento. Use o botão Chromecast ou WebCast acima.',
-              style: TextStyle(color: AppColors.textTertiary, fontSize: 12),
-            ),
-          )
-        else
-          ...List.generate(_dlnaDevices.length, (i) {
-            final device = _dlnaDevices[i];
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Material(
-                color: Colors.white.withValues(alpha: 0.05),
-                borderRadius: BorderRadius.circular(10),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(10),
-                  onTap: _opening ? null : () => _castViaDlna(device),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          device.type.icon,
-                          color: AppColors.primary,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                device.name,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              Text(
-                                '${device.type.protocol} • ${device.ipAddress ?? ""}',
-                                style: const TextStyle(
-                                  color: AppColors.textTertiary,
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const Icon(
-                          Icons.play_circle_outline,
-                          color: AppColors.primary,
-                          size: 22,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            );
-          }),
       ],
     );
   }

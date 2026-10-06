@@ -12,6 +12,7 @@ class NativeCastBridge {
     }
     final path = uri.path.toLowerCase();
     if (path.contains('/stream') || path.contains('/hls/')) return true;
+    final target = (uri.queryParameters['url'] ?? path).toLowerCase();
     return const [
       '.mp4',
       '.m3u8',
@@ -23,15 +24,22 @@ class NativeCastBridge {
       '.avi',
       '.flv',
       '.3gp',
-    ].any(path.endsWith);
+    ].any((ext) => target.contains(ext) || path.endsWith(ext));
   }
 
   static String contentTypeFor(String url) {
-    final path = Uri.tryParse(url)?.path.toLowerCase() ?? '';
-    if (path.contains('.m3u8') || path.contains('/hls/')) return 'application/x-mpegURL';
-    if (path.contains('.mpd')) return 'application/dash+xml';
-    if (path.endsWith('.webm')) return 'video/webm';
-    if (path.endsWith('.mkv')) return 'video/x-matroska';
+    final uri = Uri.tryParse(url);
+    final target = (uri?.queryParameters['url'] ?? url).toLowerCase();
+    if (target.contains('.m3u8') ||
+        target.contains('/hls/') ||
+        target.contains('application/x-mpegurl')) {
+      return 'application/x-mpegURL';
+    }
+    if (target.contains('.mpd') || target.contains('manifest.mpd')) {
+      return 'application/dash+xml';
+    }
+    if (target.endsWith('.webm')) return 'video/webm';
+    if (target.endsWith('.mkv')) return 'video/x-matroska';
     return 'video/mp4';
   }
 
