@@ -74,13 +74,22 @@ node --test test/embed_bridge_test.cjs
 
 ## Estrutura do projeto
 
-- `cinemax/lib/core/`: configuração, navegação, serviços e componentes compartilhados.
-- `cinemax/lib/features/`: telas e recursos organizados por funcionalidade.
-- `cinemax/lib/plugin_engine/`: catálogo, plugins e resolução de fontes.
-- `cinemax/assets/`: logo e recursos usados pelo aplicativo.
-- `cinemax_tv/android/`: configuração nativa exclusiva da Android TV.
+| Pasta | Responsabilidade |
+| --- | --- |
+| [`cinemax/`](cinemax/README.md) | Aplicativo mobile e base Flutter compartilhada: telas, serviços, plugins, assets e testes. |
+| [`cinemax_tv/`](cinemax_tv/README.md) | Entrada do modo TV e projeto Android específico da variante. |
+| [`receiver/`](receiver/README.md) | Receptor Google Cast compartilhado e instruções de configuração. |
+| [`scripts/`](scripts/) | Scripts de publicação mobile usados a partir da raiz do repositório. |
+| [`docs/`](docs/estrutura.md) | Mapa das pastas, documentação técnica e imagens da documentação. |
+| [`cinemax/regras/`](cinemax/regras/README.md) | Diretrizes de desenvolvimento comuns às duas variantes. |
+| [`releases/`](releases/README.md) | Cópias locais dos APKs publicados mais recentes de mobile e TV. |
+| [`.github/workflows/`](.github/workflows/) | Automação de compilação e publicação no GitHub. |
+
+Veja o [mapa detalhado do código-fonte](docs/estrutura.md) e as [notas de otimização](docs/performance-optimization.md).
 
 ## Releases
 
 Consulte as [releases oficiais do CiNey](https://github.com/NeyvanSantos/CINEY/releases). Os canais mobile e TV são separados; as releases TV usam tags `tv-vX.Y.Z` e são publicadas como pré-lançamentos.
+
+Os APKs locais ficam em `releases/mobile/` e `releases/tv/`, com **somente o último lançamento publicado de cada variante**. Os binários são ignorados pelo Git; o histórico completo permanece nas releases do GitHub. Consulte a [política de armazenamento local](releases/README.md).
 

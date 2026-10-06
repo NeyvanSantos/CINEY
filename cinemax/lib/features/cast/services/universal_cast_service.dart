@@ -40,21 +40,31 @@ class UniversalCastService extends StateNotifier<CastSession?> {
     required String title,
     required String mediaUrl,
     String? posterUrl,
+    Map<String, String>? headers,
+    bool forceProxy = false,
   }) async {
+    // Inicia o servidor local se for Web Cast ou suporte auxiliar
+    await _webCastServer.start();
+
+    // Se a fonte possui headers (Referer/Origin) ou se forceProxy for true,
+    // usamos o proxy local para garantir que a Smart TV / DLNA toque sem rejeição
+    final effectiveMediaUrl = (forceProxy || (headers != null && headers.isNotEmpty))
+        ? _webCastServer.getProxiedStreamUrl(mediaUrl, headers: headers)
+        : mediaUrl;
+
     state = CastSession(
       device: device,
       title: title,
-      mediaUrl: mediaUrl,
+      mediaUrl: effectiveMediaUrl,
       posterUrl: posterUrl,
       state: CastPlaybackState.connecting,
     );
 
-    // Inicia o servidor local se for Web Cast ou suporte auxiliar
-    await _webCastServer.start();
     _webCastServer.updateMedia(
       title: title,
-      mediaUrl: mediaUrl,
+      mediaUrl: effectiveMediaUrl,
       posterUrl: posterUrl,
+      headers: headers,
     );
 
     if (device.type == CastDeviceType.webCast) {
@@ -63,11 +73,11 @@ class UniversalCastService extends StateNotifier<CastSession?> {
     }
 
     if (device.type == CastDeviceType.roku && device.ipAddress != null) {
-      return await _castToRoku(device, mediaUrl);
+      return await _castToRoku(device, effectiveMediaUrl);
     }
 
     if (device.location != null && device.location!.isNotEmpty) {
-      return await _castViaDlna(device, mediaUrl, title);
+      return await _castViaDlna(device, effectiveMediaUrl, title);
     }
 
     // Fallback: inicia sessão ativa
@@ -173,6 +183,11 @@ class UniversalCastService extends StateNotifier<CastSession?> {
       }
       _avTransportControlUrl = controlUrl;
 
+      // Detecta tipo de protocolo apropriado para o DIDL-Lite
+      final protocolInfo = mediaUrl.contains('.m3u8')
+          ? 'http-get:*:application/vnd.apple.mpegurl:*'
+          : 'http-get:*:video/mp4:*';
+
       // 2. SetAVTransportURI — define a mídia a ser reproduzida
       final didlMetadata =
           '&lt;DIDL-Lite xmlns=&quot;urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/&quot; '
@@ -181,7 +196,7 @@ class UniversalCastService extends StateNotifier<CastSession?> {
           '&lt;item id=&quot;0&quot; parentID=&quot;0&quot; restricted=&quot;1&quot;&gt;'
           '&lt;dc:title&gt;$title&lt;/dc:title&gt;'
           '&lt;upnp:class&gt;object.item.videoItem&lt;/upnp:class&gt;'
-          '&lt;res protocolInfo=&quot;http-get:*:video/mp4:*&quot;&gt;$mediaUrl&lt;/res&gt;'
+          '&lt;res protocolInfo=&quot;$protocolInfo&quot;&gt;$mediaUrl&lt;/res&gt;'
           '&lt;/item&gt;&lt;/DIDL-Lite&gt;';
 
       final setUriOk = await _sendSoapAction(
@@ -299,4 +314,3 @@ class UniversalCastService extends StateNotifier<CastSession?> {
     state = null;
   }
 }
-

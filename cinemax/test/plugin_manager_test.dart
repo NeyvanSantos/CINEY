@@ -56,18 +56,14 @@ void main() {
           'tmdb_693134_movie',
           'com.megaflix',
         );
-        expect(streams, hasLength(4));
+        expect(streams, hasLength(2));
         expect(streams.map((source) => source.server), [
           'SuperFlix',
-          'WarezCDN',
           'EmbedMovies',
-          'VidSrc',
         ]);
         expect(streams.map((source) => source.url), [
           'https://superflixapi.quest/filme/693134',
-          'https://embed.warezcdn.net/filme/693134',
           'https://myembed.biz/filme/693134',
-          'https://vidsrc.cc/v2/embed/movie/693134',
         ]);
       },
     );
@@ -79,18 +75,14 @@ void main() {
         'org.archive.publicdomain',
       );
 
-      expect(streams, hasLength(4));
+      expect(streams, hasLength(2));
       expect(streams.map((source) => source.server), [
         'SuperFlix',
-        'WarezCDN',
         'EmbedMovies',
-        'VidSrc',
       ]);
       expect(streams.map((source) => source.url), [
         'https://superflixapi.quest/filme/693134',
-        'https://embed.warezcdn.net/filme/693134',
         'https://myembed.biz/filme/693134',
-        'https://vidsrc.cc/v2/embed/movie/693134',
       ]);
     });
 

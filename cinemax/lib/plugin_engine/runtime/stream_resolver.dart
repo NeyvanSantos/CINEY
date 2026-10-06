@@ -1,10 +1,10 @@
 import '../models/stream_source.dart';
 
-/// Resolve os endereços do player EmbedMovies a partir dos IDs do catálogo.
-/// Os endereços devem ser incorporados em iframe, conforme embedmovies.org.
+/// Resolve os endereços dos servidores a partir dos IDs do catálogo.
+/// Os endereços devem ser incorporados em iframe.
 class StreamResolverService {
   /// Gera as fontes de streaming priorizando servidores com áudio Dublado PT-BR.
-  /// A ordem de prioridade é: Dublado > Multi-Áudio > Legendado.
+  /// A ordem de prioridade é: Dublado > Multi-Áudio.
   /// A disponibilidade real depende de cada fornecedor.
   static List<StreamSource> resolveFromTmdbId({
     required String tmdbId,
@@ -28,18 +28,6 @@ class StreamResolverService {
         ? 'https://myembed.biz/serie/$tmdbId$episodePath'
         : 'https://myembed.biz/filme/$tmdbId';
 
-    // ── Prioridade 3: WarezCDN (Dublado PT-BR / Alternativo) ──
-    // CDN brasileiro com foco em conteúdo dublado.
-    final warezUrl = isTv
-        ? 'https://embed.warezcdn.net/serie/$tmdbId$episodePath'
-        : 'https://embed.warezcdn.net/filme/$tmdbId';
-
-    // ── Prioridade 4: VidSrc (Legendado / Internacional) ──
-    // Servidor internacional, normalmente áudio original + legendas.
-    final vidSrcUrl = isTv
-        ? 'https://vidsrc.cc/v2/embed/tv/$tmdbId${season != null && episode != null ? '/$season/$episode' : ''}'
-        : 'https://vidsrc.cc/v2/embed/movie/$tmdbId';
-
     return [
       // 🇧🇷 Servidores Dublados PT-BR (prioridade máxima)
       StreamSource(
@@ -51,40 +39,18 @@ class StreamResolverService {
         priority: 1,
         audioType: AudioType.dubbed,
       ),
-      StreamSource(
-        url: warezUrl,
-        quality: '1080p Full HD',
-        server: 'WarezCDN',
-        isEmbed: true,
-        isDirect: false,
-        priority: 2,
-        audioType: AudioType.dubbed,
-      ),
-
-      // 🌐 Servidores Multi-Áudio (fallback intermediário)
+      // 🌐 Servidor Multi-Áudio (fallback)
       StreamSource(
         url: embedUrl,
         quality: 'Conforme o fornecedor',
         server: 'EmbedMovies',
         isEmbed: true,
         isDirect: false,
-        priority: 3,
+        priority: 2,
         audioType: AudioType.mixed,
-      ),
-
-      // 💬 Servidores Legendados (fallback final)
-      StreamSource(
-        url: vidSrcUrl,
-        quality: 'Auto',
-        server: 'VidSrc',
-        isEmbed: true,
-        isDirect: false,
-        priority: 4,
-        audioType: AudioType.subtitled,
       ),
     ];
   }
-
 
   /// Extrai o TMDB ID numérico de um contentId no formato tmdb_123456_movie
   static String? extractTmdbId(String contentId) {

@@ -3,18 +3,22 @@
 > **Guia Obrigatório de Diretrizes Técnicas, Arquiteturais e de Segurança.**  
 > Qualquer agente de IA ou desenvolvedor humano que atue no código-fonte do **CineMax** DEVE ler e seguir rigorosamente as regras documentadas nesta pasta.
 
+Estas diretrizes são compartilhadas por `cinemax/` e `cinemax_tv/`. Esta pasta
+é a referência única para ambas as variantes. Consulte também o
+[mapa do código-fonte](../../docs/estrutura.md).
+
 ---
 
 ## 🗂️ Estrutura das Regras
 
 | Arquivo | Descrição | Nível de Prioridade |
 |---------|-----------|---------------------|
-| [01-arquitetura-e-padroes.md](file:///g:/Filmes%20e%20S%C3%A9ries%20%28Criado%20por%20Ney%29/cinemax/regras/01-arquitetura-e-padroes.md) | Clean Architecture, Riverpod, GoRouter, Logging obrigatório e boas práticas de Dart | **P1 (Obrigatório)** |
-| [02-ui-ux-design-system.md](file:///g:/Filmes%20e%20S%C3%A9ries%20%28Criado%20por%20Ney%29/cinemax/regras/02-ui-ux-design-system.md) | Design System CineMax, Glassmorphism, AppColors, AppTypography e animações | **P1 (Obrigatório)** |
-| [03-protecao-cast-e-streaming.md](file:///g:/Filmes%20e%20S%C3%A9ries%20%28Criado%20por%20Ney%29/cinemax/regras/03-protecao-cast-e-streaming.md) | 🔒 **Proteção Inviolável do Sistema de Transmissão** (Chromecast, DLNA, WebCastServer, WVC) | **P0 (Inviolável / Bloqueante)** |
-| [04-politica-build-e-releases.md](file:///g:/Filmes%20e%20S%C3%A9ries%20%28Criado%20por%20Ney%29/cinemax/regras/04-politica-build-e-releases.md) | Repositório oficial (`NeyvanSantos/CINEY`), auto-update via GitHub Releases e política de APK sob demanda | **P0 (Regra Estrita)** |
-| [05-plugin-engine.md](file:///g:/Filmes%20e%20S%C3%A9ries%20%28Criado%20por%20Ney%29/cinemax/regras/05-plugin-engine.md) | Arquitetura modular de extensões, resolução de streams e isolamento de provedores | **P1 (Obrigatório)** |
-| [06-finalizacao-e-qualidade.md](file:///g:/Filmes%20e%20S%C3%A9ries%20%28Criado%20por%20Ney%29/cinemax/regras/06-finalizacao-e-qualidade.md) | 💎 **Integridade, Organização e Padrão Profissional Obrigatório** ao final de cada alteração | **P0 (Mandatório)** |
+| [01-arquitetura-e-padroes.md](01-arquitetura-e-padroes.md) | Clean Architecture, Riverpod, GoRouter, Logging obrigatório e boas práticas de Dart | **P1 (Obrigatório)** |
+| [02-ui-ux-design-system.md](02-ui-ux-design-system.md) | Design System CineMax, Glassmorphism, AppColors, AppTypography e animações | **P1 (Obrigatório)** |
+| [03-protecao-cast-e-streaming.md](03-protecao-cast-e-streaming.md) | 🔒 **Proteção Inviolável do Sistema de Transmissão** (Chromecast, DLNA, WebCastServer, WVC) | **P0 (Inviolável / Bloqueante)** |
+| [04-politica-build-e-releases.md](04-politica-build-e-releases.md) | Repositório oficial (`NeyvanSantos/CINEY`), auto-update via GitHub Releases e política de APK sob demanda | **P0 (Regra Estrita)** |
+| [05-plugin-engine.md](05-plugin-engine.md) | Arquitetura modular de extensões, resolução de streams e isolamento de provedores | **P1 (Obrigatório)** |
+| [06-finalizacao-e-qualidade.md](06-finalizacao-e-qualidade.md) | 💎 **Integridade, Organização e Padrão Profissional Obrigatório** ao final de cada alteração | **P0 (Mandatório)** |
 
 ---
 

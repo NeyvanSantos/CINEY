@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import '../../../core/services/app_logger.dart';
 
 class WebCastServer {
   static final WebCastServer instance = WebCastServer._();
@@ -15,6 +16,7 @@ class WebCastServer {
   String _currentTitle = 'Cinemax';
   String _currentMediaUrl = '';
   String? _currentPosterUrl;
+  Map<String, String> _currentHeaders = {};
   bool _isPlaying = true;
   double _currentTime = 0;
   double _duration = 0;
@@ -26,9 +28,30 @@ class WebCastServer {
   bool get isRunning => _server != null;
   int get port => _port;
   String? get localIp => _localIp;
-  String get tvUrl => 'http://$_localIp:$_port';
+  String get tvUrl => 'http://${_localIp ?? "127.0.0.1"}:$_port';
 
-  /// Gera a URL local com iframe wrapper para contornar proteções anti-cópia em apps externos (como Web Video Caster)
+  /// Gera a URL local com proxy HLS / HTTP para contornar bloqueios de CORS e Referer nas Smart TVs
+  String getProxiedStreamUrl(String rawMediaUrl, {Map<String, String>? headers}) {
+    final host = _localIp ?? '127.0.0.1';
+    final queryParams = <String, String>{
+      'url': rawMediaUrl,
+    };
+    if (headers != null) {
+      if (headers['Referer'] != null) queryParams['referer'] = headers['Referer']!;
+      if (headers['Origin'] != null) queryParams['origin'] = headers['Origin']!;
+      if (headers['User-Agent'] != null) queryParams['ua'] = headers['User-Agent']!;
+    }
+    final uri = Uri(
+      scheme: 'http',
+      host: host,
+      port: _port,
+      path: '/stream',
+      queryParameters: queryParams,
+    );
+    return uri.toString();
+  }
+
+  /// Gera a URL local com iframe wrapper para transmissões Web
   String getEmbedUrl(String rawEmbedUrl, {bool useLocalhost = true}) {
     final host = useLocalhost ? '127.0.0.1' : (_localIp ?? '127.0.0.1');
     return 'http://$host:$_port/embed?url=${Uri.encodeComponent(rawEmbedUrl)}';
@@ -47,6 +70,7 @@ class WebCastServer {
       );
 
       _server!.listen(_handleRequest);
+      AppLogger.info('WebCastServer iniciado em http://$_localIp:$_port', tag: 'WEBCAST');
       return true;
     } catch (e) {
       try {
@@ -58,8 +82,10 @@ class WebCastServer {
           shared: true,
         );
         _server!.listen(_handleRequest);
+        AppLogger.info('WebCastServer iniciado na porta alternativa http://$_localIp:$_port', tag: 'WEBCAST');
         return true;
       } catch (e2) {
+        AppLogger.warn('Erro ao iniciar WebCastServer: $e2', tag: 'WEBCAST');
         return false;
       }
     }
@@ -74,10 +100,12 @@ class WebCastServer {
     required String title,
     required String mediaUrl,
     String? posterUrl,
+    Map<String, String>? headers,
   }) {
     _currentTitle = title;
     _currentMediaUrl = mediaUrl;
     _currentPosterUrl = posterUrl;
+    if (headers != null) _currentHeaders = Map.from(headers);
     _isPlaying = true;
     _currentTime = 0;
     _broadcastCommand(jsonEncode({
@@ -131,7 +159,7 @@ class WebCastServer {
 
   void _handleRequest(HttpRequest request) async {
     request.response.headers.add('Access-Control-Allow-Origin', '*');
-    request.response.headers.add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    request.response.headers.add('Access-Control-Allow-Methods', 'GET, POST, HEAD, OPTIONS');
     request.response.headers.add('Access-Control-Allow-Headers', '*');
 
     if (request.method == 'OPTIONS') {
@@ -143,12 +171,15 @@ class WebCastServer {
     final path = request.uri.path;
 
     if (path == '/' || path == '/index.html') {
-      // Página do Player da TV
+      // Página do Player da TV (Clappr + HLS.js integrado)
       request.response.headers.contentType = ContentType.html;
       request.response.write(_getTvPlayerHtml());
       await request.response.close();
+    } else if (path == '/stream') {
+      // Proxy HTTP / HLS com injeção de headers e suporte a Range
+      await _handleStreamProxy(request);
     } else if (path == '/embed') {
-      // Página wrapper com iframe para Web Video Caster / transmissão
+      // Página wrapper com iframe
       final targetUrl = request.uri.queryParameters['url'] ?? _currentMediaUrl;
       request.response.headers.contentType = ContentType.html;
       request.response.headers.set('Cache-Control', 'no-cache');
@@ -197,6 +228,74 @@ class WebCastServer {
     }
   }
 
+  /// Proxy retransmissor de fluxo de mídia (HLS-Proxy)
+  Future<void> _handleStreamProxy(HttpRequest request) async {
+    final targetUrl = request.uri.queryParameters['url'];
+    if (targetUrl == null || targetUrl.isEmpty) {
+      request.response.statusCode = HttpStatus.badRequest;
+      request.response.write('URL de mídia não informada.');
+      await request.response.close();
+      return;
+    }
+
+    final referer = request.uri.queryParameters['referer'] ?? _currentHeaders['Referer'];
+    final origin = request.uri.queryParameters['origin'] ?? _currentHeaders['Origin'];
+    final userAgent = request.uri.queryParameters['ua'] ??
+        _currentHeaders['User-Agent'] ??
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+    final client = HttpClient()..autoUncompress = false;
+
+    try {
+      final clientReq = await client.getUrl(Uri.parse(targetUrl));
+
+      // Repassa Range request da TV
+      final range = request.headers.value(HttpHeaders.rangeHeader);
+      if (range != null) {
+        clientReq.headers.set(HttpHeaders.rangeHeader, range);
+      }
+
+      // Adiciona cabeçalhos anti-bloqueio
+      if (referer != null && referer.isNotEmpty) {
+        clientReq.headers.set(HttpHeaders.refererHeader, referer);
+      }
+      if (origin != null && origin.isNotEmpty) {
+        clientReq.headers.set('Origin', origin);
+      }
+      clientReq.headers.set(HttpHeaders.userAgentHeader, userAgent);
+
+      final clientRes = await clientReq.close();
+
+      request.response.statusCode = clientRes.statusCode;
+
+      // Propaga cabeçalhos úteis mantendo CORS aberto
+      clientRes.headers.forEach((name, values) {
+        final lower = name.toLowerCase();
+        if (lower != 'access-control-allow-origin' &&
+            lower != 'access-control-allow-methods' &&
+            lower != 'access-control-allow-headers') {
+          for (var v in values) {
+            request.response.headers.add(name, v);
+          }
+        }
+      });
+
+      request.response.headers.set('Access-Control-Allow-Origin', '*');
+      request.response.headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+      request.response.headers.set('Access-Control-Allow-Headers', '*');
+
+      await clientRes.pipe(request.response);
+    } catch (e) {
+      AppLogger.warn('Erro no proxy de streaming: $e', tag: 'PROXY');
+      try {
+        request.response.statusCode = HttpStatus.badGateway;
+        await request.response.close();
+      } catch (_) {}
+    } finally {
+      client.close();
+    }
+  }
+
   String _getTvPlayerHtml() {
     return '''
 <!DOCTYPE html>
@@ -205,12 +304,14 @@ class WebCastServer {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cinemax TV Receiver</title>
+  <!-- Suporte nativo a HLS.js para TVs modernas (LG webOS, Samsung Tizen) -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body, html {
       width: 100vw;
       height: 100vh;
-      background: #000;
+      background: #05070a;
       color: #fff;
       font-family: 'Segoe UI', Roboto, sans-serif;
       overflow: hidden;
@@ -228,32 +329,35 @@ class WebCastServer {
       justify-content: center;
       background: #000;
     }
-    video, iframe {
+    video {
       width: 100%;
       height: 100%;
-      border: 0;
       object-fit: contain;
+      background: #000;
     }
     #overlay-header {
       position: absolute;
-      top: 30px;
+      top: 32px;
       left: 40px;
       z-index: 100;
-      background: rgba(0,0,0,0.6);
-      padding: 12px 24px;
-      border-radius: 12px;
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(255,255,255,0.1);
-      transition: opacity 0.5s;
+      background: rgba(10, 15, 25, 0.85);
+      padding: 14px 28px;
+      border-radius: 14px;
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(0, 168, 255, 0.3);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      transition: opacity 0.6s ease;
+      pointer-events: none;
     }
     #overlay-header h1 {
       font-size: 24px;
       color: #00a8ff;
       margin-bottom: 4px;
+      font-weight: 700;
     }
     #overlay-header p {
       font-size: 14px;
-      color: #ccc;
+      color: #a0aec0;
     }
     #idle-screen {
       display: flex;
@@ -261,35 +365,70 @@ class WebCastServer {
       align-items: center;
       justify-content: center;
       text-align: center;
+      padding: 30px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 6px 16px;
+      background: rgba(0, 168, 255, 0.15);
+      border: 1px solid #00a8ff;
+      border-radius: 50px;
+      color: #00a8ff;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
     }
     #idle-screen h2 {
-      font-size: 36px;
-      color: #00a8ff;
-      margin-bottom: 12px;
+      font-size: 44px;
+      font-weight: 800;
+      color: #ffffff;
+      margin-bottom: 14px;
+      letter-spacing: -0.5px;
     }
     #idle-screen p {
+      font-size: 20px;
+      color: #718096;
+      max-width: 600px;
+      line-height: 1.5;
+    }
+    .tv-ip-box {
+      margin-top: 36px;
+      padding: 16px 32px;
+      background: rgba(255,255,255,0.03);
+      border: 1px dashed rgba(255,255,255,0.2);
+      border-radius: 12px;
+      font-size: 16px;
+      color: #cbd5e0;
+    }
+    .tv-ip-box strong {
+      color: #00a8ff;
       font-size: 18px;
-      color: #888;
     }
   </style>
 </head>
 <body>
   <div id="player-container">
     <div id="idle-screen">
-      <h2>Cinemax TV</h2>
-      <p>Pronto para transmitir. Escolha um filme ou série no celular.</p>
+      <div class="badge">Receptor de Transmissão</div>
+      <h2>CineMax TV</h2>
+      <p>Pronto para reproduzir. Escolha qualquer título no aplicativo do celular e clique em Transmitir.</p>
+      <div class="tv-ip-box">
+        Endereço desta TV: <strong>http://$_localIp:$_port</strong>
+      </div>
     </div>
   </div>
 
   <div id="overlay-header" style="display: none;">
     <h1 id="tv-title">Cinemax</h1>
-    <p>Transmitindo do celular</p>
+    <p>Transmitindo em alta definição</p>
   </div>
 
   <script>
-    let currentUrl = '';
-    let isEmbed = false;
+    let hls = null;
     let sse = null;
+    let videoEl = null;
 
     function initSSE() {
       sse = new EventSource('/events');
@@ -306,66 +445,75 @@ class WebCastServer {
 
     function handleCommand(cmd) {
       if (cmd.action === 'load') {
-        loadMedia(cmd.title, cmd.url);
+        loadMedia(cmd.title, cmd.url, cmd.poster);
       } else if (cmd.action === 'play') {
-        const vid = document.querySelector('video');
-        if (vid) vid.play();
+        if (videoEl) videoEl.play();
       } else if (cmd.action === 'pause') {
-        const vid = document.querySelector('video');
-        if (vid) vid.pause();
+        if (videoEl) videoEl.pause();
       } else if (cmd.action === 'seek') {
-        const vid = document.querySelector('video');
-        if (vid) vid.currentTime = cmd.time;
+        if (videoEl) videoEl.currentTime = cmd.time;
       } else if (cmd.action === 'volume') {
-        const vid = document.querySelector('video');
-        if (vid) vid.volume = cmd.value;
+        if (videoEl) videoEl.volume = cmd.value;
       }
     }
 
-    function loadMedia(title, url) {
-      currentUrl = url;
+    function loadMedia(title, url, poster) {
       document.getElementById('tv-title').innerText = title;
-      document.getElementById('overlay-header').style.display = 'block';
+      const header = document.getElementById('overlay-header');
+      header.style.display = 'block';
+      header.style.opacity = '1';
       setTimeout(() => {
-        document.getElementById('overlay-header').style.opacity = '0';
-      }, 5000);
+        header.style.opacity = '0';
+      }, 6000);
 
       const container = document.getElementById('player-container');
       container.innerHTML = '';
 
-      if (url.includes('.mp4') || url.includes('.m3u8')) {
-        const video = document.createElement('video');
-        video.src = url;
-        video.autoplay = true;
-        video.controls = true;
-        video.style.width = '100%';
-        video.style.height = '100%';
-        container.appendChild(video);
+      videoEl = document.createElement('video');
+      videoEl.autoplay = true;
+      videoEl.controls = true;
+      if (poster) videoEl.poster = poster;
 
-        video.ontimeupdate = function() {
-          fetch('/sync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              currentTime: video.currentTime,
-              duration: video.duration || 0,
-              isPlaying: !video.paused
-            })
-          }).catch(()=>{});
-        };
-      } else {
-        const iframe = document.createElement('iframe');
-        iframe.src = url;
-        iframe.allow = 'autoplay; fullscreen; encrypted-media';
-        iframe.style.width = '100%';
-        iframe.style.height = '100%';
-        container.appendChild(iframe);
+      container.appendChild(videoEl);
+
+      if (hls) {
+        hls.destroy();
+        hls = null;
       }
+
+      if (url.includes('.m3u8')) {
+        if (Hls.isSupported()) {
+          hls = new Hls({ enableWorker: true, lowLatencyMode: true });
+          hls.loadSource(url);
+          hls.attachMedia(videoEl);
+          hls.on(Hls.Events.MANIFEST_PARSED, function() {
+            videoEl.play().catch(()=>{});
+          });
+        } else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
+          videoEl.src = url;
+          videoEl.play().catch(()=>{});
+        }
+      } else {
+        videoEl.src = url;
+        videoEl.play().catch(()=>{});
+      }
+
+      videoEl.ontimeupdate = function() {
+        fetch('/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            currentTime: videoEl.currentTime,
+            duration: videoEl.duration || 0,
+            isPlaying: !videoEl.paused
+          })
+        }).catch(()=>{});
+      };
     }
 
     initSSE();
     fetch('/status').then(r => r.json()).then(st => {
-      if (st.url) loadMedia(st.title, st.url);
+      if (st.url) loadMedia(st.title, st.url, st.poster);
     }).catch(()=>{});
   </script>
 </body>
@@ -414,4 +562,3 @@ class WebCastServer {
 </html>''';
   }
 }
-

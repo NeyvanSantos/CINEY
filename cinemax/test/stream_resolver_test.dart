@@ -3,28 +3,21 @@ import 'package:cinemax/plugin_engine/runtime/stream_resolver.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void expectSources(List<StreamSource> sources, List<String> urls) {
-  expect(sources, hasLength(4));
-  expect(sources.map((source) => source.server), [
-    'SuperFlix',
-    'WarezCDN',
-    'EmbedMovies',
-    'VidSrc',
-  ]);
+  expect(sources, hasLength(2));
+  expect(sources.map((source) => source.server), ['SuperFlix', 'EmbedMovies']);
   expect(sources.map((source) => source.url), urls);
 }
 
 void main() {
   group('StreamResolverService', () {
-    test('gera as quatro fontes para um filme TMDB', () {
+    test('gera somente SuperFlix e EmbedMovies para um filme TMDB', () {
       final sources = StreamResolverService.resolveFromContentId(
         'tmdb_693134_movie',
       );
 
       expectSources(sources, [
         'https://superflixapi.quest/filme/693134',
-        'https://embed.warezcdn.net/filme/693134',
         'https://myembed.biz/filme/693134',
-        'https://vidsrc.cc/v2/embed/movie/693134',
       ]);
       expect(sources[0].isEmbed, isTrue);
       expect(sources[0].priority, 1);
@@ -43,9 +36,7 @@ void main() {
 
         expectSources(sources, [
           'https://superflixapi.quest/serie/1396/2/3',
-          'https://embed.warezcdn.net/serie/1396/2/3',
           'https://myembed.biz/serie/1396/2/3',
-          'https://vidsrc.cc/v2/embed/tv/1396/2/3',
         ]);
       },
     );
@@ -58,9 +49,7 @@ void main() {
 
         expectSources(sources, [
           'https://superflixapi.quest/serie/1396',
-          'https://embed.warezcdn.net/serie/1396',
           'https://myembed.biz/serie/1396',
-          'https://vidsrc.cc/v2/embed/tv/1396',
         ]);
       }
     });
@@ -73,9 +62,7 @@ void main() {
 
       expectSources(sources, [
         'https://superflixapi.quest/serie/1396',
-        'https://embed.warezcdn.net/serie/1396',
         'https://myembed.biz/serie/1396',
-        'https://vidsrc.cc/v2/embed/tv/1396',
       ]);
     });
 
@@ -84,9 +71,7 @@ void main() {
 
       expectSources(sources, [
         'https://superflixapi.quest/filme/693134',
-        'https://embed.warezcdn.net/filme/693134',
         'https://myembed.biz/filme/693134',
-        'https://vidsrc.cc/v2/embed/movie/693134',
       ]);
     });
 
@@ -99,9 +84,7 @@ void main() {
 
       expectSources(sources, [
         'https://superflixapi.quest/serie/1396/2/3',
-        'https://embed.warezcdn.net/serie/1396/2/3',
         'https://myembed.biz/serie/1396/2/3',
-        'https://vidsrc.cc/v2/embed/tv/1396/2/3',
       ]);
     });
 
@@ -110,9 +93,7 @@ void main() {
 
       expectSources(sources, [
         'https://superflixapi.quest/serie/1396',
-        'https://embed.warezcdn.net/serie/1396',
         'https://myembed.biz/serie/1396',
-        'https://vidsrc.cc/v2/embed/tv/1396',
       ]);
     });
 

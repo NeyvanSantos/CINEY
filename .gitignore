@@ -5,9 +5,11 @@
 *.apk
 *.aab
 build/
-cinemax/build/
-cinemax/*.apk
-cinemax/.dart_tool/
+
+# Caches e arquivos gerados
+__pycache__/
+*.py[cod]
+release-notes-temp.md
 
 # Logs and secrets
 *.log

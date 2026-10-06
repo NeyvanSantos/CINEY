@@ -11,13 +11,25 @@ class NativeCastBridge {
       return false;
     }
     final path = uri.path.toLowerCase();
-    return const ['.mp4', '.m3u8', '.mpd', '.webm', '.mkv'].any(path.endsWith);
+    if (path.contains('/stream') || path.contains('/hls/')) return true;
+    return const [
+      '.mp4',
+      '.m3u8',
+      '.mpd',
+      '.webm',
+      '.mkv',
+      '.mov',
+      '.ts',
+      '.avi',
+      '.flv',
+      '.3gp',
+    ].any(path.endsWith);
   }
 
   static String contentTypeFor(String url) {
     final path = Uri.tryParse(url)?.path.toLowerCase() ?? '';
-    if (path.endsWith('.m3u8')) return 'application/x-mpegURL';
-    if (path.endsWith('.mpd')) return 'application/dash+xml';
+    if (path.contains('.m3u8') || path.contains('/hls/')) return 'application/x-mpegURL';
+    if (path.contains('.mpd')) return 'application/dash+xml';
     if (path.endsWith('.webm')) return 'video/webm';
     if (path.endsWith('.mkv')) return 'video/x-matroska';
     return 'video/mp4';

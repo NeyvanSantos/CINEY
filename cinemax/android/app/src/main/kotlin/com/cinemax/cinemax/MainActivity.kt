@@ -265,9 +265,10 @@ class MainActivity : FlutterActivity() {
         val uri = Uri.parse(url)
         val scheme = uri.scheme?.lowercase(Locale.ROOT)
         val path = uri.path?.lowercase(Locale.ROOT) ?: return false
+        if (path.contains("/stream") || path.contains("/hls/")) return true
         return scheme in listOf("http", "https") &&
             !uri.host.isNullOrBlank() &&
-            listOf(".mp4", ".m3u8", ".mpd", ".webm", ".mkv").any { path.endsWith(it) }
+            listOf(".mp4", ".m3u8", ".mpd", ".webm", ".mkv", ".ts", ".mov", ".flv", ".avi").any { path.endsWith(it) }
     }
 
     private fun openExternalPlayer(url: String?, title: String, result: MethodChannel.Result) {

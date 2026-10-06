@@ -689,8 +689,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                     _executeSeekRelative(10);
                     setState(() => _showDoubleTapForward = true);
                     Future.delayed(const Duration(milliseconds: 600), () {
-                      if (mounted)
+                      if (mounted) {
                         setState(() => _showDoubleTapForward = false);
+                      }
                     });
                   }
                 },
@@ -1526,7 +1527,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   void _showServerSelectorModal() {
     // Determina a cor e ícone baseado no tipo de áudio do servidor
-    Color _badgeColorFor(AudioType type) {
+    Color badgeColorFor(AudioType type) {
       switch (type) {
         case AudioType.dubbed:
           return const Color(0xFF00C853); // Verde vibrante
@@ -1537,7 +1538,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       }
     }
 
-    IconData _iconFor(AudioType type, bool isSelected) {
+    IconData iconFor(AudioType type, bool isSelected) {
       if (isSelected) return Icons.play_circle_fill_rounded;
       switch (type) {
         case AudioType.dubbed:
@@ -1549,7 +1550,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       }
     }
 
-    String _subtitleFor(StreamSource source) {
+    String subtitleFor(StreamSource source) {
       switch (source.audioType) {
         case AudioType.dubbed:
           return 'Áudio Dublado PT-BR • ${source.quality}';
@@ -1567,12 +1568,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         final index = entry.key;
         final source = entry.value;
         final isSelected = _currentSourceIndex == index;
-        final badgeColor = _badgeColorFor(source.audioType);
+        final badgeColor = badgeColorFor(source.audioType);
 
         return _buildSelectableTile(
-          icon: _iconFor(source.audioType, isSelected),
+          icon: iconFor(source.audioType, isSelected),
           title: source.server,
-          subtitle: _subtitleFor(source),
+          subtitle: subtitleFor(source),
           isSelected: isSelected,
           badge: '${source.audioType.icon} ${source.audioType.label}',
           badgeColor: badgeColor,

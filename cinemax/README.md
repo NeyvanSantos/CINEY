@@ -1,80 +1,85 @@
-# cinemax
+<p align="center">
+	<img src="assets/images/logo.png" alt="Logo CiNey" width="180">
+</p>
 
-CineMax - Filmes e Series com Sistema de Plugins
+<h1 align="center">CiNey</h1>
 
-## Android TV
+<p align="center">Descubra seu próximo filme ou série com busca simples, catálogo organizado e uma experiência feita para celular e TV.</p>
 
-Este projeto é a fonte única do código Dart e dos assets Flutter. A pasta
-`../cinemax_tv` contém somente o host Android TV (launcher Leanback, banner,
-manifesto e `applicationId` `com.ciney.tv`) e depende deste projeto por caminho.
-Use `flutter run` dentro de `cinemax_tv` para executar a variante de TV.
+<p align="center">
+	<a href="https://github.com/NeyvanSantos/CINEY/releases">Ver releases</a>
+</p>
 
-## Console de logs
+## Sobre o CiNey
 
-Abra **Perfil → Console de Logs em Tempo Real** para acompanhar buscas,
-resolução de fontes, carregamento do player, troca de servidores e erros.
-O console oferece filtros por nível, pesquisa por mensagem ou tag e rolagem
-automática. **Copiar Tudo** copia as entradas visíveis (respeitando os filtros);
-**Limpar todos os logs** esvazia o histórico imediatamente.
+CiNey reúne catálogo, busca e reprodução em um aplicativo Flutter. Você pode explorar títulos por categorias, pesquisar por nome e filtrar resultados entre **filmes, séries, animes e doramas**. O catálogo combina consultas ao TMDB com fontes organizadas pelo motor de plugins do projeto.
 
-Os últimos 500 registros ficam em memória durante a sessão. Ao encerrar o
-processo do aplicativo, o histórico é perdido; copie os registros antes de sair
-quando precisar compartilhar um diagnóstico. Erros Flutter e erros assíncronos
-não tratados incluem a pilha de execução quando disponível.
+A busca aceita sugestões enquanto você digita e permite abrir os detalhes do título para consultar as opções disponíveis. A disponibilidade de cada conteúdo depende do catálogo e dos serviços externos utilizados.
 
-Validação automatizada: `flutter test --no-pub`.
+## Recursos
 
-## Reprodução incorporada
+- **Descoberta rápida:** catálogo inicial organizado por temas e categorias.
+- **Busca com filtros:** encontre títulos e refine resultados por tipo de conteúdo.
+- **Filmes e séries:** consulte detalhes e, quando disponíveis, temporadas e episódios.
+- **Fontes de reprodução:** escolha entre as fontes externas disponibilizadas para o título.
+- **Diagnóstico integrado:** console de logs com pesquisa e filtros para ajudar a investigar problemas.
+- **Android TV:** navegação lateral adaptada ao controle remoto e teclas de mídia no player.
+- **Atualizações:** verificação de releases do projeto e validação SHA-256 quando o hash está disponível.
 
-Fontes incorporadas usam JavaScript e os controles do próprio fornecedor,
-sem sobreposição dos controles de reprodução do aplicativo. Use o botão/gesto
-Voltar do Android para sair.
+## Uma base, duas experiências
 
-**EmbedMovies** é o único servidor de reprodução do aplicativo. Os conteúdos
-TMDB e os IDs internos mapeados usam seus respectivos IDs; outros títulos dos
-catálogos precisam ser identificados no TMDB antes de gerar o endereço.
-A [documentação do fornecedor](https://embedmovies.org/) utiliza
-`https://myembed.biz/filme/ID` para filmes e
-`https://myembed.biz/serie/ID/TEMPORADA/EPISODIO` para episódios. Sem um episódio
-escolhido, o endereço `https://myembed.biz/serie/ID` abre a lista da série.
-O app incorpora esse endereço em um iframe, como exigido pelo fornecedor,
-em vez de navegar diretamente para a página. Os plugins continuam fornecendo
-os catálogos, mas suas fontes de vídeo alternativas não são utilizadas.
+O projeto [`cinemax/`](.) é a fonte única das telas, serviços, motor de plugins e assets Flutter. O projeto [`cinemax_tv/`](../cinemax_tv/README.md) mantém somente o host Android TV: manifesto, launcher Leanback, banner e configurações específicas da plataforma. Assim, melhorias na base podem ser compartilhadas entre celular e TV, enquanto cada variante conserva seu identificador e canal de atualização.
 
-Gerar o endereço e carregar a página não confirmam a disponibilidade ou a
-reprodução do vídeo. A qualidade e o acervo dependem do EmbedMovies. A integração
-registra mídia pronta e reprodução quando consegue observar o vídeo. Iframes
-de outro domínio podem impedir essa observação; nesse caso, o app registra
-a limitação e preserva a reprodução e os controles do fornecedor. Não há troca
-automática para outro fornecedor.
+## Segurança e privacidade
 
-Teste do script de integração: `node --test test/embed_bridge_test.cjs`.
+CiNey precisa de conexão com a internet para consultar catálogos, pesquisar títulos, carregar fontes e verificar atualizações. O aplicativo não hospeda os vídeos: a reprodução pode abrir conteúdo de provedores externos em uma WebView. As práticas de privacidade, a disponibilidade, a qualidade e os anúncios desses serviços são responsabilidade de cada provedor; o app não certifica nem garante o conteúdo externo.
 
-## Transmitir para Chromecast / Google TV
+O atualizador consulta as releases do repositório oficial e compara o SHA-256 quando a release fornece esse valor. A instalação de um APK externo pode exigir a permissão do Android para instalar aplicativos, solicitada pelo sistema quando necessária.
 
-A opção **Transmitir** abre um único fluxo de espelhamento pelo Google Home,
-adequado ao player incorporado do EmbedMovies. O endereço HTML do fornecedor
-não é enviado ao receptor Google Cast como se fosse um arquivo de vídeo.
+O console guarda até 500 registros em memória durante a sessão; eles são apagados quando o processo do aplicativo é encerrado. Registros de erro podem incluir detalhes técnicos e pilhas de execução. Revise essas informações antes de compartilhá-las.
 
-Use a mesma rede Wi-Fi no celular e na TV. No Google Home, abra o bloco da TV,
-selecione **Transmitir tela** (ou **Transmitir um app**, quando disponível) e
-confirme no Android. Depois volte ao Cinemax e toque em **Abrir filme**.
-O espelhamento é encerrado pelo Google Home; abrir esse aplicativo não confirma
-que a TV está conectada. O celular deve permanecer desbloqueado durante o uso.
+## Transmissão
 
-Se o Google Home não estiver instalado, o diálogo oferece um botão para abrir
-sua página oficial no Google Play. [Instruções do Google](https://support.google.com/googlecast/answer/6059461?hl=pt-BR).
+A opção **Transmitir** utiliza o fluxo de espelhamento de tela pelo Google Home para reproduções incorporadas. O endereço HTML de um provedor não é enviado ao receptor como se fosse um arquivo de vídeo. É necessário que celular e TV estejam na mesma rede Wi-Fi; consulte as [instruções do Google Cast](https://support.google.com/googlecast/answer/6059461?hl=pt-BR).
 
-## Getting Started
+## Executar localmente
 
-This project is a starting point for a Flutter application.
+Requisitos: Flutter com Dart 3.11.4 ou superior e Android SDK configurado.
 
-A few resources to get you started if this is your first Flutter project:
+App principal:
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+```powershell
+cd cinemax
+flutter pub get
+flutter run
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Android TV:
+
+```powershell
+cd cinemax_tv
+flutter pub get
+flutter run
+```
+
+## Testes e análise
+
+Execute a partir de `cinemax/`:
+
+```powershell
+flutter analyze
+flutter test --no-pub
+node --test test/embed_bridge_test.cjs
+```
+
+## Estrutura do projeto
+
+- `lib/core/`: configuração, navegação, serviços e componentes compartilhados.
+- `lib/features/`: telas e recursos organizados por funcionalidade.
+- `lib/plugin_engine/`: catálogo, plugins e resolução de fontes.
+- `assets/`: logo e recursos usados pelo aplicativo.
+- `../cinemax_tv/android/`: configuração nativa exclusiva da Android TV.
+
+## Releases
+
+Consulte as [releases oficiais do CiNey](https://github.com/NeyvanSantos/CINEY/releases). Os canais mobile e TV são separados; as releases TV usam tags `tv-vX.Y.Z` e são publicadas como pré-lançamentos.

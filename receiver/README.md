@@ -2,6 +2,9 @@
 
 Este receiver precisa ser hospedado em uma URL HTTPS publica e cadastrado no Google Cast Developer Console.
 
+Os arquivos desta pasta são compartilhados pelas variantes mobile (`cinemax/`)
+e TV (`cinemax_tv/`). Consulte o [mapa do projeto](../docs/estrutura.md).
+
 ## Registro
 
 1. Acesse o Google Cast Developer Console.
@@ -11,13 +14,15 @@ Este receiver precisa ser hospedado em uma URL HTTPS publica e cadastrado no Goo
 
 ## Build do app
 
-Passe o ID ao Gradle ao gerar a APK:
+Passe o ID ao Gradle ao gerar a APK. Execute a partir da raiz do repositório:
 
 ```powershell
-Push-Location android
+Push-Location cinemax/android
 .\gradlew.bat assembleDebug -PcinemaxCastReceiverAppId=SEU_APP_ID
 Pop-Location
 ```
+
+Para a variante TV, use `cinemax_tv/android` no comando `Push-Location`.
 
 O namespace usado pelo app e pelo receiver e:
 

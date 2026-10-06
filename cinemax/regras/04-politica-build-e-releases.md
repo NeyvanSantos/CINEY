@@ -44,11 +44,28 @@
 - **Pelo Agente ou Terminal (PowerShell):**
   Basta solicitar: *"Lance a versão 1.0.1"* ou executar:
   ```powershell
-  .\cinemax\scripts\publish_release.ps1 -Version "1.0.1" -Notes "Notas da atualização"
+  .\scripts\publish_release.ps1 -Version "1.0.1" -Notes "Notas da atualização"
   ```
 - **O que acontece automaticamente:**
   1. O arquivo `pubspec.yaml` é atualizado com a nova versão.
   2. Uma tag Git (ex.: `v1.0.1`) é criada e enviada ao GitHub.
-  3. O workflow [`.github/workflows/release.yml`](file:///g:/Filmes%20e%20S%C3%A9ries%20%28Criado%20por%20Ney%29/.github/workflows/release.yml) é acionado na nuvem.
+  3. O workflow [`.github/workflows/release.yml`](../../.github/workflows/release.yml) é acionado na nuvem.
   4. O APK é compilado nos servidores do GitHub e anexado diretamente na nova Release como `CiNey-v1.0.1.apk`.
   5. Todos os aplicativos instalados recebem o aviso de atualização automaticamente!
+
+---
+
+## 5. Organização Local dos APKs
+
+- Os scripts de publicação ficam em `scripts/`, na raiz do repositório.
+- Guarde somente o último APK publicado de cada variante: mobile em
+  `releases/mobile/` e TV em `releases/tv/`.
+- Ao guardar um novo lançamento, substitua a cópia local anterior da mesma
+  variante e mantenha o nome do asset publicado.
+- APKs são binários gerados e permanecem ignorados pelo Git. Não mantenha um
+  histórico de instaladores na raiz, nas pastas dos projetos ou nos builds.
+- As versões anteriores continuam disponíveis nas releases oficiais do GitHub;
+  a limpeza local não exclui releases, tags ou assets remotos.
+
+Consulte o [inventário dos APKs locais](../../releases/README.md) e o
+[mapa das pastas](../../docs/estrutura.md).

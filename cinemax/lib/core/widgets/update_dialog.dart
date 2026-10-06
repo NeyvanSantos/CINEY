@@ -901,7 +901,9 @@ class _UpdateDialogState extends State<UpdateDialog> {
       autofocus: autofocus,
       borderRadius: BorderRadius.circular(14),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
+        constraints: const BoxConstraints(minHeight: 52),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
         decoration: BoxDecoration(
           gradient: isPrimary ? AppColors.primaryGradient : null,
           color: isOutlined ? Colors.transparent : null,
@@ -919,13 +921,18 @@ class _UpdateDialogState extends State<UpdateDialog> {
                 ]
               : null,
         ),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            color: isPrimary ? Colors.white : AppColors.textSecondary,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: isPrimary ? Colors.white : AppColors.textSecondary,
+            ),
           ),
         ),
       ),

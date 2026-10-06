@@ -16,8 +16,8 @@ Write-Host "  Versao Alvo: v$Version" -ForegroundColor Yellow
 Write-Host "===================================================" -ForegroundColor Cyan
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$projectDir = Split-Path -Parent $scriptDir
-$rootDir = Split-Path -Parent $projectDir
+$rootDir = Split-Path -Parent $scriptDir
+$projectDir = Join-Path $rootDir "cinemax"
 $pubspecPath = Join-Path $projectDir "pubspec.yaml"
 
 if (-not (Test-Path $pubspecPath)) {

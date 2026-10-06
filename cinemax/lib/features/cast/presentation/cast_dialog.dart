@@ -2,12 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../../core/config/theme/app_colors.dart';
 import '../../../core/services/app_logger.dart';
 import '../../../plugin_engine/models/stream_source.dart';
 import '../models/cast_device.dart';
 import '../services/dlna_discovery_service.dart';
+import '../services/media_stream_sniffer.dart';
 import '../services/native_cast_bridge.dart';
 import '../services/universal_cast_service.dart';
 import '../services/web_cast_server.dart';
@@ -41,19 +43,27 @@ class CastDialog extends StatefulWidget {
 
 class _CastDialogState extends State<CastDialog> {
   bool _opening = false;
-  bool _webVideoCasterMissing = false;
+  bool _isSniffing = false;
+  String _sniffingStatus = '';
   String? _error;
 
-  // Server selection
+  // Seleção de servidor
   int _selectedServerIndex = 0;
 
   // Timeout visual
-  static const int _timeoutSeconds = 60;
+  static const int _timeoutSeconds = 45;
   int _remainingSeconds = _timeoutSeconds;
   Timer? _countdownTimer;
   bool _showCountdown = false;
 
-  // DLNA Discovery
+  // Cache de fluxos extraídos por URL
+  final Map<String, SniffedStreamResult> _resolvedStreamsCache = {};
+
+  // Sniffer Headless em segundo plano
+  WebViewController? _snifferController;
+  Completer<SniffedStreamResult?>? _snifferCompleter;
+
+  // DLNA Discovery & Cast Service
   final _dlnaService = DlnaDiscoveryService.instance;
   final _castService = UniversalCastService();
   List<CastDevice> _dlnaDevices = [];
@@ -68,7 +78,21 @@ class _CastDialogState extends State<CastDialog> {
   @override
   void initState() {
     super.initState();
+    _initSniffer();
     _startDlnaScan();
+  }
+
+  void _initSniffer() {
+    _snifferController = MediaStreamSniffer.createSnifferController(
+      onMediaFound: (result) {
+        if (_activeSource != null) {
+          _resolvedStreamsCache[_activeSource!.url] = result;
+        }
+        if (_snifferCompleter != null && !_snifferCompleter!.isCompleted) {
+          _snifferCompleter!.complete(result);
+        }
+      },
+    );
   }
 
   @override
@@ -108,7 +132,7 @@ class _CastDialogState extends State<CastDialog> {
           if (_opening) {
             _opening = false;
             _error =
-                'A conexão expirou. Confirme que os aparelhos estão no mesmo Wi-Fi.';
+                'A conexão expirou. Confirme que a TV está ligada no mesmo Wi-Fi.';
           }
         }
       });
@@ -120,7 +144,59 @@ class _CastDialogState extends State<CastDialog> {
     _showCountdown = false;
   }
 
-  Future<void> _openCastDevice() async {
+  /// Resolve a URL direta do stream (utilizando o sniffer se for fonte de embed)
+  Future<SniffedStreamResult?> _resolveActiveStream(StreamSource source) async {
+    // 1. Verifica se já é link direto de mídia
+    if (MediaStreamSniffer.isDirectMediaUrl(source.url)) {
+      return SniffedStreamResult(
+        url: source.url,
+        isM3U8: source.url.contains('.m3u8'),
+        mimeType: MediaStreamSniffer.getContentType(source.url),
+      );
+    }
+
+    // 2. Verifica se já está em cache
+    if (_resolvedStreamsCache.containsKey(source.url)) {
+      return _resolvedStreamsCache[source.url]!;
+    }
+
+    // 3. Executa o sniffer inteligente
+    setState(() {
+      _isSniffing = true;
+      _sniffingStatus = 'Extraindo fluxo de alta definição...';
+    });
+
+    _snifferCompleter = Completer<SniffedStreamResult?>();
+
+    try {
+      await _snifferController?.loadRequest(Uri.parse(source.url));
+
+      // Aguarda até 9 segundos pela detecção do fluxo de vídeo
+      final result = await _snifferCompleter!.future.timeout(
+        const Duration(seconds: 9),
+        onTimeout: () => null,
+      );
+
+      if (result != null) {
+        _resolvedStreamsCache[source.url] = result;
+        return result;
+      }
+    } catch (e) {
+      AppLogger.warn('Sniffer falhou ao resolver: $e', tag: 'CAST');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSniffing = false;
+          _sniffingStatus = '';
+        });
+      }
+    }
+
+    return null;
+  }
+
+  /// Transmite via Google Cast (Chromecast / Google TV nativo)
+  Future<void> _openChromecast() async {
     final source = _activeSource;
     if (source == null) {
       setState(
@@ -136,80 +212,72 @@ class _CastDialogState extends State<CastDialog> {
     _startCountdown();
 
     try {
-      var opened = false;
-      final url = source.url;
-      if (NativeCastBridge.isDirectMediaUrl(url)) {
-        opened = await NativeCastBridge.castMedia(
-          url: url,
-          title: widget.title,
-        );
+      // 1. Resolve o link real do vídeo
+      final streamResult = await _resolveActiveStream(source);
+
+      String targetUrl;
+      if (streamResult != null) {
+        // Se a fonte possui restrição de cabeçalhos (anti-hotlink), canaliza via proxy local
+        if (streamResult.headers.isNotEmpty) {
+          await WebCastServer.instance.start();
+          targetUrl = WebCastServer.instance.getProxiedStreamUrl(
+            streamResult.url,
+            headers: streamResult.headers,
+          );
+        } else {
+          targetUrl = streamResult.url;
+        }
       } else {
-        // Para fontes de embed (iframe):
-        // Inicia o WebCastServer local para servir a página com iframe wrapper.
-        // Isso garante que a requisição ocorra dentro de um iframe legítimo (Sec-Fetch-Dest: iframe),
-        // contornando a camuflagem anti-cópia que exibia a página "Investidor.blog".
-        await WebCastServer.instance.start();
-        final targetUrl = WebCastServer.instance.getEmbedUrl(url);
-        opened = await NativeCastBridge.openWebVideoCaster(
-          url: targetUrl,
-          title: widget.title,
-        );
+        // Fallback: se não capturou m3u8 direto, usa a URL original
+        targetUrl = source.url;
       }
+
+      final opened = await NativeCastBridge.castMedia(
+        url: targetUrl,
+        title: widget.title,
+      );
 
       if (!mounted) return;
       _stopCountdown();
-      setState(() {
-        if (!opened) {
-          _error = _webVideoCasterMissing
-              ? 'Instale o Web Video Caster para transmitir esta fonte.'
-              : 'Não foi possível abrir o transmissor.';
-        }
-      });
+
       if (opened) {
         AppLogger.info(
-          'Transmissão via ${source.server} aberta. Fonte: ${source.url}',
+          'Google Cast iniciado com sucesso para $targetUrl',
           tag: 'CAST',
         );
         if (Navigator.of(context).canPop()) {
           Navigator.of(context).pop();
         }
+      } else {
+        setState(() {
+          _error = 'Transmissão cancelada ou TV não selecionada.';
+        });
       }
     } on PlatformException catch (error) {
-      AppLogger.warn(
-        'Falha ao abrir seleção de TV: ${error.code}',
-        tag: 'CAST',
-      );
+      AppLogger.warn('Erro na ponte nativa do Cast: ${error.code}', tag: 'CAST');
       if (!mounted) return;
       _stopCountdown();
       setState(() {
-        _webVideoCasterMissing = error.code == 'WEB_VIDEO_CASTER_NOT_INSTALLED';
-        _error = error.message ?? 'Não foi possível abrir o seletor de TV.';
+        _error = error.message ?? 'Não foi possível conectar ao Chromecast.';
       });
     } catch (error) {
-      AppLogger.warn('Transmissão indisponível: $error', tag: 'CAST');
+      AppLogger.warn('Erro ao transmitir: $error', tag: 'CAST');
       if (mounted) {
         _stopCountdown();
-        setState(
-          () => _error = 'Não foi possível abrir o Chromecast neste aparelho.',
-        );
+        setState(() {
+          _error = 'Ocorreu um erro ao conectar ao Chromecast.';
+        });
       }
     } finally {
       if (mounted) setState(() => _opening = false);
     }
   }
 
+  /// Transmite via DLNA / UPnP nativo para Smart TVs (Samsung, LG, etc.)
   Future<void> _castViaDlna(CastDevice device) async {
     final source = _activeSource;
     if (source == null) {
-      setState(() => _error = 'Nenhuma URL de mídia disponível para DLNA.');
-      return;
-    }
-
-    if (!NativeCastBridge.isDirectMediaUrl(source.url)) {
-      setState(
-        () => _error =
-            'Fontes de Embed precisam do botão "Web Video Caster / Chromecast" para transmitir para a TV.',
-      );
+      setState(() => _error = 'Nenhuma URL disponível para transmitir.');
       return;
     }
 
@@ -219,16 +287,22 @@ class _CastDialogState extends State<CastDialog> {
     });
 
     try {
+      final streamResult = await _resolveActiveStream(source);
+      final mediaUrl = streamResult?.url ?? source.url;
+      final headers = streamResult?.headers;
+
       final success = await _castService.connectAndCast(
         device: device,
         title: widget.title,
-        mediaUrl: source.url,
+        mediaUrl: mediaUrl,
+        headers: headers,
+        forceProxy: headers != null && headers.isNotEmpty,
       );
 
       if (!mounted) return;
       if (success) {
         AppLogger.info(
-          'DLNA: Transmissão iniciada para ${device.name} via ${source.server}',
+          'DLNA: Transmitindo para ${device.name} ($mediaUrl)',
           tag: 'CAST',
         );
         if (Navigator.of(context).canPop()) {
@@ -249,181 +323,301 @@ class _CastDialogState extends State<CastDialog> {
     }
   }
 
+  /// Abre o modo WebCast (Player HTML5 para navegador de qualquer TV)
+  Future<void> _openWebCastPlayer() async {
+    final source = _activeSource;
+    if (source == null) return;
+
+    setState(() {
+      _opening = true;
+      _error = null;
+    });
+
+    try {
+      final streamResult = await _resolveActiveStream(source);
+      final mediaUrl = streamResult?.url ?? source.url;
+
+      await WebCastServer.instance.start();
+      WebCastServer.instance.updateMedia(
+        title: widget.title,
+        mediaUrl: mediaUrl,
+        headers: streamResult?.headers,
+      );
+
+      if (!mounted) return;
+      _showWebCastInfoModal();
+    } finally {
+      if (mounted) setState(() => _opening = false);
+    }
+  }
+
+  void _showWebCastInfoModal() {
+    final tvUrl = WebCastServer.instance.tvUrl;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.language_rounded, color: AppColors.primary, size: 40),
+            const SizedBox(height: 12),
+            const Text(
+              'Transmissão via Navegador da TV',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Abra o navegador de internet da sua TV (ou de qualquer aparelho na rede) e acesse o endereço abaixo:',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.primary.withValues(alpha: 0.5)),
+              ),
+              child: SelectableText(
+                tvUrl,
+                style: const TextStyle(
+                  color: AppColors.primary,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.1,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'O filme começará a rodar automaticamente na tela da TV assim que você entrar.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppColors.textTertiary, fontSize: 12),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+                child: const Text('Entendido'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => Dialog(
     backgroundColor: AppColors.surface,
     insetPadding: const EdgeInsets.all(20),
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
     child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 420),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(22),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Icon(
-              Icons.screen_share_rounded,
-              color: AppColors.primary,
-              size: 36,
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'Transmitir para TV',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 21,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'Chromecast / Google TV / DLNA',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              widget.title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
+      constraints: const BoxConstraints(maxWidth: 440),
+      child: Stack(
+        children: [
+          // WebView invisível off-stage para executar o sniffer de rede
+          if (_snifferController != null)
+            Offstage(
+              offstage: true,
+              child: SizedBox(
+                width: 1,
+                height: 1,
+                child: WebViewWidget(controller: _snifferController!),
               ),
             ),
 
-            // ── Seletor de Servidor ──
-            if (widget.sources.length > 1) ...[
-              const SizedBox(height: 14),
-              _buildServerSelector(),
-            ],
-
-            const SizedBox(height: 10),
-            const Text(
-              'Fontes Embed (EmbedMovies e SuperFlix) serão abertas diretamente no Web Video Caster para você escolher a TV, sem espelhamento de tela.',
-              style: TextStyle(color: AppColors.textSecondary, height: 1.4),
-            ),
-            const SizedBox(height: 14),
-            _step('1', 'Conecte o celular e a TV à mesma rede Wi‑Fi.'),
-            _step(
-              '2',
-              'A TV aparecerá automaticamente na seleção do Chromecast. Escolha sua TV.',
-            ),
-            _step(
-              '3',
-              'Quando a TV estiver conectada, o app envia o vídeo para a reprodução na televisão.',
-            ),
-            _step(
-              '4',
-              'Mantenha o celular desbloqueado enquanto a reprodução estiver na TV.',
-            ),
-
-            // Countdown visual de timeout
-            if (_showCountdown && _opening) ...[
-              const SizedBox(height: 10),
-              _buildCountdownIndicator(),
-            ],
-
-            if (_error != null) ...[
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.red.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+          SingleChildScrollView(
+            padding: const EdgeInsets.all(22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Icon(
+                  Icons.cast_connected_rounded,
+                  color: AppColors.primary,
+                  size: 38,
                 ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.error_outline,
-                      color: Colors.red.shade200,
-                      size: 20,
+                const SizedBox(height: 12),
+                const Text(
+                  'Transmitir para TV',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 21,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Chromecast • Smart TV (DLNA) • WebCast',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  widget.title,
+                  maxLines: 2,
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+
+                // ── Seletor de Servidor ──
+                if (widget.sources.length > 1) ...[
+                  const SizedBox(height: 14),
+                  _buildServerSelector(),
+                ],
+
+                // Indicador de Sniffer em execução
+                if (_isSniffing) ...[
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _error!,
-                        style: TextStyle(
-                          color: Colors.red.shade200,
-                          height: 1.4,
-                          fontSize: 13,
+                    child: Row(
+                      children: [
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.primary,
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            _sniffingStatus,
+                            style: const TextStyle(
+                              color: AppColors.primary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
+                ],
+
+                // Countdown visual de timeout
+                if (_showCountdown && _opening) ...[
+                  const SizedBox(height: 12),
+                  _buildCountdownIndicator(),
+                ],
+
+                if (_error != null) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.error_outline,
+                          color: Colors.red.shade200,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _error!,
+                            style: TextStyle(
+                              color: Colors.red.shade200,
+                              height: 1.4,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 18),
+
+                // 1. Botão Principal: Chromecast / Google TV Nativo
+                FilledButton.icon(
+                  onPressed: (_opening || _activeSource == null)
+                      ? null
+                      : () => _openChromecast(),
+                  icon: _opening
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.cast_rounded),
+                  label: Text(
+                    _opening
+                        ? 'Conectando...'
+                        : 'Chromecast / Google TV',
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
                 ),
-              ),
-            ],
-            const SizedBox(height: 16),
 
-            // Botão principal: Chromecast / WVC
-            FilledButton.icon(
-              onPressed: (_opening || _activeSource == null)
-                  ? null
-                  : () => _openCastDevice(),
-              icon: _opening
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.cast_rounded),
-              label: Text(
-                _opening
-                    ? 'Conectando...'
-                    : _activeSource != null
-                    ? 'Transmitir via ${_activeSource!.server}'
-                    : 'Nenhuma fonte disponível',
-              ),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                padding: const EdgeInsets.symmetric(vertical: 13),
-              ),
+                const SizedBox(height: 10),
+
+                // 2. Opção WebCast: Abrir no Navegador da TV
+                OutlinedButton.icon(
+                  onPressed: _opening ? null : () => _openWebCastPlayer(),
+                  icon: const Icon(Icons.language_rounded, size: 20),
+                  label: const Text('Navegador da TV (WebCast / Link Direto)'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+
+                // 3. Seção DLNA - Smart TVs na rede
+                const SizedBox(height: 16),
+                _buildDlnaSection(),
+
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: _opening
+                      ? null
+                      : () {
+                          final openPlayer = widget.onOpenPlayer;
+                          Navigator.of(context).pop();
+                          openPlayer?.call();
+                        },
+                  child: Text(
+                    widget.onOpenPlayer == null ? 'Voltar ao filme' : 'Assistir no celular',
+                  ),
+                ),
+              ],
             ),
-
-            if (_webVideoCasterMissing)
-              TextButton(
-                onPressed: _opening
-                    ? null
-                    : () async {
-                        await NativeCastBridge.openWebVideoCasterStore();
-                      },
-                child: const Text('Instalar Web Video Caster'),
-              ),
-
-            // Seção DLNA - Dispositivos na rede
-            if (_dlnaDevices.isNotEmpty || _isScanning) ...[
-              const SizedBox(height: 16),
-              _buildDlnaSection(),
-            ],
-
-            const SizedBox(height: 8),
-            OutlinedButton(
-              onPressed: _opening
-                  ? null
-                  : () {
-                      final openPlayer = widget.onOpenPlayer;
-                      Navigator.of(context).pop();
-                      openPlayer?.call();
-                    },
-              child: Text(
-                widget.onOpenPlayer == null ? 'Voltar ao filme' : 'Abrir filme',
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Para encerrar, use Parar transmissão no Chromecast ou no Android.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textTertiary, fontSize: 12),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     ),
   );
@@ -548,8 +742,8 @@ class _CastDialogState extends State<CastDialog> {
         const SizedBox(height: 6),
         Text(
           _remainingSeconds <= 10
-              ? 'A conexão expira em $_remainingSeconds segundos...'
-              : 'Aguardando conexão com a TV... (${_remainingSeconds}s)',
+              ? 'Aguardando TV... ($_remainingSeconds s)'
+              : 'Conectando ao dispositivo... (${_remainingSeconds}s)',
           style: TextStyle(
             color: _remainingSeconds <= 10
                 ? Colors.orange
@@ -568,13 +762,13 @@ class _CastDialogState extends State<CastDialog> {
         Row(
           children: [
             const Icon(
-              Icons.devices_rounded,
+              Icons.connected_tv_rounded,
               color: AppColors.primary,
               size: 18,
             ),
             const SizedBox(width: 8),
             const Text(
-              'TVs na Rede (DLNA)',
+              'Smart TVs na Rede (DLNA)',
               style: TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.w600,
@@ -593,7 +787,7 @@ class _CastDialogState extends State<CastDialog> {
               )
             else
               IconButton(
-                tooltip: 'Atualizar busca DLNA',
+                tooltip: 'Buscar Smart TVs',
                 visualDensity: VisualDensity.compact,
                 onPressed: _startDlnaScan,
                 icon: const Icon(
@@ -609,15 +803,23 @@ class _CastDialogState extends State<CastDialog> {
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 8),
             child: Text(
-              'Buscando Smart TVs na rede...',
+              'Buscando Smart TVs no Wi-Fi...',
               style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            ),
+          )
+        else if (_dlnaDevices.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 6),
+            child: Text(
+              'Nenhuma Smart TV DLNA detectada no momento. Use o botão Chromecast ou WebCast acima.',
+              style: TextStyle(color: AppColors.textTertiary, fontSize: 12),
             ),
           )
         else
           ...List.generate(_dlnaDevices.length, (i) {
             final device = _dlnaDevices[i];
             return Padding(
-              padding: const EdgeInsets.only(bottom: 4),
+              padding: const EdgeInsets.only(bottom: 6),
               child: Material(
                 color: Colors.white.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(10),
@@ -646,6 +848,7 @@ class _CastDialogState extends State<CastDialog> {
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 14,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                               Text(
@@ -673,29 +876,4 @@ class _CastDialogState extends State<CastDialog> {
       ],
     );
   }
-
-  Widget _step(String number, String description) => Padding(
-    padding: const EdgeInsets.only(bottom: 10),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '$number. ',
-          style: const TextStyle(
-            color: AppColors.primary,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        Expanded(
-          child: Text(
-            description,
-            style: const TextStyle(
-              color: AppColors.textSecondary,
-              height: 1.35,
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
 }
