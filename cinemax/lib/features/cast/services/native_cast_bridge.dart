@@ -47,6 +47,7 @@ class NativeCastBridge {
     required String url,
     required String title,
     String? posterUrl,
+    int? startPositionMs,
   }) async {
     final uri = Uri.tryParse(url);
     final isHttpSource =
@@ -64,6 +65,7 @@ class NativeCastBridge {
         'contentType': isDirectMediaUrl(url)
             ? contentTypeFor(url)
             : 'text/html',
+        'startPositionMs': startPositionMs ?? 0,
       });
       return result ?? false;
     } on PlatformException {
@@ -82,6 +84,42 @@ class NativeCastBridge {
   static Future<String?> castDeviceName() async {
     try {
       return await _channel.invokeMethod<String>('castDeviceName');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<bool> play() async {
+    try {
+      return await _channel.invokeMethod<bool>('play') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> pause() async {
+    try {
+      return await _channel.invokeMethod<bool>('pause') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> seekTo(Duration position) async {
+    try {
+      return await _channel.invokeMethod<bool>('seekTo', {
+            'positionMs': position.inMilliseconds,
+          }) ??
+          false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> getMediaStatus() async {
+    try {
+      final status = await _channel.invokeMapMethod<String, dynamic>('getMediaStatus');
+      return status;
     } catch (_) {
       return null;
     }

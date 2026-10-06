@@ -29,6 +29,10 @@ class WebCastServer {
   int get port => _port;
   String? get localIp => _localIp;
   String get tvUrl => 'http://${_localIp ?? "127.0.0.1"}:$_port';
+  bool get isPlaying => _isPlaying;
+  double get currentTime => _currentTime;
+  double get duration => _duration;
+  double get volume => _volume;
 
   /// Gera a URL local com proxy HLS / HTTP para contornar bloqueios de CORS e Referer nas Smart TVs
   String getProxiedStreamUrl(String rawMediaUrl, {Map<String, String>? headers}) {
@@ -101,18 +105,20 @@ class WebCastServer {
     required String mediaUrl,
     String? posterUrl,
     Map<String, String>? headers,
+    double startPositionSeconds = 0,
   }) {
     _currentTitle = title;
     _currentMediaUrl = mediaUrl;
     _currentPosterUrl = posterUrl;
     if (headers != null) _currentHeaders = Map.from(headers);
     _isPlaying = true;
-    _currentTime = 0;
+    _currentTime = startPositionSeconds;
     _broadcastCommand(jsonEncode({
       'action': 'load',
       'title': _currentTitle,
       'url': _currentMediaUrl,
       'poster': _currentPosterUrl,
+      'startTime': startPositionSeconds,
     }));
   }
 
@@ -545,7 +551,7 @@ class WebCastServer {
 
     function handleCommand(cmd) {
       if (cmd.action === 'load') {
-        loadMedia(cmd.title, cmd.url, cmd.poster);
+        loadMedia(cmd.title, cmd.url, cmd.poster, cmd.startTime || 0);
       } else if (cmd.action === 'play') {
         if (videoEl) videoEl.play();
       } else if (cmd.action === 'pause') {
@@ -557,7 +563,7 @@ class WebCastServer {
       }
     }
 
-    function loadMedia(title, url, poster) {
+    function loadMedia(title, url, poster, startTime = 0) {
       document.getElementById('tv-title').innerText = title;
       const header = document.getElementById('overlay-header');
       header.style.display = 'block';
@@ -576,6 +582,12 @@ class WebCastServer {
 
       container.appendChild(videoEl);
 
+      function applyStartTime() {
+        if (startTime > 0) {
+          try { videoEl.currentTime = startTime; } catch(e) {}
+        }
+      }
+
       if (hls) {
         hls.destroy();
         hls = null;
@@ -587,14 +599,17 @@ class WebCastServer {
           hls.loadSource(url);
           hls.attachMedia(videoEl);
           hls.on(Hls.Events.MANIFEST_PARSED, function() {
+            applyStartTime();
             videoEl.play().catch(()=>{});
           });
         } else if (videoEl.canPlayType('application/vnd.apple.mpegurl')) {
           videoEl.src = url;
+          videoEl.addEventListener('loadedmetadata', applyStartTime, { once: true });
           videoEl.play().catch(()=>{});
         }
       } else {
         videoEl.src = url;
+        videoEl.addEventListener('loadedmetadata', applyStartTime, { once: true });
         videoEl.play().catch(()=>{});
       }
 

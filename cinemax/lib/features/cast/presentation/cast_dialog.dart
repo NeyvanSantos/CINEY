@@ -15,23 +15,42 @@ class CastDialog extends StatefulWidget {
   final String title;
   final List<StreamSource> sources;
   final VoidCallback? onOpenPlayer;
+  final int initialSourceIndex;
+  final Duration? startPosition;
+  final String? posterUrl;
+  final void Function(String deviceName, bool isChromecast)? onCastStarted;
 
   const CastDialog({
     super.key,
     required this.title,
     this.sources = const [],
     this.onOpenPlayer,
+    this.initialSourceIndex = 0,
+    this.startPosition,
+    this.posterUrl,
+    this.onCastStarted,
   });
 
-  static Future<void> show(
+  static Future<bool?> show(
     BuildContext context, {
     required String title,
     List<StreamSource> sources = const [],
     VoidCallback? onOpenPlayer,
-  }) => showDialog<void>(
+    int initialSourceIndex = 0,
+    Duration? startPosition,
+    String? posterUrl,
+    void Function(String deviceName, bool isChromecast)? onCastStarted,
+  }) => showDialog<bool>(
     context: context,
-    builder: (_) =>
-        CastDialog(title: title, sources: sources, onOpenPlayer: onOpenPlayer),
+    builder: (_) => CastDialog(
+      title: title,
+      sources: sources,
+      onOpenPlayer: onOpenPlayer,
+      initialSourceIndex: initialSourceIndex,
+      startPosition: startPosition,
+      posterUrl: posterUrl,
+      onCastStarted: onCastStarted,
+    ),
   );
 
   @override
@@ -68,6 +87,9 @@ class _CastDialogState extends State<CastDialog> {
   @override
   void initState() {
     super.initState();
+    if (widget.sources.isNotEmpty) {
+      _selectedServerIndex = widget.initialSourceIndex.clamp(0, widget.sources.length - 1);
+    }
     _initSniffer();
   }
 
@@ -216,6 +238,8 @@ class _CastDialogState extends State<CastDialog> {
       final opened = await NativeCastBridge.castMedia(
         url: targetUrl,
         title: widget.title,
+        posterUrl: widget.posterUrl,
+        startPositionMs: widget.startPosition?.inMilliseconds,
       );
 
       if (!mounted) return;
@@ -226,8 +250,10 @@ class _CastDialogState extends State<CastDialog> {
           'Google Cast iniciado com sucesso para $targetUrl',
           tag: 'CAST',
         );
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
+        final deviceName = await NativeCastBridge.castDeviceName() ?? 'Chromecast';
+        widget.onCastStarted?.call(deviceName, true);
+        if (mounted && Navigator.of(context).canPop()) {
+          Navigator.of(context).pop(true);
         }
       } else {
         setState(() {
@@ -285,9 +311,12 @@ class _CastDialogState extends State<CastDialog> {
       WebCastServer.instance.updateMedia(
         title: widget.title,
         mediaUrl: effectiveUrl,
+        posterUrl: widget.posterUrl,
         headers: effectiveHeaders.isNotEmpty ? effectiveHeaders : null,
+        startPositionSeconds: (widget.startPosition?.inMilliseconds ?? 0) / 1000.0,
       );
 
+      widget.onCastStarted?.call('Navegador da TV', false);
       if (!mounted) return;
       _showWebCastInfoModal();
     } finally {

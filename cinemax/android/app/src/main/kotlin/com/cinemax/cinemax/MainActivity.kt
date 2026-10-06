@@ -59,7 +59,7 @@ class MainActivity : FlutterActivity() {
         val title: String,
         val posterUrl: String?,
         val contentType: String,
-        val isEmbed: Boolean,
+        val startPositionMs: Long,
         val result: MethodChannel.Result
     )
 
@@ -82,7 +82,6 @@ class MainActivity : FlutterActivity() {
             castContext?.sessionManager?.addSessionManagerListener(sessionListener, CastSession::class.java)
         } catch (error: Exception) {
             castContext = null
-            // Abrir o Google Home não depende da inicialização do Cast SDK.
             Log.w("CinemaxCast", "Google Cast não está disponível neste aparelho.", error)
         }
 
@@ -93,6 +92,7 @@ class MainActivity : FlutterActivity() {
                     call.argument<String>("title") ?: "Filme / Série",
                     call.argument("posterUrl"),
                     call.argument<String>("contentType") ?: "video/mp4",
+                    call.argument<Number>("startPositionMs")?.toLong() ?: 0L,
                     result
                 )
                 "isCastConnected" -> result.success(
@@ -101,6 +101,41 @@ class MainActivity : FlutterActivity() {
                 "castDeviceName" -> result.success(
                     castContext?.sessionManager?.currentCastSession?.castDevice?.friendlyName
                 )
+                "play" -> {
+                    val session = castContext?.sessionManager?.currentCastSession
+                    session?.remoteMediaClient?.play()
+                    result.success(true)
+                }
+                "pause" -> {
+                    val session = castContext?.sessionManager?.currentCastSession
+                    session?.remoteMediaClient?.pause()
+                    result.success(true)
+                }
+                "seekTo" -> {
+                    val pos = call.argument<Number>("positionMs")?.toLong() ?: 0L
+                    val session = castContext?.sessionManager?.currentCastSession
+                    session?.remoteMediaClient?.seek(pos)
+                    result.success(true)
+                }
+                "getMediaStatus" -> {
+                    val session = castContext?.sessionManager?.currentCastSession
+                    val client = session?.remoteMediaClient
+                    if (session?.isConnected == true && client != null) {
+                        result.success(mapOf(
+                            "isConnected" to true,
+                            "isPlaying" to client.isPlaying,
+                            "positionMs" to client.approximateStreamPosition,
+                            "durationMs" to client.streamDuration
+                        ))
+                    } else {
+                        result.success(mapOf(
+                            "isConnected" to false,
+                            "isPlaying" to false,
+                            "positionMs" to 0L,
+                            "durationMs" to 0L
+                        ))
+                    }
+                }
                 "stopCasting" -> {
                     handler.removeCallbacks(connectionTimeout)
                     pendingCast?.result?.success(false)
@@ -129,7 +164,7 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun castMedia(url: String?, title: String, posterUrl: String?, contentType: String, result: MethodChannel.Result) {
+    private fun castMedia(url: String?, title: String, posterUrl: String?, contentType: String, startPositionMs: Long, result: MethodChannel.Result) {
         if (url == null || url.isBlank()) {
             result.error("INVALID_URL", "O Chromecast precisa de um link HTTP válido para a reprodução.", null)
             return
@@ -147,7 +182,7 @@ class MainActivity : FlutterActivity() {
             title,
             posterUrl,
             contentType,
-            !isDirectMediaUrl(url),
+            startPositionMs,
             result
         )
         handler.removeCallbacks(connectionTimeout)
@@ -171,19 +206,6 @@ class MainActivity : FlutterActivity() {
 
     private fun loadPending(session: CastSession) {
         val request = pendingCast ?: return
-        if (request.isEmbed) {
-            val message = JSONObject()
-                .put("type", "LOAD")
-                .put("title", request.title)
-                .put("url", request.url)
-                .put("poster", request.posterUrl)
-                .toString()
-            session.sendMessage(receiverNamespace, message).setResultCallback { status ->
-                if (status.isSuccess) completePending(true)
-                else failPending("O receiver do CineMax não aceitou esta fonte EmbedMovies.")
-            }
-            return
-        }
         val metadata = MediaMetadata(MediaMetadata.MEDIA_TYPE_MOVIE).apply {
             putString(MediaMetadata.KEY_TITLE, request.title)
             request.posterUrl?.takeIf { it.startsWith("http") }?.let { addImage(WebImage(Uri.parse(it))) }
@@ -193,7 +215,13 @@ class MainActivity : FlutterActivity() {
             .setContentType(request.contentType)
             .setMetadata(metadata)
             .build()
-        val loadRequest = MediaLoadRequestData.Builder().setMediaInfo(mediaInfo).setAutoplay(true).build()
+        val loadRequestBuilder = MediaLoadRequestData.Builder()
+            .setMediaInfo(mediaInfo)
+            .setAutoplay(true)
+        if (request.startPositionMs > 0) {
+            loadRequestBuilder.setCurrentTime(request.startPositionMs)
+        }
+        val loadRequest = loadRequestBuilder.build()
         session.remoteMediaClient?.load(loadRequest)?.setResultCallback { loadResult ->
             if (loadResult.status.isSuccess) completePending(true)
             else failPending("A TV recusou esta fonte de vídeo (${loadResult.status.statusCode}).")
