@@ -30,8 +30,9 @@ class GradientPoster extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return _FocusablePoster(
       onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
       child: Container(
         width: width,
         height: height,
@@ -164,6 +165,59 @@ class GradientPoster extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _FocusablePoster extends StatefulWidget {
+  final VoidCallback? onTap;
+  final BorderRadius borderRadius;
+  final Widget child;
+
+  const _FocusablePoster({
+    required this.onTap,
+    required this.borderRadius,
+    required this.child,
+  });
+
+  @override
+  State<_FocusablePoster> createState() => _FocusablePosterState();
+}
+
+class _FocusablePosterState extends State<_FocusablePoster> {
+  bool _hasFocus = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: widget.onTap,
+      onFocusChange: (hasFocus) {
+        if (_hasFocus != hasFocus) {
+          setState(() => _hasFocus = hasFocus);
+        }
+      },
+      canRequestFocus: widget.onTap != null,
+      borderRadius: widget.borderRadius,
+      child: Stack(
+        children: [
+          widget.child,
+          if (_hasFocus)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.18),
+                    borderRadius: widget.borderRadius,
+                    border: Border.all(
+                      color: AppColors.primary.withValues(alpha: 0.85),
+                      width: 3,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
