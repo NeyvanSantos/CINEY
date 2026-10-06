@@ -49,6 +49,52 @@ jobs:
         working-directory: cinemax
         run: flutter pub get
 
+      - name: 🔐 Configurar assinatura do APK
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+        run: |
+          python3 - <<'PY'
+          import base64
+          import json
+          import os
+          from pathlib import Path
+
+          required = (
+              "ANDROID_KEYSTORE_BASE64",
+              "ANDROID_KEY_ALIAS",
+              "ANDROID_KEY_PASSWORD",
+              "ANDROID_STORE_PASSWORD",
+          )
+          missing = [name for name in required if not os.environ.get(name)]
+          if missing:
+              raise SystemExit("Secrets de assinatura ausentes: " + ", ".join(missing))
+
+          keystore = Path(os.environ["RUNNER_TEMP"]) / "cinemax-release-key.jks"
+          keystore.write_bytes(
+              base64.b64decode(os.environ["ANDROID_KEYSTORE_BASE64"], validate=True)
+          )
+          keystore.chmod(0o600)
+          properties = {
+              "storeFile": str(keystore),
+              "keyAlias": os.environ["ANDROID_KEY_ALIAS"],
+              "keyPassword": os.environ["ANDROID_KEY_PASSWORD"],
+              "storePassword": os.environ["ANDROID_STORE_PASSWORD"],
+          }
+          # Java Properties lê escapes Unicode e ignora espaços iniciais sem escape.
+          def escape(value):
+              return json.dumps(value, ensure_ascii=True)[1:-1].replace(" ", "\\ ")
+
+          config = Path("cinemax/android/key.properties")
+          config.write_text(
+              "".join(f"{name}={escape(value)}\n" for name, value in properties.items()),
+              encoding="ascii",
+          )
+          config.chmod(0o600)
+          PY
+
       - name: 🔨 Compilar APK de Release (CineMax)
         working-directory: cinemax
         run: flutter build apk --release
