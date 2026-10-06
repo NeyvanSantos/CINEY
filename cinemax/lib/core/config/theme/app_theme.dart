@@ -27,6 +27,7 @@ class AppTheme {
 
       scaffoldBackgroundColor: AppColors.background,
       canvasColor: AppColors.background,
+      focusColor: AppColors.primary.withValues(alpha: 0.18),
 
       // ══════════════ Typography ══════════════
       textTheme: GoogleFonts.outfitTextTheme(
@@ -79,10 +80,7 @@ class AppTheme {
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(
-            color: AppColors.glassBorder,
-            width: 1,
-          ),
+          side: const BorderSide(color: AppColors.glassBorder, width: 1),
         ),
       ),
 
@@ -138,7 +136,10 @@ class AppTheme {
           color: AppColors.textTertiary,
           fontSize: 14,
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: AppColors.glassBorder),
@@ -166,9 +167,7 @@ class AppTheme {
           fontWeight: FontWeight.w500,
           color: AppColors.textPrimary,
         ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         side: BorderSide.none,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       ),
@@ -212,18 +211,14 @@ class AppTheme {
           color: AppColors.textPrimary,
           fontSize: 14,
         ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         behavior: SnackBarBehavior.floating,
       ),
 
       // ══════════════ Dialog ══════════════
       dialogTheme: DialogThemeData(
         backgroundColor: AppColors.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         titleTextStyle: GoogleFonts.outfit(
           fontSize: 20,
           fontWeight: FontWeight.w700,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../config/theme/app_colors.dart';
 import '../config/theme/app_typography.dart';
+import 'focusable_surface.dart';
 import 'shimmer_loading.dart';
 
 /// Card de poster de filme/série com gradiente overlay
@@ -30,7 +31,7 @@ class GradientPoster extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _FocusablePoster(
+    return FocusableSurface(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Container(
@@ -165,59 +166,6 @@ class GradientPoster extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _FocusablePoster extends StatefulWidget {
-  final VoidCallback? onTap;
-  final BorderRadius borderRadius;
-  final Widget child;
-
-  const _FocusablePoster({
-    required this.onTap,
-    required this.borderRadius,
-    required this.child,
-  });
-
-  @override
-  State<_FocusablePoster> createState() => _FocusablePosterState();
-}
-
-class _FocusablePosterState extends State<_FocusablePoster> {
-  bool _hasFocus = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: widget.onTap,
-      onFocusChange: (hasFocus) {
-        if (_hasFocus != hasFocus) {
-          setState(() => _hasFocus = hasFocus);
-        }
-      },
-      canRequestFocus: widget.onTap != null,
-      borderRadius: widget.borderRadius,
-      child: Stack(
-        children: [
-          widget.child,
-          if (_hasFocus)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.18),
-                    borderRadius: widget.borderRadius,
-                    border: Border.all(
-                      color: AppColors.primary.withValues(alpha: 0.85),
-                      width: 3,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
       ),
     );
   }

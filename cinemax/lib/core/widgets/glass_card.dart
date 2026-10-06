@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../config/theme/app_colors.dart';
+import 'focusable_surface.dart';
 
 /// Card com efeito Glassmorphism
 /// Usado em toda a UI para visual premium
@@ -40,16 +41,20 @@ class GlassCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(borderRadius),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-          child: GestureDetector(
+          child: FocusableSurface(
             onTap: onTap,
+            borderRadius: BorderRadius.circular(borderRadius),
             child: Container(
               padding: padding ?? const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: backgroundColor ?? AppColors.glassBackground,
                 borderRadius: BorderRadius.circular(borderRadius),
-                border: border ??
+                border:
+                    border ??
                     Border.all(
-                      color: borderColor ?? Colors.white.withValues(alpha: borderOpacity),
+                      color:
+                          borderColor ??
+                          Colors.white.withValues(alpha: borderOpacity),
                       width: borderWidth ?? 1,
                     ),
                 boxShadow: const [

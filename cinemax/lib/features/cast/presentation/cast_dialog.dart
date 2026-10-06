@@ -31,11 +31,8 @@ class CastDialog extends StatefulWidget {
     VoidCallback? onOpenPlayer,
   }) => showDialog<void>(
     context: context,
-    builder: (_) => CastDialog(
-      title: title,
-      sources: sources,
-      onOpenPlayer: onOpenPlayer,
-    ),
+    builder: (_) =>
+        CastDialog(title: title, sources: sources, onOpenPlayer: onOpenPlayer),
   );
 
   @override
@@ -65,8 +62,8 @@ class _CastDialogState extends State<CastDialog> {
 
   StreamSource? get _activeSource =>
       widget.sources.isNotEmpty && _selectedServerIndex < widget.sources.length
-          ? widget.sources[_selectedServerIndex]
-          : null;
+      ? widget.sources[_selectedServerIndex]
+      : null;
 
   @override
   void initState() {
@@ -110,7 +107,8 @@ class _CastDialogState extends State<CastDialog> {
           _showCountdown = false;
           if (_opening) {
             _opening = false;
-            _error = 'A conexão expirou. Confirme que os aparelhos estão no mesmo Wi-Fi.';
+            _error =
+                'A conexão expirou. Confirme que os aparelhos estão no mesmo Wi-Fi.';
           }
         }
       });
@@ -125,7 +123,9 @@ class _CastDialogState extends State<CastDialog> {
   Future<void> _openCastDevice() async {
     final source = _activeSource;
     if (source == null) {
-      setState(() => _error = 'Nenhuma fonte de vídeo disponível para transmitir.');
+      setState(
+        () => _error = 'Nenhuma fonte de vídeo disponível para transmitir.',
+      );
       return;
     }
 
@@ -139,7 +139,10 @@ class _CastDialogState extends State<CastDialog> {
       var opened = false;
       final url = source.url;
       if (NativeCastBridge.isDirectMediaUrl(url)) {
-        opened = await NativeCastBridge.castMedia(url: url, title: widget.title);
+        opened = await NativeCastBridge.castMedia(
+          url: url,
+          title: widget.title,
+        );
       } else {
         // Para fontes de embed (iframe):
         // Inicia o WebCastServer local para servir a página com iframe wrapper.
@@ -203,7 +206,10 @@ class _CastDialogState extends State<CastDialog> {
     }
 
     if (!NativeCastBridge.isDirectMediaUrl(source.url)) {
-      setState(() => _error = 'Fontes de Embed precisam do botão "Web Video Caster / Chromecast" para transmitir para a TV.');
+      setState(
+        () => _error =
+            'Fontes de Embed precisam do botão "Web Video Caster / Chromecast" para transmitir para a TV.',
+      );
       return;
     }
 
@@ -229,7 +235,10 @@ class _CastDialogState extends State<CastDialog> {
           Navigator.of(context).pop();
         }
       } else {
-        setState(() => _error = 'A TV "${device.name}" não aceitou a transmissão DLNA.');
+        setState(
+          () =>
+              _error = 'A TV "${device.name}" não aceitou a transmissão DLNA.',
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -328,12 +337,20 @@ class _CastDialogState extends State<CastDialog> {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.error_outline, color: Colors.red.shade200, size: 20),
+                    Icon(
+                      Icons.error_outline,
+                      color: Colors.red.shade200,
+                      size: 20,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         _error!,
-                        style: TextStyle(color: Colors.red.shade200, height: 1.4, fontSize: 13),
+                        style: TextStyle(
+                          color: Colors.red.shade200,
+                          height: 1.4,
+                          fontSize: 13,
+                        ),
                       ),
                     ),
                   ],
@@ -344,7 +361,9 @@ class _CastDialogState extends State<CastDialog> {
 
             // Botão principal: Chromecast / WVC
             FilledButton.icon(
-              onPressed: (_opening || _activeSource == null) ? null : () => _openCastDevice(),
+              onPressed: (_opening || _activeSource == null)
+                  ? null
+                  : () => _openCastDevice(),
               icon: _opening
                   ? const SizedBox(
                       width: 18,
@@ -359,8 +378,8 @@ class _CastDialogState extends State<CastDialog> {
                 _opening
                     ? 'Conectando...'
                     : _activeSource != null
-                        ? 'Transmitir via ${_activeSource!.server}'
-                        : 'Nenhuma fonte disponível',
+                    ? 'Transmitir via ${_activeSource!.server}'
+                    : 'Nenhuma fonte disponível',
               ),
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.primary,
@@ -451,14 +470,19 @@ class _CastDialogState extends State<CastDialog> {
                       ? null
                       : () => setState(() => _selectedServerIndex = i),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                     child: Row(
                       children: [
                         Icon(
                           isSelected
                               ? Icons.radio_button_checked_rounded
                               : Icons.radio_button_off_rounded,
-                          color: isSelected ? AppColors.primary : AppColors.textTertiary,
+                          color: isSelected
+                              ? AppColors.primary
+                              : AppColors.textTertiary,
                           size: 20,
                         ),
                         const SizedBox(width: 10),
@@ -469,8 +493,12 @@ class _CastDialogState extends State<CastDialog> {
                               Text(
                                 source.server,
                                 style: TextStyle(
-                                  color: isSelected ? Colors.white : AppColors.textSecondary,
-                                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                                  color: isSelected
+                                      ? Colors.white
+                                      : AppColors.textSecondary,
+                                  fontWeight: isSelected
+                                      ? FontWeight.w600
+                                      : FontWeight.normal,
                                   fontSize: 14,
                                 ),
                               ),
@@ -485,7 +513,11 @@ class _CastDialogState extends State<CastDialog> {
                           ),
                         ),
                         if (isSelected)
-                          const Icon(Icons.check_circle_rounded, color: AppColors.primary, size: 20),
+                          const Icon(
+                            Icons.check_circle_rounded,
+                            color: AppColors.primary,
+                            size: 20,
+                          ),
                       ],
                     ),
                   ),
@@ -519,7 +551,9 @@ class _CastDialogState extends State<CastDialog> {
               ? 'A conexão expira em $_remainingSeconds segundos...'
               : 'Aguardando conexão com a TV... (${_remainingSeconds}s)',
           style: TextStyle(
-            color: _remainingSeconds <= 10 ? Colors.orange : AppColors.textSecondary,
+            color: _remainingSeconds <= 10
+                ? Colors.orange
+                : AppColors.textSecondary,
             fontSize: 12,
           ),
         ),
@@ -533,7 +567,11 @@ class _CastDialogState extends State<CastDialog> {
       children: [
         Row(
           children: [
-            const Icon(Icons.devices_rounded, color: AppColors.primary, size: 18),
+            const Icon(
+              Icons.devices_rounded,
+              color: AppColors.primary,
+              size: 18,
+            ),
             const SizedBox(width: 8),
             const Text(
               'TVs na Rede (DLNA)',
@@ -554,9 +592,15 @@ class _CastDialogState extends State<CastDialog> {
                 ),
               )
             else
-              GestureDetector(
-                onTap: _startDlnaScan,
-                child: const Icon(Icons.refresh_rounded, color: AppColors.textSecondary, size: 18),
+              IconButton(
+                tooltip: 'Atualizar busca DLNA',
+                visualDensity: VisualDensity.compact,
+                onPressed: _startDlnaScan,
+                icon: const Icon(
+                  Icons.refresh_rounded,
+                  color: AppColors.textSecondary,
+                  size: 18,
+                ),
               ),
           ],
         ),
@@ -581,10 +625,17 @@ class _CastDialogState extends State<CastDialog> {
                   borderRadius: BorderRadius.circular(10),
                   onTap: _opening ? null : () => _castViaDlna(device),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                     child: Row(
                       children: [
-                        Icon(device.type.icon, color: AppColors.primary, size: 20),
+                        Icon(
+                          device.type.icon,
+                          color: AppColors.primary,
+                          size: 20,
+                        ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Column(
@@ -592,7 +643,10 @@ class _CastDialogState extends State<CastDialog> {
                             children: [
                               Text(
                                 device.name,
-                                style: const TextStyle(color: Colors.white, fontSize: 14),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                ),
                               ),
                               Text(
                                 '${device.type.protocol} • ${device.ipAddress ?? ""}',
@@ -604,7 +658,11 @@ class _CastDialogState extends State<CastDialog> {
                             ],
                           ),
                         ),
-                        const Icon(Icons.play_circle_outline, color: AppColors.primary, size: 22),
+                        const Icon(
+                          Icons.play_circle_outline,
+                          color: AppColors.primary,
+                          size: 22,
+                        ),
                       ],
                     ),
                   ),

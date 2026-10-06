@@ -6,6 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../config/theme/app_colors.dart';
 import '../config/theme/app_typography.dart';
+import 'focusable_surface.dart';
 import '../services/app_logger.dart';
 import '../services/app_updater.dart';
 
@@ -29,7 +30,14 @@ class UpdateDialog extends StatefulWidget {
   State<UpdateDialog> createState() => _UpdateDialogState();
 }
 
-enum _UpdateState { info, requestingPermission, downloading, verifying, completed, error }
+enum _UpdateState {
+  info,
+  requestingPermission,
+  downloading,
+  verifying,
+  completed,
+  error,
+}
 
 class _UpdateDialogState extends State<UpdateDialog> {
   _UpdateState _state = _UpdateState.info;
@@ -137,9 +145,15 @@ class _UpdateDialogState extends State<UpdateDialog> {
         return;
       }
 
-      AppLogger.info('Instalando APK: ${_downloadedFile!.path}', tag: 'UPDATER');
+      AppLogger.info(
+        'Instalando APK: ${_downloadedFile!.path}',
+        tag: 'UPDATER',
+      );
       final result = await OpenFilex.open(_downloadedFile!.path);
-      AppLogger.info('Resultado da instalação: ${result.message}', tag: 'UPDATER');
+      AppLogger.info(
+        'Resultado da instalação: ${result.message}',
+        tag: 'UPDATER',
+      );
     } catch (e) {
       AppLogger.error('Erro ao instalar APK: $e', tag: 'UPDATER');
       if (mounted) {
@@ -160,45 +174,49 @@ class _UpdateDialogState extends State<UpdateDialog> {
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 400),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: AppColors.primary.withValues(alpha: 0.3),
-            width: 1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.primary.withValues(alpha: 0.15),
-              blurRadius: 40,
-              offset: const Offset(0, 16),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildHeader(),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildBody(),
-                  const SizedBox(height: 20),
-                  _buildActions(),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ).animate().scale(
-            duration: 400.ms,
-            curve: Curves.easeOutBack,
-            begin: const Offset(0.8, 0.8),
-          ).fadeIn(duration: 300.ms),
+      child:
+          Container(
+                constraints: const BoxConstraints(maxWidth: 400),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: AppColors.primary.withValues(alpha: 0.3),
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withValues(alpha: 0.15),
+                      blurRadius: 40,
+                      offset: const Offset(0, 16),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildHeader(),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildBody(),
+                          const SizedBox(height: 20),
+                          _buildActions(),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              )
+              .animate()
+              .scale(
+                duration: 400.ms,
+                curve: Curves.easeOutBack,
+                begin: const Offset(0.8, 0.8),
+              )
+              .fadeIn(duration: 300.ms),
     );
   }
 
@@ -251,31 +269,29 @@ class _UpdateDialogState extends State<UpdateDialog> {
         children: [
           // Ícone animado
           Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-              gradient: AppColors.primaryGradient,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.4),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8),
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  gradient: AppColors.primaryGradient,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withValues(alpha: 0.4),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            child: Icon(headerIcon, color: Colors.white, size: 32),
-          )
+                child: Icon(headerIcon, color: Colors.white, size: 32),
+              )
               .animate(
                 onPlay: (controller) =>
-                    (_state == _UpdateState.downloading || _state == _UpdateState.verifying)
-                        ? controller.repeat()
-                        : null,
+                    (_state == _UpdateState.downloading ||
+                        _state == _UpdateState.verifying)
+                    ? controller.repeat()
+                    : null,
               )
-              .shimmer(
-                duration: 1500.ms,
-                color: Colors.white24,
-              ),
+              .shimmer(duration: 1500.ms, color: Colors.white24),
           const SizedBox(height: 16),
           Text(
             headerTitle,
@@ -321,8 +337,11 @@ class _UpdateDialogState extends State<UpdateDialog> {
             ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Icon(Icons.arrow_forward_rounded,
-                  color: AppColors.primary, size: 20),
+              child: Icon(
+                Icons.arrow_forward_rounded,
+                color: AppColors.primary,
+                size: 20,
+              ),
             ),
             _buildVersionBadge(
               'Nova',
@@ -340,9 +359,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
         // Release name
         Text(
           widget.updateInfo.releaseName,
-          style: AppTypography.labelLarge.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
+          style: AppTypography.labelLarge.copyWith(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 8),
 
@@ -354,9 +371,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
           decoration: BoxDecoration(
             color: AppColors.background,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.06),
-            ),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
           ),
           child: SingleChildScrollView(
             child: Text(
@@ -376,13 +391,18 @@ class _UpdateDialogState extends State<UpdateDialog> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.storage_rounded,
-                  size: 14, color: AppColors.textTertiary),
+              const Icon(
+                Icons.storage_rounded,
+                size: 14,
+                color: AppColors.textTertiary,
+              ),
               const SizedBox(width: 6),
               Text(
                 'Tamanho: $_fileSizeFormatted',
                 style: const TextStyle(
-                    fontSize: 12, color: AppColors.textTertiary),
+                  fontSize: 12,
+                  color: AppColors.textTertiary,
+                ),
               ),
             ],
           ),
@@ -474,10 +494,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
         const SizedBox(height: 8),
         Text(
           'Solicitando permissão para instalar atualizações',
-          style: TextStyle(
-            fontSize: 11,
-            color: AppColors.textTertiary,
-          ),
+          style: TextStyle(fontSize: 11, color: AppColors.textTertiary),
           textAlign: TextAlign.center,
         ),
       ],
@@ -503,8 +520,9 @@ class _UpdateDialogState extends State<UpdateDialog> {
                   value: _progress,
                   strokeWidth: 5,
                   backgroundColor: AppColors.surfaceLight,
-                  valueColor:
-                      const AlwaysStoppedAnimation<Color>(AppColors.primary),
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                    AppColors.primary,
+                  ),
                   strokeCap: StrokeCap.round,
                 ),
               ),
@@ -526,8 +544,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
             value: _progress,
             minHeight: 6,
             backgroundColor: AppColors.surfaceLight,
-            valueColor:
-                const AlwaysStoppedAnimation<Color>(AppColors.primary),
+            valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primary),
           ),
         ),
         const SizedBox(height: 12),
@@ -588,7 +605,11 @@ class _UpdateDialogState extends State<UpdateDialog> {
                   valueColor: AlwaysStoppedAnimation<Color>(AppColors.success),
                 ),
               ),
-              const Icon(Icons.shield_rounded, color: AppColors.success, size: 24),
+              const Icon(
+                Icons.shield_rounded,
+                color: AppColors.success,
+                size: 24,
+              ),
             ],
           ),
         ),
@@ -605,10 +626,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
         const SizedBox(height: 6),
         Text(
           'Validando assinatura e hash SHA-256',
-          style: TextStyle(
-            fontSize: 11,
-            color: AppColors.textTertiary,
-          ),
+          style: TextStyle(fontSize: 11, color: AppColors.textTertiary),
           textAlign: TextAlign.center,
         ),
       ],
@@ -624,14 +642,15 @@ class _UpdateDialogState extends State<UpdateDialog> {
           decoration: BoxDecoration(
             color: AppColors.success.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: AppColors.success.withValues(alpha: 0.3),
-            ),
+            border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
           ),
           child: Row(
             children: [
-              const Icon(Icons.check_circle_rounded,
-                  color: AppColors.success, size: 22),
+              const Icon(
+                Icons.check_circle_rounded,
+                color: AppColors.success,
+                size: 22,
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -697,7 +716,11 @@ class _UpdateDialogState extends State<UpdateDialog> {
           ),
           child: Row(
             children: [
-              const Icon(Icons.info_outline_rounded, size: 14, color: AppColors.primary),
+              const Icon(
+                Icons.info_outline_rounded,
+                size: 14,
+                color: AppColors.primary,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -730,7 +753,9 @@ class _UpdateDialogState extends State<UpdateDialog> {
             label,
             style: TextStyle(
               fontSize: 11,
-              color: passed ? AppColors.success.withValues(alpha: 0.8) : AppColors.error,
+              color: passed
+                  ? AppColors.success.withValues(alpha: 0.8)
+                  : AppColors.error,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -748,14 +773,15 @@ class _UpdateDialogState extends State<UpdateDialog> {
           decoration: BoxDecoration(
             color: AppColors.error.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: AppColors.error.withValues(alpha: 0.3),
-            ),
+            border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
           ),
           child: Row(
             children: [
-              const Icon(Icons.error_outline_rounded,
-                  color: AppColors.error, size: 22),
+              const Icon(
+                Icons.error_outline_rounded,
+                color: AppColors.error,
+                size: 22,
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -784,6 +810,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
                 label: 'Depois',
                 onTap: () => Navigator.of(context).pop(),
                 isOutlined: true,
+                autofocus: true,
               ),
             ),
             const SizedBox(width: 12),
@@ -802,12 +829,14 @@ class _UpdateDialogState extends State<UpdateDialog> {
           label: 'Cancelar',
           onTap: () => Navigator.of(context).pop(),
           isOutlined: true,
+          autofocus: true,
         );
       case _UpdateState.downloading:
         return _buildButton(
           label: 'Cancelar',
           onTap: () => Navigator.of(context).pop(),
           isOutlined: true,
+          autofocus: true,
         );
       case _UpdateState.completed:
         return Row(
@@ -817,6 +846,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
                 label: 'Fechar',
                 onTap: () => Navigator.of(context).pop(),
                 isOutlined: true,
+                autofocus: true,
               ),
             ),
             const SizedBox(width: 12),
@@ -831,7 +861,8 @@ class _UpdateDialogState extends State<UpdateDialog> {
           ],
         );
       case _UpdateState.error:
-        final isPermissionError = _errorMessage.contains('Permissão') ||
+        final isPermissionError =
+            _errorMessage.contains('Permissão') ||
             _errorMessage.contains('permissão');
         return Row(
           children: [
@@ -840,6 +871,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
                 label: 'Fechar',
                 onTap: () => Navigator.of(context).pop(),
                 isOutlined: true,
+                autofocus: true,
               ),
             ),
             const SizedBox(width: 12),
@@ -862,9 +894,12 @@ class _UpdateDialogState extends State<UpdateDialog> {
     required VoidCallback onTap,
     bool isPrimary = false,
     bool isOutlined = false,
+    bool autofocus = false,
   }) {
-    return GestureDetector(
+    return FocusableSurface(
       onTap: onTap,
+      autofocus: autofocus,
+      borderRadius: BorderRadius.circular(14),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(

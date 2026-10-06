@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/config/theme/app_colors.dart';
 import '../../../core/config/theme/app_typography.dart';
 import '../../../core/services/app_logger.dart';
+import '../../../core/widgets/focusable_surface.dart';
 
 class LogViewerScreen extends ConsumerStatefulWidget {
   const LogViewerScreen({super.key});
@@ -279,8 +280,9 @@ class _LogViewerScreenState extends ConsumerState<LogViewerScreen>
               ? _levelColor(levels[i]!)
               : AppColors.primary;
 
-          return GestureDetector(
+          return FocusableSurface(
             onTap: () => setState(() => _filterLevel = levels[i]),
+            borderRadius: BorderRadius.circular(16),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -371,12 +373,13 @@ class _LogViewerScreenState extends ConsumerState<LogViewerScreen>
           ),
           const Spacer(),
           if (_filterLevel != null || _searchQuery.isNotEmpty)
-            GestureDetector(
+            FocusableSurface(
               onTap: () => setState(() {
                 _filterLevel = null;
                 _searchQuery = '';
                 _searchController.clear();
               }),
+              borderRadius: BorderRadius.circular(4),
               child: const Row(
                 children: [
                   Icon(Icons.close_rounded, size: 14, color: AppColors.primary),
