@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
+import '../../../core/config/app_environment.dart';
 import '../../../core/config/theme/app_colors.dart';
 import '../../../core/config/theme/app_typography.dart';
 import '../../../core/services/app_logger.dart';
@@ -77,6 +78,7 @@ class PlayerScreen extends ConsumerStatefulWidget {
   final String title;
   final int? season;
   final int? episode;
+  final bool isTv;
 
   const PlayerScreen({
     super.key,
@@ -85,6 +87,7 @@ class PlayerScreen extends ConsumerStatefulWidget {
     required this.title,
     this.season,
     this.episode,
+    this.isTv = false,
     this.initialSourceIndex = 0,
   });
 
@@ -146,7 +149,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   void _startHideControlsTimer() {
     _hideControlsTimer?.cancel();
-    _hideControlsTimer = Timer(const Duration(seconds: 4), () {
+    _hideControlsTimer = Timer(Duration(seconds: widget.isTv ? 8 : 4), () {
       if (mounted && _controlsVisible && !_isLoading && !_isDraggingSlider) {
         setState(() => _controlsVisible = false);
       }
@@ -306,7 +309,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
     try {
       final bridge = await rootBundle.loadString(
-        'assets/player/embed_bridge.js',
+        AppEnvironment.assetPath('assets/player/embed_bridge.js'),
       );
       if (!isCurrent()) return;
       await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
@@ -422,6 +425,37 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _videoPlayerController!.seekTo(newPos);
     }
     _startHideControlsTimer();
+  }
+
+  KeyEventResult _handleRemoteMediaKey(KeyEvent event) {
+    if (!widget.isTv ||
+        event is! KeyDownEvent ||
+        _videoPlayerController == null) {
+      return KeyEventResult.ignored;
+    }
+
+    switch (event.logicalKey) {
+      case LogicalKeyboardKey.mediaPlayPause:
+        if (!_controlsVisible) {
+          setState(() => _controlsVisible = true);
+        }
+        _executePlayPause();
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.mediaRewind:
+        if (!_controlsVisible) {
+          setState(() => _controlsVisible = true);
+        }
+        _executeSeekRelative(-10);
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.mediaFastForward:
+        if (!_controlsVisible) {
+          setState(() => _controlsVisible = true);
+        }
+        _executeSeekRelative(10);
+        return KeyEventResult.handled;
+      default:
+        return KeyEventResult.ignored;
+    }
   }
 
   void _executeSeekTo(Duration target) {
@@ -630,166 +664,174 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
     return Scaffold(
       backgroundColor: Colors.black,
-      body: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: _webViewController == null ? _toggleControls : null,
-        onDoubleTapDown: _webViewController != null
-            ? null
-            : (details) {
-                final screenWidth = MediaQuery.of(context).size.width;
-                if (details.localPosition.dx < screenWidth / 2) {
-                  // Volta 10s
-                  _executeSeekRelative(-10);
-                  setState(() => _showDoubleTapRewind = true);
-                  Future.delayed(const Duration(milliseconds: 600), () {
-                    if (mounted) setState(() => _showDoubleTapRewind = false);
-                  });
-                } else {
-                  // Avança 10s
-                  _executeSeekRelative(10);
-                  setState(() => _showDoubleTapForward = true);
-                  Future.delayed(const Duration(milliseconds: 600), () {
-                    if (mounted) setState(() => _showDoubleTapForward = false);
-                  });
-                }
-              },
-        child: Stack(
-          children: [
-            // ── Área do Player de Vídeo ──
-            Center(child: _buildPlayerContent()),
+      body: Focus(
+        autofocus: widget.isTv,
+        onKeyEvent: (node, event) {
+          if (!node.hasFocus) return KeyEventResult.ignored;
+          return _handleRemoteMediaKey(event);
+        },
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _webViewController == null ? _toggleControls : null,
+          onDoubleTapDown: _webViewController != null
+              ? null
+              : (details) {
+                  final screenWidth = MediaQuery.of(context).size.width;
+                  if (details.localPosition.dx < screenWidth / 2) {
+                    // Volta 10s
+                    _executeSeekRelative(-10);
+                    setState(() => _showDoubleTapRewind = true);
+                    Future.delayed(const Duration(milliseconds: 600), () {
+                      if (mounted) setState(() => _showDoubleTapRewind = false);
+                    });
+                  } else {
+                    // Avança 10s
+                    _executeSeekRelative(10);
+                    setState(() => _showDoubleTapForward = true);
+                    Future.delayed(const Duration(milliseconds: 600), () {
+                      if (mounted)
+                        setState(() => _showDoubleTapForward = false);
+                    });
+                  }
+                },
+          child: Stack(
+            children: [
+              // ── Área do Player de Vídeo ──
+              Center(child: _buildPlayerContent()),
 
-            // ── Feedback Visual de Duplo Toque (+10s / -10s) ──
-            if (_showDoubleTapRewind)
-              Positioned(
-                left: 60,
-                top: 0,
-                bottom: 0,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.black54,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.replay_10_rounded,
-                          color: Colors.white,
-                          size: 36,
-                        ),
-                        Text(
-                          '-10s',
-                          style: TextStyle(color: Colors.white, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-            if (_showDoubleTapForward)
-              Positioned(
-                right: 60,
-                top: 0,
-                bottom: 0,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.black54,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.forward_10_rounded,
-                          color: Colors.white,
-                          size: 36,
-                        ),
-                        Text(
-                          '+10s',
-                          style: TextStyle(color: Colors.white, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-            // ── Overlay de Controles (Fade In/Out) ──
-            if (!_isScreenLocked && _webViewController == null)
-              AnimatedOpacity(
-                opacity: _controlsVisible ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 250),
-                child: IgnorePointer(
-                  ignoring: !_controlsVisible,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.black.withOpacity(0.85),
-                          Colors.transparent,
-                          Colors.transparent,
-                          Colors.black.withOpacity(0.90),
-                        ],
-                        stops: const [0.0, 0.25, 0.70, 1.0],
+              // ── Feedback Visual de Duplo Toque (+10s / -10s) ──
+              if (_showDoubleTapRewind)
+                Positioned(
+                  left: 60,
+                  top: 0,
+                  bottom: 0,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        shape: BoxShape.circle,
                       ),
-                    ),
-                    child: SafeArea(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      child: const Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          // ── Barra Superior (Top Bar) ──
-                          _buildTopBar(subtitleText),
-
-                          // ── Centro (Botão Play/Pause Grande e Navegação 10s) ──
-                          _buildCenterControls(),
-
-                          // ── Barra Inferior com Barra de Progresso e Ajustes ──
-                          _buildBottomBar(),
+                          Icon(
+                            Icons.replay_10_rounded,
+                            color: Colors.white,
+                            size: 36,
+                          ),
+                          Text(
+                            '-10s',
+                            style: TextStyle(color: Colors.white, fontSize: 12),
+                          ),
                         ],
                       ),
                     ),
                   ),
                 ),
-              ),
 
-            // ── Botão de Desbloqueio da Tela ──
-            if (_isScreenLocked && _webViewController == null)
-              Positioned(
-                left: 20,
-                top: 20,
-                child: SafeArea(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.black54,
-                      borderRadius: BorderRadius.circular(30),
-                      border: Border.all(color: Colors.white24),
-                    ),
-                    child: IconButton(
-                      icon: const Icon(
-                        Icons.lock_rounded,
-                        color: AppColors.primary,
-                        size: 26,
+              if (_showDoubleTapForward)
+                Positioned(
+                  right: 60,
+                  top: 0,
+                  bottom: 0,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        shape: BoxShape.circle,
                       ),
-                      tooltip: 'Desbloquear Tela',
-                      onPressed: () {
-                        setState(() {
-                          _isScreenLocked = false;
-                          _controlsVisible = true;
-                        });
-                        _startHideControlsTimer();
-                      },
+                      child: const Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.forward_10_rounded,
+                            color: Colors.white,
+                            size: 36,
+                          ),
+                          Text(
+                            '+10s',
+                            style: TextStyle(color: Colors.white, fontSize: 12),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-          ],
+
+              // ── Overlay de Controles (Fade In/Out) ──
+              if (!_isScreenLocked && _webViewController == null)
+                AnimatedOpacity(
+                  opacity: _controlsVisible ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 250),
+                  child: IgnorePointer(
+                    ignoring: !_controlsVisible,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.black.withOpacity(0.85),
+                            Colors.transparent,
+                            Colors.transparent,
+                            Colors.black.withOpacity(0.90),
+                          ],
+                          stops: const [0.0, 0.25, 0.70, 1.0],
+                        ),
+                      ),
+                      child: SafeArea(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            // ── Barra Superior (Top Bar) ──
+                            _buildTopBar(subtitleText),
+
+                            // ── Centro (Botão Play/Pause Grande e Navegação 10s) ──
+                            _buildCenterControls(),
+
+                            // ── Barra Inferior com Barra de Progresso e Ajustes ──
+                            _buildBottomBar(),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+              // ── Botão de Desbloqueio da Tela ──
+              if (_isScreenLocked && _webViewController == null)
+                Positioned(
+                  left: 20,
+                  top: 20,
+                  child: SafeArea(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(30),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: IconButton(
+                        icon: const Icon(
+                          Icons.lock_rounded,
+                          color: AppColors.primary,
+                          size: 26,
+                        ),
+                        tooltip: 'Desbloquear Tela',
+                        onPressed: () {
+                          setState(() {
+                            _isScreenLocked = false;
+                            _controlsVisible = true;
+                          });
+                          _startHideControlsTimer();
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -1363,11 +1405,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           subtitle: 'Espelhar com Chromecast / Google TV',
           onTap: () {
             Navigator.pop(context);
-            CastDialog.show(
-              context,
-              title: widget.title,
-              sources: _sources,
-            );
+            CastDialog.show(context, title: widget.title, sources: _sources);
           },
         ),
         _buildSettingsItem(

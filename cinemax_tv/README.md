@@ -1,7 +1,8 @@
 # CiNey TV
 
-Variante Android TV independente, com `applicationId` `com.ciney.tv`. O app
-mobile permanece em `../cinemax` e pode ser instalado junto com esta variante.
+Host Android TV do app principal, com `applicationId` `com.ciney.tv`. O código
+Dart, as telas, serviços e assets vêm de `../cinemax`; esta pasta mantém somente
+o launcher, manifesto, recursos e configurações Android específicos da TV.
 
 ## Executar na TV
 
@@ -12,26 +13,26 @@ flutter pub get
 flutter run
 ```
 
-O launcher usa Leanback e touchscreen opcional. A navegação lateral e os cards
-suportam foco do controle remoto; o player nativo responde às teclas de mídia.
-O banner fica em `android/app/src/main/res/drawable/tv_banner.xml`.
+O launcher registra Leanback e touchscreen opcional. A navegação lateral é
+ativada pelo modo TV do app compartilhado, e o player nativo responde às teclas
+de mídia. O banner fica em `android/app/src/main/res/drawable/tv_banner.xml`.
 
 ## Validar
 
 ```powershell
 flutter analyze
-flutter test
+Push-Location ../cinemax
+flutter test --no-pub
+Pop-Location
 ```
 
-Os testes `stream_resolver` e `plugin_manager` copiados do app base esperam duas
-fontes, enquanto a implementação atual retorna quatro; essa divergência não
-foi alterada nesta variante.
+Os testes ficam somente no projeto principal, junto da implementação que cobrem.
 
 ## Release
 
 Esta pasta não inclui automação de publicação. Configure uma keystore própria e
-um fluxo de release separado para o `applicationId` `com.ciney.tv`; não use os
-scripts de publicação do app mobile.
+um fluxo de release para o `applicationId` `com.ciney.tv`. A identificação da
+variante também seleciona releases e APKs TV no atualizador compartilhado.
 
 ---
 

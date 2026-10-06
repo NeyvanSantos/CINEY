@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/config/app_environment.dart';
 import '../../../core/config/theme/app_colors.dart';
 import '../../../core/config/theme/app_typography.dart';
 import '../../../core/widgets/gradient_poster.dart';
@@ -64,67 +65,300 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   // Catálogo procedural infinito por temas TMDB
   static const List<_ProceduralTheme> _allThemes = [
-    _ProceduralTheme(title: 'Filmes de Ação & Pura Adrenalina', mediaType: 'movie', withGenres: '28'),
-    _ProceduralTheme(title: 'Séries Mais Assistidas', mediaType: 'tv', sortBy: 'popularity.desc'),
-    _ProceduralTheme(title: 'Comédias Imperdíveis', mediaType: 'movie', withGenres: '35'),
-    _ProceduralTheme(title: 'Ficção Científica & Futuro', mediaType: 'movie', withGenres: '878'),
-    _ProceduralTheme(title: 'Animes em Destaque', mediaType: 'tv', withGenres: '16', withOriginalLanguage: 'ja', defaultType: ContentType.anime),
-    _ProceduralTheme(title: 'Suspense & Mistério', mediaType: 'movie', withGenres: '53,9648'),
-    _ProceduralTheme(title: 'Doramas Coreanos Favoritos', mediaType: 'tv', withOriginalLanguage: 'ko', defaultType: ContentType.dorama),
-    _ProceduralTheme(title: 'Aventura & Fantasia', mediaType: 'movie', withGenres: '12,14'),
-    _ProceduralTheme(title: 'Terror & Sobrenatural', mediaType: 'movie', withGenres: '27'),
-    _ProceduralTheme(title: 'Séries Policiais & Investigação', mediaType: 'tv', withGenres: '80'),
-    _ProceduralTheme(title: 'Animações para Toda Família', mediaType: 'movie', withGenres: '16,10751'),
-    _ProceduralTheme(title: 'Dramas Aclamados pela Crítica', mediaType: 'movie', withGenres: '18', sortBy: 'vote_average.desc', voteCountGte: 800),
-    _ProceduralTheme(title: 'Séries de Mistério & Ficção', mediaType: 'tv', withGenres: '10765,9648'),
-    _ProceduralTheme(title: 'Romances Apaixonantes', mediaType: 'movie', withGenres: '10749'),
-    _ProceduralTheme(title: 'Documentários & Histórias Reais', mediaType: 'movie', withGenres: '99'),
-    _ProceduralTheme(title: 'Clássicos Inesquecíveis', mediaType: 'movie', releaseDateLte: '2005-01-01', sortBy: 'vote_average.desc', voteCountGte: 1500),
+    _ProceduralTheme(
+      title: 'Filmes de Ação & Pura Adrenalina',
+      mediaType: 'movie',
+      withGenres: '28',
+    ),
+    _ProceduralTheme(
+      title: 'Séries Mais Assistidas',
+      mediaType: 'tv',
+      sortBy: 'popularity.desc',
+    ),
+    _ProceduralTheme(
+      title: 'Comédias Imperdíveis',
+      mediaType: 'movie',
+      withGenres: '35',
+    ),
+    _ProceduralTheme(
+      title: 'Ficção Científica & Futuro',
+      mediaType: 'movie',
+      withGenres: '878',
+    ),
+    _ProceduralTheme(
+      title: 'Animes em Destaque',
+      mediaType: 'tv',
+      withGenres: '16',
+      withOriginalLanguage: 'ja',
+      defaultType: ContentType.anime,
+    ),
+    _ProceduralTheme(
+      title: 'Suspense & Mistério',
+      mediaType: 'movie',
+      withGenres: '53,9648',
+    ),
+    _ProceduralTheme(
+      title: 'Doramas Coreanos Favoritos',
+      mediaType: 'tv',
+      withOriginalLanguage: 'ko',
+      defaultType: ContentType.dorama,
+    ),
+    _ProceduralTheme(
+      title: 'Aventura & Fantasia',
+      mediaType: 'movie',
+      withGenres: '12,14',
+    ),
+    _ProceduralTheme(
+      title: 'Terror & Sobrenatural',
+      mediaType: 'movie',
+      withGenres: '27',
+    ),
+    _ProceduralTheme(
+      title: 'Séries Policiais & Investigação',
+      mediaType: 'tv',
+      withGenres: '80',
+    ),
+    _ProceduralTheme(
+      title: 'Animações para Toda Família',
+      mediaType: 'movie',
+      withGenres: '16,10751',
+    ),
+    _ProceduralTheme(
+      title: 'Dramas Aclamados pela Crítica',
+      mediaType: 'movie',
+      withGenres: '18',
+      sortBy: 'vote_average.desc',
+      voteCountGte: 800,
+    ),
+    _ProceduralTheme(
+      title: 'Séries de Mistério & Ficção',
+      mediaType: 'tv',
+      withGenres: '10765,9648',
+    ),
+    _ProceduralTheme(
+      title: 'Romances Apaixonantes',
+      mediaType: 'movie',
+      withGenres: '10749',
+    ),
+    _ProceduralTheme(
+      title: 'Documentários & Histórias Reais',
+      mediaType: 'movie',
+      withGenres: '99',
+    ),
+    _ProceduralTheme(
+      title: 'Clássicos Inesquecíveis',
+      mediaType: 'movie',
+      releaseDateLte: '2005-01-01',
+      sortBy: 'vote_average.desc',
+      voteCountGte: 1500,
+    ),
   ];
 
   static const List<_ProceduralTheme> _movieThemes = [
-    _ProceduralTheme(title: 'Filmes de Ação Explosiva', mediaType: 'movie', withGenres: '28'),
-    _ProceduralTheme(title: 'Comédias Divertidas', mediaType: 'movie', withGenres: '35'),
-    _ProceduralTheme(title: 'Ficção Científica & Espaço', mediaType: 'movie', withGenres: '878'),
-    _ProceduralTheme(title: 'Suspense Eletrizante', mediaType: 'movie', withGenres: '53'),
-    _ProceduralTheme(title: 'Terror de Arrepiar', mediaType: 'movie', withGenres: '27'),
-    _ProceduralTheme(title: 'Aventura & Exploração', mediaType: 'movie', withGenres: '12'),
-    _ProceduralTheme(title: 'Mundos Mágicos & Fantasia', mediaType: 'movie', withGenres: '14'),
-    _ProceduralTheme(title: 'Animações Cinematográficas', mediaType: 'movie', withGenres: '16,10751'),
-    _ProceduralTheme(title: 'Dramas Profundos & Emocionantes', mediaType: 'movie', withGenres: '18'),
-    _ProceduralTheme(title: 'Romances Apaixonados', mediaType: 'movie', withGenres: '10749'),
-    _ProceduralTheme(title: 'Guerra & Batalhas Épicas', mediaType: 'movie', withGenres: '10752'),
-    _ProceduralTheme(title: 'Filmes Mais Bem Avaliados', mediaType: 'movie', sortBy: 'vote_average.desc', voteCountGte: 1000),
-    _ProceduralTheme(title: 'Clássicos de Ouro do Cinema', mediaType: 'movie', releaseDateLte: '2005-01-01', sortBy: 'vote_average.desc', voteCountGte: 1500),
+    _ProceduralTheme(
+      title: 'Filmes de Ação Explosiva',
+      mediaType: 'movie',
+      withGenres: '28',
+    ),
+    _ProceduralTheme(
+      title: 'Comédias Divertidas',
+      mediaType: 'movie',
+      withGenres: '35',
+    ),
+    _ProceduralTheme(
+      title: 'Ficção Científica & Espaço',
+      mediaType: 'movie',
+      withGenres: '878',
+    ),
+    _ProceduralTheme(
+      title: 'Suspense Eletrizante',
+      mediaType: 'movie',
+      withGenres: '53',
+    ),
+    _ProceduralTheme(
+      title: 'Terror de Arrepiar',
+      mediaType: 'movie',
+      withGenres: '27',
+    ),
+    _ProceduralTheme(
+      title: 'Aventura & Exploração',
+      mediaType: 'movie',
+      withGenres: '12',
+    ),
+    _ProceduralTheme(
+      title: 'Mundos Mágicos & Fantasia',
+      mediaType: 'movie',
+      withGenres: '14',
+    ),
+    _ProceduralTheme(
+      title: 'Animações Cinematográficas',
+      mediaType: 'movie',
+      withGenres: '16,10751',
+    ),
+    _ProceduralTheme(
+      title: 'Dramas Profundos & Emocionantes',
+      mediaType: 'movie',
+      withGenres: '18',
+    ),
+    _ProceduralTheme(
+      title: 'Romances Apaixonados',
+      mediaType: 'movie',
+      withGenres: '10749',
+    ),
+    _ProceduralTheme(
+      title: 'Guerra & Batalhas Épicas',
+      mediaType: 'movie',
+      withGenres: '10752',
+    ),
+    _ProceduralTheme(
+      title: 'Filmes Mais Bem Avaliados',
+      mediaType: 'movie',
+      sortBy: 'vote_average.desc',
+      voteCountGte: 1000,
+    ),
+    _ProceduralTheme(
+      title: 'Clássicos de Ouro do Cinema',
+      mediaType: 'movie',
+      releaseDateLte: '2005-01-01',
+      sortBy: 'vote_average.desc',
+      voteCountGte: 1500,
+    ),
   ];
 
   static const List<_ProceduralTheme> _seriesThemes = [
-    _ProceduralTheme(title: 'Séries do Momento', mediaType: 'tv', sortBy: 'popularity.desc'),
-    _ProceduralTheme(title: 'Séries de Ação & Aventura', mediaType: 'tv', withGenres: '10759'),
-    _ProceduralTheme(title: 'Dramas Envolventes & Premiados', mediaType: 'tv', withGenres: '18'),
-    _ProceduralTheme(title: 'Mistério & Ficção Científica', mediaType: 'tv', withGenres: '10765,9648'),
-    _ProceduralTheme(title: 'Comédias & Sitcoms', mediaType: 'tv', withGenres: '35'),
-    _ProceduralTheme(title: 'Séries Policiais & Crimes Reais', mediaType: 'tv', withGenres: '80'),
-    _ProceduralTheme(title: 'Séries Documentais', mediaType: 'tv', withGenres: '99'),
-    _ProceduralTheme(title: 'Séries Mais Bem Avaliadas', mediaType: 'tv', sortBy: 'vote_average.desc', voteCountGte: 500),
+    _ProceduralTheme(
+      title: 'Séries do Momento',
+      mediaType: 'tv',
+      sortBy: 'popularity.desc',
+    ),
+    _ProceduralTheme(
+      title: 'Séries de Ação & Aventura',
+      mediaType: 'tv',
+      withGenres: '10759',
+    ),
+    _ProceduralTheme(
+      title: 'Dramas Envolventes & Premiados',
+      mediaType: 'tv',
+      withGenres: '18',
+    ),
+    _ProceduralTheme(
+      title: 'Mistério & Ficção Científica',
+      mediaType: 'tv',
+      withGenres: '10765,9648',
+    ),
+    _ProceduralTheme(
+      title: 'Comédias & Sitcoms',
+      mediaType: 'tv',
+      withGenres: '35',
+    ),
+    _ProceduralTheme(
+      title: 'Séries Policiais & Crimes Reais',
+      mediaType: 'tv',
+      withGenres: '80',
+    ),
+    _ProceduralTheme(
+      title: 'Séries Documentais',
+      mediaType: 'tv',
+      withGenres: '99',
+    ),
+    _ProceduralTheme(
+      title: 'Séries Mais Bem Avaliadas',
+      mediaType: 'tv',
+      sortBy: 'vote_average.desc',
+      voteCountGte: 500,
+    ),
   ];
 
   static const List<_ProceduralTheme> _animeThemes = [
-    _ProceduralTheme(title: 'Animes Populares no Japão', mediaType: 'tv', withGenres: '16', withOriginalLanguage: 'ja', defaultType: ContentType.anime),
-    _ProceduralTheme(title: 'Animes de Ação & Batalhas Épicas', mediaType: 'tv', withGenres: '16,10759', withOriginalLanguage: 'ja', defaultType: ContentType.anime),
-    _ProceduralTheme(title: 'Animes de Fantasia & Isekai', mediaType: 'tv', withGenres: '16,10765', withOriginalLanguage: 'ja', defaultType: ContentType.anime),
-    _ProceduralTheme(title: 'Comédias & Vida Cotidiana em Anime', mediaType: 'tv', withGenres: '16,35', withOriginalLanguage: 'ja', defaultType: ContentType.anime),
-    _ProceduralTheme(title: 'Filmes em Anime', mediaType: 'movie', withGenres: '16', withOriginalLanguage: 'ja', defaultType: ContentType.anime),
-    _ProceduralTheme(title: 'Animes Mais Bem Avaliados', mediaType: 'tv', withGenres: '16', withOriginalLanguage: 'ja', sortBy: 'vote_average.desc', voteCountGte: 100, defaultType: ContentType.anime),
+    _ProceduralTheme(
+      title: 'Animes Populares no Japão',
+      mediaType: 'tv',
+      withGenres: '16',
+      withOriginalLanguage: 'ja',
+      defaultType: ContentType.anime,
+    ),
+    _ProceduralTheme(
+      title: 'Animes de Ação & Batalhas Épicas',
+      mediaType: 'tv',
+      withGenres: '16,10759',
+      withOriginalLanguage: 'ja',
+      defaultType: ContentType.anime,
+    ),
+    _ProceduralTheme(
+      title: 'Animes de Fantasia & Isekai',
+      mediaType: 'tv',
+      withGenres: '16,10765',
+      withOriginalLanguage: 'ja',
+      defaultType: ContentType.anime,
+    ),
+    _ProceduralTheme(
+      title: 'Comédias & Vida Cotidiana em Anime',
+      mediaType: 'tv',
+      withGenres: '16,35',
+      withOriginalLanguage: 'ja',
+      defaultType: ContentType.anime,
+    ),
+    _ProceduralTheme(
+      title: 'Filmes em Anime',
+      mediaType: 'movie',
+      withGenres: '16',
+      withOriginalLanguage: 'ja',
+      defaultType: ContentType.anime,
+    ),
+    _ProceduralTheme(
+      title: 'Animes Mais Bem Avaliados',
+      mediaType: 'tv',
+      withGenres: '16',
+      withOriginalLanguage: 'ja',
+      sortBy: 'vote_average.desc',
+      voteCountGte: 100,
+      defaultType: ContentType.anime,
+    ),
   ];
 
   static const List<_ProceduralTheme> _doramaThemes = [
-    _ProceduralTheme(title: 'K-Dramas Românticos Mais Amados', mediaType: 'tv', withOriginalLanguage: 'ko', defaultType: ContentType.dorama),
-    _ProceduralTheme(title: 'Dramas Coreanos Emocionantes', mediaType: 'tv', withGenres: '18', withOriginalLanguage: 'ko', defaultType: ContentType.dorama),
-    _ProceduralTheme(title: 'Comédias Românticas Coreanas', mediaType: 'tv', withGenres: '35', withOriginalLanguage: 'ko', defaultType: ContentType.dorama),
-    _ProceduralTheme(title: 'Doramas de Suspense & Investigação', mediaType: 'tv', withGenres: '80,9648', withOriginalLanguage: 'ko', defaultType: ContentType.dorama),
-    _ProceduralTheme(title: 'Doramas Populares do Momento', mediaType: 'tv', withOriginalLanguage: 'ko', sortBy: 'popularity.desc', defaultType: ContentType.dorama),
-    _ProceduralTheme(title: 'Doramas Aclamados pelo Público', mediaType: 'tv', withOriginalLanguage: 'ko', sortBy: 'vote_average.desc', voteCountGte: 50, defaultType: ContentType.dorama),
+    _ProceduralTheme(
+      title: 'K-Dramas Românticos Mais Amados',
+      mediaType: 'tv',
+      withOriginalLanguage: 'ko',
+      defaultType: ContentType.dorama,
+    ),
+    _ProceduralTheme(
+      title: 'Dramas Coreanos Emocionantes',
+      mediaType: 'tv',
+      withGenres: '18',
+      withOriginalLanguage: 'ko',
+      defaultType: ContentType.dorama,
+    ),
+    _ProceduralTheme(
+      title: 'Comédias Românticas Coreanas',
+      mediaType: 'tv',
+      withGenres: '35',
+      withOriginalLanguage: 'ko',
+      defaultType: ContentType.dorama,
+    ),
+    _ProceduralTheme(
+      title: 'Doramas de Suspense & Investigação',
+      mediaType: 'tv',
+      withGenres: '80,9648',
+      withOriginalLanguage: 'ko',
+      defaultType: ContentType.dorama,
+    ),
+    _ProceduralTheme(
+      title: 'Doramas Populares do Momento',
+      mediaType: 'tv',
+      withOriginalLanguage: 'ko',
+      sortBy: 'popularity.desc',
+      defaultType: ContentType.dorama,
+    ),
+    _ProceduralTheme(
+      title: 'Doramas Aclamados pelo Público',
+      mediaType: 'tv',
+      withOriginalLanguage: 'ko',
+      sortBy: 'vote_average.desc',
+      voteCountGte: 50,
+      defaultType: ContentType.dorama,
+    ),
   ];
 
   @override
@@ -205,10 +439,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           final sectionTitle = _themePage > 1
               ? '${theme.title} • Lote $_themePage'
               : theme.title;
-          newSections.add(ContentCategory(
-            name: sectionTitle,
-            items: uniqueItems,
-          ));
+          newSections.add(
+            ContentCategory(name: sectionTitle, items: uniqueItems),
+          );
         }
       } catch (_) {
         // Ignora erros pontuais de conexão
@@ -297,15 +530,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (_selectedCategoryFilter == 'Todos') {
       return [
         if (launches.isNotEmpty)
-          ContentCategory(name: 'Lançamentos', items: launches.take(18).toList()),
+          ContentCategory(
+            name: 'Lançamentos',
+            items: launches.take(18).toList(),
+          ),
         if (trending.isNotEmpty)
           ContentCategory(name: 'Em Alta', items: trending.take(18).toList()),
       ];
     }
 
     if (_selectedCategoryFilter == 'Filmes') {
-      final movieLaunches = launches.where((i) => i.type == ContentType.movie).take(18).toList();
-      final movieTrending = trending.where((i) => i.type == ContentType.movie).take(18).toList();
+      final movieLaunches = launches
+          .where((i) => i.type == ContentType.movie)
+          .take(18)
+          .toList();
+      final movieTrending = trending
+          .where((i) => i.type == ContentType.movie)
+          .take(18)
+          .toList();
       return [
         if (movieLaunches.isNotEmpty)
           ContentCategory(name: 'Lançamentos em Filmes', items: movieLaunches),
@@ -315,8 +557,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
 
     if (_selectedCategoryFilter == 'Séries') {
-      final seriesLaunches = launches.where((i) => i.type == ContentType.series).take(18).toList();
-      final seriesTrending = trending.where((i) => i.type == ContentType.series).take(18).toList();
+      final seriesLaunches = launches
+          .where((i) => i.type == ContentType.series)
+          .take(18)
+          .toList();
+      final seriesTrending = trending
+          .where((i) => i.type == ContentType.series)
+          .take(18)
+          .toList();
       return [
         if (seriesLaunches.isNotEmpty)
           ContentCategory(name: 'Lançamentos em Séries', items: seriesLaunches),
@@ -326,7 +574,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
 
     if (_selectedCategoryFilter == 'Animes') {
-      final animes = items.where((i) => i.type == ContentType.anime).take(18).toList();
+      final animes = items
+          .where((i) => i.type == ContentType.anime)
+          .take(18)
+          .toList();
       return [
         if (animes.isNotEmpty)
           ContentCategory(name: 'Animes em Destaque', items: animes),
@@ -334,7 +585,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
 
     if (_selectedCategoryFilter == 'Doramas') {
-      final doramas = items.where((i) => i.type == ContentType.dorama).take(18).toList();
+      final doramas = items
+          .where((i) => i.type == ContentType.dorama)
+          .take(18)
+          .toList();
       return [
         if (doramas.isNotEmpty)
           ContentCategory(name: 'Doramas em Destaque', items: doramas),
@@ -400,7 +654,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: Image.asset(
-                      'assets/images/logo.png',
+                      AppEnvironment.assetPath('assets/images/logo.png'),
                       width: 32,
                       height: 32,
                       fit: BoxFit.cover,

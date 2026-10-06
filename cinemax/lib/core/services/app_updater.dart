@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+import '../config/app_environment.dart';
 import 'app_logger.dart';
 
 // ═══════════════════════════════════════════════════════════════
@@ -12,6 +13,7 @@ import 'app_logger.dart';
 // ═══════════════════════════════════════════════════════════════
 const String kGitHubOwner = 'NeyvanSantos';
 const String kGitHubRepo = 'CINEY';
+const String kTvReleaseTagPrefix = 'tv-v';
 // ═══════════════════════════════════════════════════════════════
 
 class AppUpdateInfo {
@@ -40,21 +42,19 @@ class AppUpdateInfo {
   });
 }
 
-enum InstallPermissionStatus {
-  granted,
-  denied,
-  permanentlyDenied,
-}
+enum InstallPermissionStatus { granted, denied, permanentlyDenied }
 
 class AppUpdater {
-  static final Dio _dio = Dio(BaseOptions(
-    connectTimeout: const Duration(seconds: 15),
-    receiveTimeout: const Duration(seconds: 30),
-    headers: {
-      'Accept': 'application/vnd.github.v3+json',
-      'User-Agent': 'CineMax-Updater',
-    },
-  ));
+  static final Dio _dio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 15),
+      receiveTimeout: const Duration(seconds: 30),
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'CineMax-Updater',
+      },
+    ),
+  );
 
   /// Verifica se existe uma atualização no GitHub Releases
   static Future<AppUpdateInfo?> checkForUpdates() async {
@@ -63,9 +63,11 @@ class AppUpdater {
 
       final packageInfo = await PackageInfo.fromPlatform();
       final currentVersion = packageInfo.version;
+      final isTvApp = AppEnvironment.isTv;
 
       final response = await _dio.get(
-        'https://api.github.com/repos/$kGitHubOwner/$kGitHubRepo/releases/latest',
+        'https://api.github.com/repos/$kGitHubOwner/$kGitHubRepo/releases'
+        '${isTvApp ? '?per_page=100' : '/latest'}',
       );
 
       if (response.statusCode != 200) {
@@ -76,9 +78,39 @@ class AppUpdater {
         return null;
       }
 
-      final data = response.data as Map<String, dynamic>;
+      final Map<String, dynamic> data;
+      if (isTvApp) {
+        final releases = response.data as List<dynamic>? ?? const <dynamic>[];
+        final tvReleases =
+            releases
+                .cast<Map<String, dynamic>>()
+                .where(
+                  (release) =>
+                      (release['tag_name'] as String? ?? '').startsWith(
+                        kTvReleaseTagPrefix,
+                      ) &&
+                      release['draft'] != true &&
+                      release['prerelease'] == true,
+                )
+                .toList()
+              ..sort((first, second) {
+                final firstVersion = (first['tag_name'] as String).replaceFirst(
+                  kTvReleaseTagPrefix,
+                  '',
+                );
+                final secondVersion = (second['tag_name'] as String)
+                    .replaceFirst(kTvReleaseTagPrefix, '');
+                return _compareVersions(secondVersion, firstVersion);
+              });
+        if (tvReleases.isEmpty) return null;
+        data = tvReleases.first;
+      } else {
+        data = response.data as Map<String, dynamic>;
+      }
       final tagName = (data['tag_name'] as String?) ?? '';
-      final latestVersion = tagName.replaceFirst(RegExp(r'^v'), '');
+      final latestVersion = isTvApp
+          ? tagName.replaceFirst(kTvReleaseTagPrefix, '')
+          : tagName.replaceFirst(RegExp(r'^v'), '');
       final releaseName = (data['name'] as String?) ?? 'Nova Atualização';
       final releaseNotes = (data['body'] as String?) ?? 'Sem notas de versão.';
       final htmlUrl = (data['html_url'] as String?) ?? '';
@@ -95,7 +127,10 @@ class AppUpdater {
 
       for (final asset in assets) {
         final name = (asset['name'] as String?) ?? '';
-        if (name.toLowerCase().endsWith('.apk')) {
+        final lowerName = name.toLowerCase();
+        if (isTvApp
+            ? lowerName.endsWith('-tv.apk')
+            : lowerName.endsWith('.apk') && !lowerName.endsWith('-tv.apk')) {
           downloadUrl = (asset['browser_download_url'] as String?) ?? '';
           fileSize = (asset['size'] as int?) ?? 0;
 
@@ -166,7 +201,10 @@ class AppUpdater {
       final status = await Permission.requestInstallPackages.status;
 
       if (status.isGranted) {
-        AppLogger.info('Permissão de instalação já concedida ✅', tag: 'UPDATER');
+        AppLogger.info(
+          'Permissão de instalação já concedida ✅',
+          tag: 'UPDATER',
+        );
         return InstallPermissionStatus.granted;
       }
 
@@ -240,7 +278,10 @@ class AppUpdater {
             await file.delete();
             return null;
           }
-          AppLogger.info('Integridade verificada com sucesso ✅', tag: 'SECURITY');
+          AppLogger.info(
+            'Integridade verificada com sucesso ✅',
+            tag: 'SECURITY',
+          );
         }
 
         return file;

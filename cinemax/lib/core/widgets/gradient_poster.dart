@@ -54,10 +54,8 @@ class GradientPoster extends StatelessWidget {
               CachedNetworkImage(
                 imageUrl: posterUrl,
                 fit: BoxFit.cover,
-                placeholder: (context, url) => ShimmerLoading.poster(
-                  width: width,
-                  height: height,
-                ),
+                placeholder: (context, url) =>
+                    ShimmerLoading.poster(width: width, height: height),
                 errorWidget: (context, url, error) => Container(
                   color: AppColors.surfaceVariant,
                   child: Column(

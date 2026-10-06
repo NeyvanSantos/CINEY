@@ -2,6 +2,13 @@
 
 CineMax - Filmes e Series com Sistema de Plugins
 
+## Android TV
+
+Este projeto é a fonte única do código Dart e dos assets Flutter. A pasta
+`../cinemax_tv` contém somente o host Android TV (launcher Leanback, banner,
+manifesto e `applicationId` `com.ciney.tv`) e depende deste projeto por caminho.
+Use `flutter run` dentro de `cinemax_tv` para executar a variante de TV.
+
 ## Console de logs
 
 Abra **Perfil → Console de Logs em Tempo Real** para acompanhar buscas,

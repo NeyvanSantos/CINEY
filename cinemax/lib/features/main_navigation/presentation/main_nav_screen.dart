@@ -5,10 +5,12 @@ import '../../../core/config/theme/app_colors.dart';
 
 class MainNavScreen extends StatelessWidget {
   final StatefulNavigationShell navigationShell;
+  final bool isTv;
 
   const MainNavScreen({
     super.key,
     required this.navigationShell,
+    this.isTv = false,
   });
 
   void _onTap(int index) {
@@ -21,6 +23,65 @@ class MainNavScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final currentIndex = navigationShell.currentIndex;
+
+    if (isTv) {
+      final isExtended = MediaQuery.sizeOf(context).width >= 1200;
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        body: SafeArea(
+          child: Row(
+            children: [
+              NavigationRail(
+                backgroundColor: AppColors.navBackground,
+                selectedIndex: currentIndex,
+                onDestinationSelected: _onTap,
+                extended: isExtended,
+                labelType: isExtended ? null : NavigationRailLabelType.all,
+                minWidth: 88,
+                minExtendedWidth: 192,
+                groupAlignment: -0.55,
+                selectedIconTheme: const IconThemeData(
+                  color: AppColors.primary,
+                  size: 26,
+                ),
+                unselectedIconTheme: const IconThemeData(
+                  color: AppColors.textTertiary,
+                  size: 24,
+                ),
+                destinations: const [
+                  NavigationRailDestination(
+                    icon: Icon(Iconsax.home_2),
+                    selectedIcon: Icon(Iconsax.home_21),
+                    label: Text('Início'),
+                  ),
+                  NavigationRailDestination(
+                    icon: Icon(Iconsax.search_normal_1),
+                    selectedIcon: Icon(Iconsax.search_normal_11),
+                    label: Text('Buscar'),
+                  ),
+                  NavigationRailDestination(
+                    icon: Icon(Iconsax.receive_square_2),
+                    selectedIcon: Icon(Iconsax.receive_square_21),
+                    label: Text('Downloads'),
+                  ),
+                  NavigationRailDestination(
+                    icon: Icon(Iconsax.setting_2),
+                    selectedIcon: Icon(Iconsax.setting_21),
+                    label: Text('Perfil'),
+                  ),
+                ],
+              ),
+              VerticalDivider(
+                width: 1,
+                thickness: 1,
+                color: Colors.white.withValues(alpha: 0.06),
+              ),
+              Expanded(child: navigationShell),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -116,7 +177,9 @@ class MainNavScreen extends StatelessWidget {
                 child: Center(
                   child: Icon(
                     isSelected ? activeIcon : icon,
-                    color: isSelected ? AppColors.primary : AppColors.textTertiary,
+                    color: isSelected
+                        ? AppColors.primary
+                        : AppColors.textTertiary,
                     size: 21,
                   ),
                 ),
@@ -127,7 +190,9 @@ class MainNavScreen extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                  color: isSelected ? AppColors.primary : AppColors.textTertiary,
+                  color: isSelected
+                      ? AppColors.primary
+                      : AppColors.textTertiary,
                   letterSpacing: 0.2,
                 ),
                 child: Text(
