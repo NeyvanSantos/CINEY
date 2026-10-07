@@ -23,6 +23,7 @@ serviços, componentes e testes compartilhados devem ficar em `cinemax/`.
 │   └── android/                # Host, launcher e recursos Android TV
 ├── receiver/                   # Receptor Google Cast compartilhado
 ├── scripts/                    # Publicação mobile
+├── supabase/                   # Migrações, modelos de e-mail e testes das contas
 ├── docs/
 │   ├── estrutura.md            # Este mapa
 │   ├── performance-optimization.md
@@ -42,7 +43,7 @@ serviços, componentes e testes compartilhados devem ficar em `cinemax/`.
 | [`core/routes/`](../cinemax/lib/core/routes/) | Rotas e navegação. |
 | [`core/services/`](../cinemax/lib/core/services/) | Serviços comuns, como logs e atualizações. |
 | [`core/widgets/`](../cinemax/lib/core/widgets/) | Componentes reutilizáveis e suporte a foco. |
-| [`features/`](../cinemax/lib/features/) | Módulos `splash`, `onboarding`, `main_navigation`, `home`, `search`, `details`, `player`, `cast`, `downloads`, `extensions` e `profile`. |
+| [`features/`](../cinemax/lib/features/) | Módulos `auth`, `favorites`, `splash`, `onboarding`, `main_navigation`, `home`, `search`, `details`, `player`, `cast`, `downloads`, `extensions` e `profile`. |
 | [`plugin_engine/`](../cinemax/lib/plugin_engine/) | Integração com catálogos e provedores de reprodução. |
 | [`test/`](../cinemax/test/) | Verificação da implementação compartilhada, inclusive interações de TV. |
 
@@ -58,6 +59,7 @@ serviços usados por vários módulos pertencem a `core/`.
 - [Política de builds e releases](../cinemax/regras/04-politica-build-e-releases.md)
 - [Notas de otimização](performance-optimization.md)
 - [Configuração do receptor Google Cast](../receiver/README.md)
+- [Configuração de contas e favoritos no Supabase](contas-supabase.md)
 - [Organização dos APKs locais](../releases/README.md)
 
 Os scripts de publicação estão em [`scripts/`](../scripts/). A imagem de apoio

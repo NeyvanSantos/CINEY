@@ -9,6 +9,7 @@ import '../../../core/services/app_logger.dart';
 import '../../../core/services/app_updater.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/update_dialog.dart';
+import '../../auth/presentation/account_card.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -85,72 +86,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Card de Perfil do Usuário
-          GlassCard(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: const BoxDecoration(
-                    gradient: AppColors.primaryGradient,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Center(
-                    child: Text(
-                      'N',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Neyvan Santos',
-                        style: AppTypography.headlineMedium,
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.primarySurface,
-                                borderRadius: BorderRadius.circular(4),
-                                border: Border.all(color: AppColors.primary),
-                              ),
-                              child: Text(
-                                'VIP PREMIUM • AUTO-UPDATE ATIVO (v$_appVersion) 🚀',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 9,
-                                  color: AppColors.primary,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
+          const AccountCard(),
 
           const SizedBox(height: 24),
           Text(

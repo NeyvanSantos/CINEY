@@ -1,7 +1,19 @@
 # Scripts do projeto
 
-Execute os comandos abaixo na raiz do repositório, somente quando for publicar
-uma versão. Os dois scripts publicam a variante mobile.
+Execute os comandos abaixo na raiz do repositório. Os scripts de publicação
+publicam a variante mobile e devem ser usados somente quando for lançar uma versão.
+
+## Testes do banco de contas
+
+Com Docker em execução:
+
+```powershell
+.\scripts\test_accounts_database.ps1
+```
+
+Cria um PostgreSQL isolado, valida a migração e as regras de acesso entre contas
+e remove o contêiner de teste. Não acessa o Supabase remoto nem publica APKs.
+Veja o [guia de contas e favoritos](../docs/contas-supabase.md).
 
 ## Publicação pelo GitHub Actions
 

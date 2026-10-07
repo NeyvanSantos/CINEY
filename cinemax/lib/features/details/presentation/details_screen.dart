@@ -10,6 +10,7 @@ import '../../../plugin_engine/models/content_item.dart';
 import '../../../plugin_engine/models/stream_source.dart';
 import '../../../plugin_engine/runtime/stream_resolver.dart';
 import '../../cast/presentation/cast_dialog.dart';
+import '../../favorites/presentation/favorite_button.dart';
 
 class DetailsScreen extends ConsumerStatefulWidget {
   final String contentId;
@@ -113,17 +114,18 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
     );
   }
 
-
   void _playWithServerSelection({
     required ContentDetail item,
     int? season,
     int? episode,
     String? episodeTitle,
   }) {
-    final effectiveSeason =
-        item.type == ContentType.movie ? null : (season ?? _selectedSeason);
-    final effectiveEpisode =
-        item.type == ContentType.movie ? null : (episode ?? 1);
+    final effectiveSeason = item.type == ContentType.movie
+        ? null
+        : (season ?? _selectedSeason);
+    final effectiveEpisode = item.type == ContentType.movie
+        ? null
+        : (episode ?? 1);
     final titleText = episodeTitle != null && episodeTitle.isNotEmpty
         ? '${item.title} - $episodeTitle'
         : item.title;
@@ -247,9 +249,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
 
                   final badgeText = isEmbedMovies
                       ? 'Recomendado PT-BR'
-                      : (isSuperFlix
-                          ? 'Dublado 1080p'
-                          : source.quality);
+                      : (isSuperFlix ? 'Dublado 1080p' : source.quality);
 
                   final badgeColor = isEmbedMovies || isSuperFlix
                       ? const Color(0xFF10B981)
@@ -285,8 +285,8 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                                 isEmbedMovies
                                     ? Icons.star_rounded
                                     : (isSuperFlix
-                                        ? Icons.record_voice_over_rounded
-                                        : Icons.dns_rounded),
+                                          ? Icons.record_voice_over_rounded
+                                          : Icons.dns_rounded),
                                 color: badgeColor,
                                 size: 24,
                               ),
@@ -342,8 +342,8 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                                     isEmbedMovies
                                         ? 'Dublado e Legendado • Player Adaptativo'
                                         : (isSuperFlix
-                                            ? 'Dublado PT-BR • Full HD 1080p'
-                                            : '${source.quality} • ${source.isEmbed ? "Embed" : "Direto"}'),
+                                              ? 'Dublado PT-BR • Full HD 1080p'
+                                              : '${source.quality} • ${source.isEmbed ? "Embed" : "Direto"}'),
                                     style: const TextStyle(
                                       fontSize: 12,
                                       color: Colors.white60,
@@ -427,18 +427,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                 tooltip: 'Transmitir para TV',
                 onPressed: () => _showCast(item),
               ),
-              IconButton(
-                icon: const Icon(
-                  Icons.favorite_border_rounded,
-                  color: Colors.white,
-                ),
-                tooltip: 'Favoritar',
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Adicionado aos Favoritos!')),
-                  );
-                },
-              ),
+              FavoriteButton.fromDetail(detail: item),
               IconButton(
                 icon: const Icon(Icons.share_rounded, color: Colors.white),
                 tooltip: 'Compartilhar',
@@ -609,25 +598,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                         tooltip: 'Download Offline',
                       ),
                       const SizedBox(width: 8),
-                      IconButton.filledTonal(
-                        onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Adicionado aos Favoritos!'),
-                              backgroundColor: AppColors.primary,
-                            ),
-                          );
-                        },
-                        style: IconButton.styleFrom(
-                          backgroundColor: AppColors.surfaceLight,
-                          padding: const EdgeInsets.all(14),
-                        ),
-                        icon: const Icon(
-                          Icons.favorite_border_rounded,
-                          color: Colors.white,
-                        ),
-                        tooltip: 'Favoritar',
-                      ),
+                      FavoriteButton.fromDetail(detail: item),
                     ],
                   ),
 

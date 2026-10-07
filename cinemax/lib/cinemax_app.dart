@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'core/config/account_config.dart';
+import 'features/auth/services/account_repository.dart';
+import 'features/auth/services/secure_session_storage.dart';
 import 'core/config/app_environment.dart';
 import 'core/config/theme/app_theme.dart';
 import 'core/routes/app_router.dart';
@@ -35,7 +39,35 @@ Future<void> runCinemaxApp({bool isTv = false}) async {
     ),
   );
 
-  runApp(ProviderScope(child: CinemaxApp(isTv: isTv)));
+  SupabaseClient? accountClient;
+  const config = AccountConfig.environment;
+  if (config.isConfigured) {
+    try {
+      await Supabase.initialize(
+        url: config.url,
+        publishableKey: config.publicKey,
+        debug: false,
+        authOptions: FlutterAuthClientOptions(
+          detectSessionInUri: false,
+          localStorage: SecureSessionStorage(
+            'ciney-session-${Uri.parse(config.url).host}',
+          ),
+        ),
+      );
+      accountClient = Supabase.instance.client;
+    } catch (error) {
+      AppLogger.warn(
+        'Contas indisponíveis na inicialização (${error.runtimeType}).',
+        tag: 'ACCOUNT',
+      );
+    }
+  }
+  runApp(
+    ProviderScope(
+      overrides: [supabaseClientProvider.overrideWithValue(accountClient)],
+      child: CinemaxApp(isTv: isTv),
+    ),
+  );
 }
 
 class CinemaxApp extends StatelessWidget {

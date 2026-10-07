@@ -1,0 +1,441 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/config/theme/app_colors.dart';
+import '../../../core/config/theme/app_typography.dart';
+import '../../../core/widgets/glass_card.dart';
+import '../services/account_messages.dart';
+import '../services/account_repository.dart';
+
+enum _Step { login, signup, confirm, forgot, recoveryCode, newPassword }
+
+class AuthScreen extends ConsumerStatefulWidget {
+  const AuthScreen({super.key});
+
+  @override
+  ConsumerState<AuthScreen> createState() => _AuthScreenState();
+}
+
+class _AuthScreenState extends ConsumerState<AuthScreen> {
+  var _form = GlobalKey<FormState>();
+  final _name = TextEditingController();
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+  final _repeatPassword = TextEditingController();
+  final _code = TextEditingController();
+  _Step _step = _Step.login;
+  bool _busy = false;
+  bool _hidePassword = true;
+  String? _error;
+  String? _notice;
+
+  @override
+  void dispose() {
+    for (final controller in [
+      _name,
+      _email,
+      _password,
+      _repeatPassword,
+      _code,
+    ]) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  void _changeStep(_Step step, {String? notice}) {
+    setState(() {
+      _step = step;
+      _form = GlobalKey<FormState>();
+      _error = null;
+      _notice = notice;
+      _hidePassword = true;
+      _password.clear();
+      _repeatPassword.clear();
+      _code.clear();
+    });
+  }
+
+  void _finish() {
+    TextInput.finishAutofillContext();
+    if (context.canPop()) {
+      context.pop(true);
+    } else {
+      context.go('/profile');
+    }
+  }
+
+  Future<void> _submit() async {
+    if (_busy || !(_form.currentState?.validate() ?? false)) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+      _notice = null;
+    });
+    final repository = ref.read(accountRepositoryProvider);
+    try {
+      switch (_step) {
+        case _Step.login:
+          await repository.signIn(_email.text, _password.text);
+          if (mounted) _finish();
+        case _Step.signup:
+          final signedIn = await repository.signUp(
+            _name.text,
+            _email.text,
+            _password.text,
+          );
+          if (!mounted) return;
+          if (signedIn) {
+            _finish();
+          } else {
+            _changeStep(
+              _Step.confirm,
+              notice: 'Confira seu e-mail e digite o código de confirmação.',
+            );
+          }
+        case _Step.confirm:
+          await repository.confirmEmail(_email.text, _code.text);
+          if (mounted) _finish();
+        case _Step.forgot:
+          await repository.requestPasswordReset(_email.text);
+          if (mounted) {
+            _changeStep(
+              _Step.recoveryCode,
+              notice:
+                  'Se houver uma conta com esse e-mail, você receberá um código.',
+            );
+          }
+        case _Step.recoveryCode:
+          await repository.verifyRecovery(_email.text, _code.text);
+          if (mounted) _changeStep(_Step.newPassword);
+        case _Step.newPassword:
+          await repository.updatePassword(_password.text);
+          if (mounted) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('Senha atualizada.')));
+            _finish();
+          }
+      }
+    } catch (error) {
+      final message = accountErrorMessage(error);
+      if (mounted) {
+        if (error is AuthException && error.code == 'email_not_confirmed') {
+          _changeStep(
+            _Step.confirm,
+            notice:
+                'Confirme seu e-mail. Se precisar, solicite um novo código.',
+          );
+        } else {
+          setState(() => _error = message);
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _resend() async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+      _notice = null;
+    });
+    try {
+      final repository = ref.read(accountRepositoryProvider);
+      if (_step == _Step.confirm) {
+        await repository.resendConfirmation(_email.text);
+      } else {
+        await repository.requestPasswordReset(_email.text);
+      }
+      if (mounted) {
+        setState(
+          () => _notice =
+              'Se o e-mail estiver correto e elegível, um novo código será enviado.',
+        );
+      }
+    } catch (error) {
+      final message = accountErrorMessage(error);
+      if (mounted) setState(() => _error = message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final configured = ref.watch(accountRepositoryProvider).isConfigured;
+    final title = switch (_step) {
+      _Step.login => 'Entrar no CiNey',
+      _Step.signup => 'Criar sua conta',
+      _Step.confirm => 'Confirmar e-mail',
+      _Step.forgot || _Step.recoveryCode => 'Recuperar senha',
+      _Step.newPassword => 'Escolher nova senha',
+    };
+    final codeStep = _step == _Step.confirm || _step == _Step.recoveryCode;
+    final newPassword = _step == _Step.signup || _step == _Step.newPassword;
+    return PopScope(
+      canPop: !_busy,
+      child: Scaffold(
+        appBar: AppBar(title: Text(title, style: AppTypography.headlineMedium)),
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 460),
+                child: GlassCard(
+                  child: !configured
+                      ? Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.person_outline,
+                              color: AppColors.primary,
+                              size: 48,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Contas ainda indisponíveis',
+                              style: AppTypography.headlineMedium,
+                            ),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'Você pode continuar explorando o catálogo e assistir como visitante.',
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 16),
+                            TextButton(
+                              onPressed: () => context.go('/home'),
+                              child: const Text('Explorar catálogo'),
+                            ),
+                          ],
+                        )
+                      : AutofillGroup(
+                          child: Form(
+                            key: _form,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const Icon(
+                                  Icons.movie_filter_outlined,
+                                  color: AppColors.primary,
+                                  size: 48,
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'Seus favoritos no celular e na TV.',
+                                  style: AppTypography.bodyMedium,
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 24),
+                                if (_step == _Step.signup) ...[
+                                  TextFormField(
+                                    key: const ValueKey('name'),
+                                    controller: _name,
+                                    enabled: !_busy,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Nome',
+                                    ),
+                                    textInputAction: TextInputAction.next,
+                                    maxLength: 60,
+                                    autofillHints: const [AutofillHints.name],
+                                    validator: validateDisplayName,
+                                  ),
+                                  const SizedBox(height: 12),
+                                ],
+                                if (_step != _Step.newPassword) ...[
+                                  TextFormField(
+                                    key: const ValueKey('email'),
+                                    controller: _email,
+                                    enabled: !_busy && !codeStep,
+                                    decoration: const InputDecoration(
+                                      labelText: 'E-mail',
+                                    ),
+                                    keyboardType: TextInputType.emailAddress,
+                                    autocorrect: false,
+                                    textInputAction: TextInputAction.next,
+                                    autofillHints: const [AutofillHints.email],
+                                    validator: validateEmail,
+                                  ),
+                                  const SizedBox(height: 16),
+                                ],
+                                if (_step == _Step.login || newPassword) ...[
+                                  TextFormField(
+                                    key: ValueKey('password-$_step'),
+                                    controller: _password,
+                                    enabled: !_busy,
+                                    obscureText: _hidePassword,
+                                    enableSuggestions: false,
+                                    autocorrect: false,
+                                    decoration: InputDecoration(
+                                      labelText: newPassword
+                                          ? 'Nova senha'
+                                          : 'Senha',
+                                      suffixIcon: IconButton(
+                                        tooltip: _hidePassword
+                                            ? 'Mostrar senha'
+                                            : 'Ocultar senha',
+                                        onPressed: _busy
+                                            ? null
+                                            : () => setState(
+                                                () => _hidePassword =
+                                                    !_hidePassword,
+                                              ),
+                                        icon: Icon(
+                                          _hidePassword
+                                              ? Icons.visibility_outlined
+                                              : Icons.visibility_off_outlined,
+                                        ),
+                                      ),
+                                    ),
+                                    autofillHints: [
+                                      newPassword
+                                          ? AutofillHints.newPassword
+                                          : AutofillHints.password,
+                                    ],
+                                    textInputAction: newPassword
+                                        ? TextInputAction.next
+                                        : TextInputAction.done,
+                                    onFieldSubmitted: newPassword
+                                        ? null
+                                        : (_) => _submit(),
+                                    validator: newPassword
+                                        ? validateNewPassword
+                                        : (value) =>
+                                              value == null || value.isEmpty
+                                              ? 'Informe sua senha.'
+                                              : null,
+                                  ),
+                                  const SizedBox(height: 16),
+                                ],
+                                if (newPassword) ...[
+                                  TextFormField(
+                                    key: const ValueKey('repeat-password'),
+                                    controller: _repeatPassword,
+                                    enabled: !_busy,
+                                    obscureText: _hidePassword,
+                                    enableSuggestions: false,
+                                    autocorrect: false,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Confirmar senha',
+                                    ),
+                                    textInputAction: TextInputAction.done,
+                                    onFieldSubmitted: (_) => _submit(),
+                                    validator: (value) =>
+                                        value == _password.text
+                                        ? null
+                                        : 'As senhas precisam ser iguais.',
+                                  ),
+                                  const SizedBox(height: 16),
+                                ],
+                                if (codeStep) ...[
+                                  TextFormField(
+                                    key: const ValueKey('code'),
+                                    controller: _code,
+                                    enabled: !_busy,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Código recebido por e-mail',
+                                    ),
+                                    keyboardType: TextInputType.number,
+                                    textInputAction: TextInputAction.done,
+                                    inputFormatters: [
+                                      FilteringTextInputFormatter.digitsOnly,
+                                    ],
+                                    autofillHints: const [
+                                      AutofillHints.oneTimeCode,
+                                    ],
+                                    validator: (value) =>
+                                        RegExp(
+                                          r'^\d{6,10}$',
+                                        ).hasMatch(value ?? '')
+                                        ? null
+                                        : 'Digite o código recebido.',
+                                    onFieldSubmitted: (_) => _submit(),
+                                  ),
+                                  const SizedBox(height: 16),
+                                ],
+                                if (_notice != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 16),
+                                    child: Text(
+                                      _notice!,
+                                      style: AppTypography.bodySmall,
+                                    ),
+                                  ),
+                                if (_error != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 16),
+                                    child: Semantics(
+                                      liveRegion: true,
+                                      child: Text(
+                                        _error!,
+                                        style: AppTypography.bodySmall.copyWith(
+                                          color: AppColors.error,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                FilledButton(
+                                  onPressed: _busy ? null : _submit,
+                                  child: _busy
+                                      ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : Text(switch (_step) {
+                                          _Step.login => 'Entrar',
+                                          _Step.signup => 'Criar conta',
+                                          _Step.confirm || _Step.recoveryCode =>
+                                            'Confirmar código',
+                                          _Step.forgot => 'Enviar código',
+                                          _Step.newPassword =>
+                                            'Salvar nova senha',
+                                        }),
+                                ),
+                                if (_step == _Step.login) ...[
+                                  TextButton(
+                                    onPressed: _busy
+                                        ? null
+                                        : () => _changeStep(_Step.forgot),
+                                    child: const Text('Esqueci minha senha'),
+                                  ),
+                                  OutlinedButton(
+                                    onPressed: _busy
+                                        ? null
+                                        : () => _changeStep(_Step.signup),
+                                    child: const Text('Criar conta'),
+                                  ),
+                                ],
+                                if (codeStep)
+                                  TextButton(
+                                    onPressed: _busy ? null : _resend,
+                                    child: const Text('Reenviar código'),
+                                  ),
+                                if (_step != _Step.login)
+                                  TextButton(
+                                    onPressed: _busy
+                                        ? null
+                                        : () => _changeStep(_Step.login),
+                                    child: const Text('Voltar para entrar'),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                ).animate().fadeIn(duration: 180.ms),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

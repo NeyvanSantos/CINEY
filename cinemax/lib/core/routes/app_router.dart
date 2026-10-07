@@ -13,6 +13,11 @@ import '../../features/profile/presentation/profile_screen.dart';
 import '../../features/search/presentation/search_screen.dart';
 import '../../features/splash/presentation/splash_screen.dart';
 import '../../plugin_engine/models/content_item.dart';
+import '../../features/auth/presentation/auth_screen.dart';
+import '../../features/auth/presentation/account_screen.dart';
+import '../../features/auth/presentation/tv_pairing_scanner_screen.dart';
+import '../../features/auth/presentation/tv_pairing_screen.dart';
+import '../../features/favorites/presentation/favorites_screen.dart';
 
 GoRouter createAppRouter({bool isTv = false}) {
   final rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -20,6 +25,31 @@ GoRouter createAppRouter({bool isTv = false}) {
     navigatorKey: rootNavigatorKey,
     initialLocation: '/splash',
     routes: [
+      GoRoute(
+        path: '/auth',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) => const AuthScreen(),
+      ),
+      GoRoute(
+        path: '/account',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) => const AccountScreen(),
+      ),
+      GoRoute(
+        path: '/favorites',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) => const FavoritesScreen(),
+      ),
+      GoRoute(
+        path: '/tv-pair',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) => const TvPairingScreen(),
+      ),
+      GoRoute(
+        path: '/tv-pair-scan',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) => const TvPairingScannerScreen(),
+      ),
       // Splash Screen
       GoRoute(
         path: '/splash',

@@ -29,6 +29,10 @@ dependencies:
   hive_flutter: ^1.1.0
   shared_preferences: ^2.3.4
   path_provider: ^2.1.5
+  flutter_secure_storage: ^10.3.4
+
+  # Accounts and cloud favorites
+  supabase_flutter: ^2.18.0
 
   # UI/UX
   cached_network_image: ^3.4.1
@@ -59,6 +63,8 @@ dependencies:
   package_info_plus: ^8.1.0
   open_filex: ^4.5.0
   crypto: ^3.0.6
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^7.4.2
 
 dev_dependencies:
   flutter_test:

@@ -14,3 +14,4 @@ release-notes-temp.md
 # Logs and secrets
 *.log
 .env
+supabase/.temp/

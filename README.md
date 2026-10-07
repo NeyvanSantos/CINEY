@@ -24,6 +24,7 @@ A busca aceita sugestões enquanto você digita e permite abrir os detalhes do t
 - **Fontes de reprodução:** escolha entre as fontes externas disponibilizadas para o título.
 - **Diagnóstico integrado:** console de logs com pesquisa e filtros para ajudar a investigar problemas.
 - **Android TV:** navegação lateral adaptada ao controle remoto e teclas de mídia no player.
+- **Contas e favoritos:** cadastro, perfil e lista compartilhada entre celular e TV, após [configurar o Supabase](docs/contas-supabase.md).
 - **Atualizações:** verificação de releases do projeto e validação SHA-256 quando o hash está disponível.
 
 ## Uma base, duas experiências
@@ -31,6 +32,11 @@ A busca aceita sugestões enquanto você digita e permite abrir os detalhes do t
 O projeto [`cinemax/`](cinemax/README.md) é a fonte única das telas, serviços, motor de plugins e assets Flutter. O projeto [`cinemax_tv/`](cinemax_tv/README.md) mantém somente o host Android TV: manifesto, launcher Leanback, banner e configurações específicas da plataforma. Assim, melhorias na base podem ser compartilhadas entre celular e TV, enquanto cada variante conserva seu identificador e canal de atualização.
 
 ## Segurança e privacidade
+
+As contas são opcionais. O Supabase processa a autenticação e armazena o perfil
+e os favoritos de cada usuário. A sessão fica no armazenamento seguro do
+dispositivo; senhas não são salvas pelo aplicativo. É possível excluir a conta
+e seus dados em **Perfil → Gerenciar conta**.
 
 CiNey precisa de conexão com a internet para consultar catálogos, pesquisar títulos, carregar fontes e verificar atualizações. O aplicativo não hospeda os vídeos: a reprodução pode abrir conteúdo de provedores externos em uma WebView. As práticas de privacidade, a disponibilidade, a qualidade e os anúncios desses serviços são responsabilidade de cada provedor; o app não certifica nem garante o conteúdo externo.
 
@@ -43,6 +49,9 @@ O console guarda até 500 registros em memória durante a sessão; eles são apa
 A opção **Transmitir** utiliza o fluxo de espelhamento de tela pelo Google Home para reproduções incorporadas. O endereço HTML de um provedor não é enviado ao receptor como se fosse um arquivo de vídeo. É necessário que celular e TV estejam na mesma rede Wi-Fi; consulte as [instruções do Google Cast](https://support.google.com/googlecast/answer/6059461?hl=pt-BR).
 
 ## Executar localmente
+
+As contas e os favoritos usam Supabase. Consulte o [guia de configuração](docs/contas-supabase.md)
+para ativar o banco e os e-mails de confirmação e recuperação.
 
 Requisitos: Flutter com Dart 3.11.4 ou superior e Android SDK configurado.
 

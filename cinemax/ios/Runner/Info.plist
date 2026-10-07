@@ -8,6 +8,8 @@
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
 	<string>CiNey</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Use a câmera para escanear o QR code de conexão da TV.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
