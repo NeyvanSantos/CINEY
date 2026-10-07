@@ -175,6 +175,14 @@ GoRouter createAppRouter({bool isTv = false}) {
           final contentId = state.pathParameters['contentId'] ?? '';
           final pluginId = state.pathParameters['pluginId'] ?? '';
           final title = state.uri.queryParameters['title'] ?? 'Reproduzindo';
+          final contentTitle = state.uri.queryParameters['contentTitle'];
+          final posterUrl = state.uri.queryParameters['poster'] ?? '';
+          final mediaType = state.uri.queryParameters['type'] ?? 'movie';
+          final resumePositionMs =
+              int.tryParse(
+                state.uri.queryParameters['resumePositionMs'] ?? '',
+              ) ??
+              0;
           final season = int.tryParse(
             state.uri.queryParameters['season'] ?? '',
           );
@@ -187,8 +195,12 @@ GoRouter createAppRouter({bool isTv = false}) {
             contentId: contentId,
             pluginId: pluginId,
             title: title,
+            contentTitle: contentTitle,
+            posterUrl: posterUrl,
+            mediaType: mediaType,
             season: season,
             episode: episode,
+            resumePositionMs: resumePositionMs,
             initialSourceIndex: initialSourceIndex,
             isTv: isTv,
           );

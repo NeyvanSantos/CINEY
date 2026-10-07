@@ -11,6 +11,7 @@ import '../../../core/config/app_environment.dart';
 import '../../../core/config/theme/app_colors.dart';
 import '../../../core/config/theme/app_typography.dart';
 import '../../../core/services/app_logger.dart';
+import '../../../plugin_engine/models/content_item.dart';
 import '../../../plugin_engine/manager/plugin_manager.dart';
 import '../../../plugin_engine/models/stream_source.dart';
 import '../../cast/presentation/cast_dialog.dart';
@@ -19,6 +20,7 @@ import '../../cast/services/web_cast_server.dart';
 import '../services/embed_playback_session.dart';
 import '../services/embed_navigation.dart';
 import '../services/embed_document.dart';
+import '../services/watch_history_repository.dart';
 
 enum VideoQuality {
   auto('Automática', 'Adapta à conexão', Icons.auto_awesome_rounded),
@@ -78,6 +80,10 @@ class PlayerScreen extends ConsumerStatefulWidget {
   final String contentId;
   final String pluginId;
   final String title;
+  final String? contentTitle;
+  final String posterUrl;
+  final String mediaType;
+  final int resumePositionMs;
   final int? season;
   final int? episode;
   final bool isTv;
@@ -87,6 +93,10 @@ class PlayerScreen extends ConsumerStatefulWidget {
     required this.contentId,
     required this.pluginId,
     required this.title,
+    this.contentTitle,
+    this.posterUrl = '',
+    this.mediaType = 'movie',
+    this.resumePositionMs = 0,
     this.season,
     this.episode,
     this.isTv = false,
@@ -101,6 +111,10 @@ class PlayerScreen extends ConsumerStatefulWidget {
 
 class _PlayerScreenState extends ConsumerState<PlayerScreen>
     with SingleTickerProviderStateMixin {
+  static const _tvPointerChannel = MethodChannel(
+    'com.cinemax.cinemax/tv_pointer',
+  );
+
   // Player nativo
   VideoPlayerController? _videoPlayerController;
   ChewieController? _chewieController;
@@ -111,6 +125,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   final FocusNode _playerFocusNode = FocusNode(
     debugLabel: 'Native player media controls',
   );
+  final FocusNode _tvPointerFocusNode = FocusNode(
+    debugLabel: 'TV embed virtual pointer',
+  );
+  Offset? _tvPointerPosition;
+  bool _tvPointerEnabled = false;
+  late Future<void> _watchHistoryStarted;
+  DateTime _lastWatchProgressSave = DateTime.fromMillisecondsSinceEpoch(0);
 
   // Lista de fontes e estado
   List<StreamSource> _sources = [];
@@ -154,8 +175,52 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
+    _watchHistoryStarted = _markWatchHistoryStarted();
     _startHideControlsTimer();
     _loadStreams();
+  }
+
+  ContentItem get _watchHistoryItem => ContentItem(
+    id: widget.contentId,
+    title: widget.contentTitle ?? widget.title,
+    posterUrl: widget.posterUrl,
+    type: ContentType.fromString(widget.mediaType),
+    pluginId: widget.pluginId,
+  );
+
+  Future<void> _markWatchHistoryStarted() async {
+    final repository = ref.read(watchHistoryRepositoryProvider);
+    await repository.markStarted(
+      _watchHistoryItem,
+      season: widget.season,
+      episode: widget.episode,
+    );
+    if (mounted) ref.invalidate(watchHistoryProvider);
+  }
+
+  Future<void> _saveWatchProgress({
+    required Duration position,
+    required Duration duration,
+    bool force = false,
+  }) async {
+    if (position < const Duration(seconds: 5)) return;
+    final now = DateTime.now();
+    if (!force &&
+        now.difference(_lastWatchProgressSave) < const Duration(seconds: 12)) {
+      return;
+    }
+    _lastWatchProgressSave = now;
+
+    final repository = ref.read(watchHistoryRepositoryProvider);
+    await _watchHistoryStarted;
+    await repository.saveProgress(
+      _watchHistoryItem,
+      position: position,
+      duration: duration,
+      season: widget.season,
+      episode: widget.episode,
+    );
+    if (mounted) ref.invalidate(watchHistoryProvider);
   }
 
   void _startHideControlsTimer() {
@@ -264,7 +329,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _controlsVisible = true;
       _currentPosition = Duration.zero;
       _totalDuration = Duration.zero;
+      _tvPointerEnabled = false;
+      _tvPointerPosition = null;
     });
+    _tvPointerFocusNode.unfocus();
 
     _disposeCurrentPlayer();
 
@@ -277,9 +345,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   Future<void> _initWebViewPlayer(StreamSource source) async {
     _playerFocusNode.unfocus();
+    _tvPointerFocusNode.unfocus();
     final controller = WebViewController();
     bool isCurrent() => mounted && _webViewController == controller;
     _webViewController = controller;
+    if (widget.isTv) {
+      setState(() {
+        _tvPointerEnabled = true;
+        _tvPointerPosition = null;
+      });
+    }
     var loggedReady = false;
     var loggedPlaying = false;
     var loggedUnobservable = false;
@@ -309,9 +384,24 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             tag: 'PLAYER',
           );
         }
+        if (widget.isTv && session.playing && _tvPointerEnabled) {
+          _tvPointerEnabled = false;
+          _tvPointerFocusNode.unfocus();
+        }
+        final position = Duration(
+          milliseconds: (session.position * 1000).round(),
+        );
+        final duration = Duration(
+          milliseconds: (session.duration * 1000).round(),
+        );
         setState(() {
           _isLoading = !session.ready;
+          _currentPosition = position;
+          _totalDuration = duration;
         });
+        if (session.ready) {
+          unawaited(_saveWatchProgress(position: position, duration: duration));
+        }
       },
       onFailure: (reason) {
         if (isCurrent()) _tryNextSource(reason);
@@ -496,6 +586,69 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _startHideControlsTimer();
   }
 
+  KeyEventResult _handleTvPointerKey(KeyEvent event, Size size) {
+    if (!widget.isTv ||
+        !_tvPointerEnabled ||
+        (event is! KeyDownEvent && event is! KeyRepeatEvent)) {
+      return KeyEventResult.ignored;
+    }
+
+    final position =
+        _tvPointerPosition ?? Offset(size.width / 2, size.height / 2);
+    const step = 36.0;
+    final nextPosition = switch (event.logicalKey) {
+      LogicalKeyboardKey.arrowUp => Offset(position.dx, position.dy - step),
+      LogicalKeyboardKey.arrowDown => Offset(position.dx, position.dy + step),
+      LogicalKeyboardKey.arrowLeft => Offset(position.dx - step, position.dy),
+      LogicalKeyboardKey.arrowRight => Offset(position.dx + step, position.dy),
+      _ => null,
+    };
+
+    if (nextPosition != null) {
+      setState(() {
+        _tvPointerPosition = Offset(
+          nextPosition.dx.clamp(12.0, size.width - 12.0),
+          nextPosition.dy.clamp(12.0, size.height - 12.0),
+        );
+      });
+      return KeyEventResult.handled;
+    }
+
+    final isSelectKey =
+        event.logicalKey == LogicalKeyboardKey.select ||
+        event.logicalKey == LogicalKeyboardKey.enter ||
+        event.logicalKey == LogicalKeyboardKey.numpadEnter ||
+        event.logicalKey == LogicalKeyboardKey.gameButtonA;
+    if (isSelectKey) {
+      if (event is KeyDownEvent) {
+        unawaited(_dispatchTvPointerTap(position, size));
+      }
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
+  Future<void> _dispatchTvPointerTap(Offset position, Size size) async {
+    if (size.width <= 0 || size.height <= 0) return;
+    try {
+      await _tvPointerChannel.invokeMethod<bool>('tap', {
+        'x': position.dx / size.width,
+        'y': position.dy / size.height,
+      });
+    } on PlatformException catch (error) {
+      AppLogger.warn(
+        'Não foi possível clicar no player da TV: ${error.code}.',
+        tag: 'WEBVIEW',
+      );
+    } on MissingPluginException {
+      AppLogger.warn(
+        'O controle virtual está disponível apenas na versão TV.',
+        tag: 'WEBVIEW',
+      );
+    }
+  }
+
   void _tryNextSource(String reason) {
     if (!mounted) return;
     AppLogger.warn(
@@ -579,6 +732,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         await controller.dispose();
         return;
       }
+      final resumePosition = Duration(milliseconds: widget.resumePositionMs);
+      if (resumePosition > Duration.zero &&
+          controller.value.duration - resumePosition >
+              const Duration(seconds: 20)) {
+        await controller.seekTo(resumePosition);
+      }
       AppLogger.success(
         'Player nativo pronto: ${source.server}.',
         tag: 'PLAYER',
@@ -598,11 +757,21 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         if (_nativeProgressTimer?.isActive ?? false) return;
         _nativeProgressTimer = Timer(const Duration(milliseconds: 250), () {
           if (!mounted || _videoPlayerController != controller) return;
+          final value = controller.value;
           setState(() {
-            _currentPosition = controller.value.position;
-            _totalDuration = controller.value.duration;
-            _isPlaying = controller.value.isPlaying;
+            _currentPosition = value.position;
+            _totalDuration = value.duration;
+            _isPlaying = value.isPlaying;
           });
+          unawaited(
+            _saveWatchProgress(
+              position: value.position,
+              duration: value.duration,
+              force:
+                  value.duration > Duration.zero &&
+                  value.position >= value.duration - const Duration(seconds: 2),
+            ),
+          );
         });
       });
 
@@ -656,6 +825,28 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   void _disposeCurrentPlayer() {
+    final nativeController = _videoPlayerController;
+    if (nativeController?.value.isInitialized == true) {
+      unawaited(
+        _saveWatchProgress(
+          position: nativeController!.value.position,
+          duration: nativeController.value.duration,
+          force: true,
+        ),
+      );
+    } else if (_embedSession != null) {
+      unawaited(
+        _saveWatchProgress(
+          position: Duration(
+            milliseconds: (_embedSession!.position * 1000).round(),
+          ),
+          duration: Duration(
+            milliseconds: (_embedSession!.duration * 1000).round(),
+          ),
+          force: true,
+        ),
+      );
+    }
     _nativeProgressTimer?.cancel();
     _nativeProgressTimer = null;
     _embedSession?.dispose();
@@ -673,8 +864,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _castPollTimer?.cancel();
     _hideControlsTimer?.cancel();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    SystemChrome.setPreferredOrientations(
+      widget.isTv ? const [] : [DeviceOrientation.portraitUp],
+    );
     _playerFocusNode.dispose();
+    _tvPointerFocusNode.dispose();
     _disposeCurrentPlayer();
     super.dispose();
   }
@@ -1254,6 +1448,58 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
               // ── Controle Remoto de Transmissão na TV (Modo Cast Ativo) ──
               if (_isCasting) Positioned.fill(child: _buildCastRemoteOverlay()),
+
+              if (widget.isTv &&
+                  _webViewController != null &&
+                  _tvPointerEnabled)
+                Positioned.fill(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final size = Size(
+                        constraints.maxWidth,
+                        constraints.maxHeight,
+                      );
+                      final position =
+                          _tvPointerPosition ??
+                          Offset(size.width / 2, size.height / 2);
+                      return Focus(
+                        focusNode: _tvPointerFocusNode,
+                        autofocus: true,
+                        onKeyEvent: (_, event) =>
+                            _handleTvPointerKey(event, size),
+                        child: IgnorePointer(
+                          child: Stack(
+                            children: [
+                              Positioned(
+                                left: position.dx - 14,
+                                top: position.dy - 14,
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    color: Colors.black87,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: AppColors.primary,
+                                      width: 2,
+                                    ),
+                                  ),
+                                  child: const SizedBox(
+                                    width: 28,
+                                    height: 28,
+                                    child: Icon(
+                                      Icons.near_me_rounded,
+                                      color: Colors.white,
+                                      size: 18,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
             ],
           ),
         ),

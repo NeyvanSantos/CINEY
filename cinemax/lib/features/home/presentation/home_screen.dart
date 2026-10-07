@@ -7,6 +7,9 @@ import '../../../core/config/theme/app_colors.dart';
 import '../../../core/config/theme/app_typography.dart';
 import '../../../core/widgets/gradient_poster.dart';
 import '../../../core/widgets/shimmer_loading.dart';
+import '../../favorites/services/favorites_repository.dart';
+import '../../player/models/watch_progress.dart';
+import '../../player/services/watch_history_repository.dart';
 import '../../../plugin_engine/manager/plugin_manager.dart';
 import '../../../plugin_engine/models/content_item.dart';
 import '../../../plugin_engine/runtime/tmdb_service.dart';
@@ -633,6 +636,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final sections = _allVisibleSections;
+    final favorites = ref.watch(favoritesProvider).valueOrNull ?? const [];
+    final favoriteItems = favorites
+        .where((item) => _matchesSelectedCategory(item.type))
+        .toList(growable: false);
+    final watchHistory =
+        ref.watch(watchHistoryProvider).valueOrNull ?? const [];
+    final continueWatching = watchHistory
+        .where((entry) => _matchesSelectedCategory(entry.item.type))
+        .toList(growable: false);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -757,6 +769,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
             const SliverToBoxAdapter(child: SizedBox(height: 16)),
 
+            if (continueWatching.isNotEmpty)
+              SliverToBoxAdapter(
+                child: _buildContinueWatchingSection(continueWatching),
+              ),
+
+            if (favoriteItems.isNotEmpty)
+              SliverToBoxAdapter(
+                child: _buildCarouselSection(
+                  ContentCategory(name: 'Favoritos', items: favoriteItems),
+                ),
+              ),
+
             // Seções de Conteúdo Dinâmicas, Lançamentos/Em Alta no topo e Procedural Infinito
             if (_isLoading)
               SliverList(
@@ -844,6 +868,100 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
+  bool _matchesSelectedCategory(ContentType type) {
+    return switch (_selectedCategoryFilter) {
+      'Filmes' => type == ContentType.movie,
+      'Séries' => type == ContentType.series,
+      'Animes' => type == ContentType.anime,
+      'Doramas' => type == ContentType.dorama,
+      _ => true,
+    };
+  }
+
+  Widget _buildContinueWatchingSection(List<WatchProgress> entries) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'Continuar Assistindo',
+              style: AppTypography.headlineMedium,
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 226,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: entries.length,
+              separatorBuilder: (context, index) => const SizedBox(width: 12),
+              itemBuilder: (context, index) {
+                final entry = entries[index];
+                final item = entry.item;
+                final route = Uri(
+                  pathSegments: ['', 'player', item.id, item.pluginId],
+                  queryParameters: {
+                    'title': item.title,
+                    'contentTitle': item.title,
+                    'poster': item.posterUrl,
+                    'type': item.type.value,
+                    'resumePositionMs': '${entry.position.inMilliseconds}',
+                    if (entry.season != null) 'season': '${entry.season}',
+                    if (entry.episode != null) 'episode': '${entry.episode}',
+                  },
+                ).toString();
+
+                return SizedBox(
+                  width: 130,
+                  child: Column(
+                    children: [
+                      GradientPoster(
+                        title: item.title,
+                        posterUrl: item.posterUrl,
+                        type: item.type.value,
+                        width: 130,
+                        height: 184,
+                        onTap: () => context.push(route),
+                      ),
+                      const SizedBox(height: 6),
+                      if (entry.progress case final progress?)
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            value: progress,
+                            minHeight: 4,
+                            backgroundColor: AppColors.surfaceLight,
+                            color: AppColors.primary,
+                          ),
+                        )
+                      else
+                        const SizedBox(height: 4),
+                      const SizedBox(height: 4),
+                      Text(
+                        entry.season != null && entry.episode != null
+                            ? 'T${entry.season} • Ep. ${entry.episode}'
+                            : 'Em andamento',
+                        style: AppTypography.labelSmall.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildHeroCarousel() {
     final heroItems = _heroItems;
     if (heroItems.isEmpty) return const SizedBox.shrink();
@@ -927,7 +1045,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     children: [
                       ElevatedButton.icon(
                         onPressed: () => context.push(
-                          '/player/${item.id}/${item.pluginId}?title=${Uri.encodeComponent(item.title)}',
+                          Uri(
+                            pathSegments: [
+                              '',
+                              'player',
+                              item.id,
+                              item.pluginId,
+                            ],
+                            queryParameters: {
+                              'title': item.title,
+                              'contentTitle': item.title,
+                              'poster': item.posterUrl,
+                              'type': item.type.value,
+                            },
+                          ).toString(),
                         ),
                         icon: const Icon(Icons.play_arrow_rounded),
                         label: const Text('Assistir'),

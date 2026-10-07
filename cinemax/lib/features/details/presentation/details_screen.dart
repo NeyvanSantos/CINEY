@@ -105,11 +105,20 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
       sources: sources,
       onOpenPlayer: () {
         if (!mounted) return;
-        final episodeQuery = item.type == ContentType.movie
-            ? ''
-            : '&season=$_selectedSeason&episode=1';
         context.push(
-          '/player/${item.id}/${item.pluginId}?title=${Uri.encodeComponent(item.title)}$episodeQuery',
+          Uri(
+            pathSegments: ['', 'player', item.id, item.pluginId],
+            queryParameters: {
+              'title': item.title,
+              'contentTitle': item.title,
+              'poster': item.posterUrl,
+              'type': item.type.value,
+              if (item.type != ContentType.movie) ...{
+                'season': '$_selectedSeason',
+                'episode': '1',
+              },
+            },
+          ).toString(),
         );
       },
     );
@@ -137,14 +146,21 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
       episode: effectiveEpisode,
     );
 
-    final episodeQuery = item.type == ContentType.movie
-        ? ''
-        : '&season=$effectiveSeason&episode=$effectiveEpisode';
-
     void navigateToPlayer(int serverIndex) {
       if (!mounted) return;
       context.push(
-        '/player/${item.id}/${item.pluginId}?title=${Uri.encodeComponent(titleText)}$episodeQuery&serverIndex=$serverIndex',
+        Uri(
+          pathSegments: ['', 'player', item.id, item.pluginId],
+          queryParameters: {
+            'title': titleText,
+            'contentTitle': item.title,
+            'poster': item.posterUrl,
+            'type': item.type.value,
+            'serverIndex': '$serverIndex',
+            if (effectiveSeason != null) 'season': '$effectiveSeason',
+            if (effectiveEpisode != null) 'episode': '$effectiveEpisode',
+          },
+        ).toString(),
       );
     }
 
