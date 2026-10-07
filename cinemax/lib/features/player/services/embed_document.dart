@@ -22,7 +22,7 @@ String buildEmbedDocument(String playerUrl, String bridgeScript) {
   </style>
 </head>
 <body>
-  <iframe src="$src" title="Player do fornecedor" frameborder="0" scrolling="no"
+  <iframe src="$src" title="Player do fornecedor" tabindex="0" frameborder="0" scrolling="no"
     allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
     allowfullscreen></iframe>
   <script>$script</script>

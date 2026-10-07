@@ -108,6 +108,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   // WebView (Embed Sources)
   WebViewController? _webViewController;
   EmbedPlaybackSession? _embedSession;
+  final FocusNode _playerFocusNode = FocusNode(
+    debugLabel: 'Native player media controls',
+  );
 
   // Lista de fontes e estado
   List<StreamSource> _sources = [];
@@ -273,6 +276,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   Future<void> _initWebViewPlayer(StreamSource source) async {
+    _playerFocusNode.unfocus();
     final controller = WebViewController();
     bool isCurrent() => mounted && _webViewController == controller;
     _webViewController = controller;
@@ -348,6 +352,25 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           },
           onPageFinished: (url) {
             if (!isCurrent()) return;
+            if (widget.isTv && url == embedDocumentBaseUrl) {
+              unawaited(
+                controller
+                    .runJavaScript('''
+                (() => {
+                  const frame = document.querySelector('iframe');
+                  if (!frame) return;
+                  frame.focus();
+                  try { frame.contentWindow.focus(); } catch (_) {}
+                })();
+              ''')
+                    .catchError((Object error) {
+                      AppLogger.debug(
+                        'Não foi possível direcionar o foco ao player embed.',
+                        tag: 'WEBVIEW',
+                      );
+                    }),
+              );
+            }
             AppLogger.debug(
               'Documento do iframe carregado para ${source.server}; reprodução sob controle do fornecedor.',
               tag: 'WEBVIEW',
@@ -599,6 +622,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           _chewieController = chewie;
           _isLoading = false;
         });
+        if (widget.isTv) _playerFocusNode.requestFocus();
       }
     } catch (e, stack) {
       final controller = pendingController;
@@ -650,6 +674,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _hideControlsTimer?.cancel();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    _playerFocusNode.dispose();
     _disposeCurrentPlayer();
     super.dispose();
   }
@@ -659,7 +684,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   // ══════════════════════════════════════════════
   Future<void> _showCastDialog() async {
     _startHideControlsTimer();
-    final currentPos = _videoPlayerController?.value.position ?? _currentPosition;
+    final currentPos =
+        _videoPlayerController?.value.position ?? _currentPosition;
     await CastDialog.show(
       context,
       title: widget.title,
@@ -725,8 +751,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final clamped = newPosition < Duration.zero
         ? Duration.zero
         : (_totalDuration > Duration.zero && newPosition > _totalDuration
-            ? _totalDuration
-            : newPosition);
+              ? _totalDuration
+              : newPosition);
 
     setState(() {
       _currentPosition = clamped;
@@ -774,10 +800,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           setState(() {
             _isPlaying = serverPlaying;
             if (serverTime > 0) {
-              _currentPosition = Duration(milliseconds: (serverTime * 1000).toInt());
+              _currentPosition = Duration(
+                milliseconds: (serverTime * 1000).toInt(),
+              );
             }
             if (serverDur > 0) {
-              _totalDuration = Duration(milliseconds: (serverDur * 1000).toInt());
+              _totalDuration = Duration(
+                milliseconds: (serverDur * 1000).toInt(),
+              );
             }
           });
         }
@@ -788,7 +818,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   Widget _buildCastRemoteOverlay() {
     final progress = _totalDuration.inMilliseconds > 0
         ? (_currentPosition.inMilliseconds / _totalDuration.inMilliseconds)
-            .clamp(0.0, 1.0)
+              .clamp(0.0, 1.0)
         : 0.0;
 
     return Container(
@@ -802,7 +832,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+                    icon: const Icon(
+                      Icons.arrow_back_rounded,
+                      color: Colors.white,
+                    ),
                     onPressed: () {
                       _stopCasting();
                       Navigator.of(context).pop();
@@ -851,7 +884,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                     style: FilledButton.styleFrom(
                       backgroundColor: Colors.white.withValues(alpha: 0.15),
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
                     ),
                   ),
                 ],
@@ -912,9 +948,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 children: [
                   IconButton(
                     iconSize: 40,
-                    icon: const Icon(Icons.replay_10_rounded, color: Colors.white),
-                    onPressed: () =>
-                        _seekCast(_currentPosition - const Duration(seconds: 10)),
+                    icon: const Icon(
+                      Icons.replay_10_rounded,
+                      color: Colors.white,
+                    ),
+                    onPressed: () => _seekCast(
+                      _currentPosition - const Duration(seconds: 10),
+                    ),
                   ),
                   const SizedBox(width: 28),
                   Container(
@@ -934,7 +974,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                     child: IconButton(
                       iconSize: 34,
                       icon: Icon(
-                        _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                        _isPlaying
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
                         color: Colors.white,
                       ),
                       onPressed: _toggleCastPlayPause,
@@ -943,9 +985,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                   const SizedBox(width: 28),
                   IconButton(
                     iconSize: 40,
-                    icon: const Icon(Icons.forward_10_rounded, color: Colors.white),
-                    onPressed: () =>
-                        _seekCast(_currentPosition + const Duration(seconds: 10)),
+                    icon: const Icon(
+                      Icons.forward_10_rounded,
+                      color: Colors.white,
+                    ),
+                    onPressed: () => _seekCast(
+                      _currentPosition + const Duration(seconds: 10),
+                    ),
                   ),
                 ],
               ),
@@ -960,8 +1006,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                     SliderTheme(
                       data: SliderTheme.of(context).copyWith(
                         trackHeight: 4,
-                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
-                        overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+                        thumbShape: const RoundSliderThumbShape(
+                          enabledThumbRadius: 7,
+                        ),
+                        overlayShape: const RoundSliderOverlayShape(
+                          overlayRadius: 16,
+                        ),
                         activeTrackColor: AppColors.primary,
                         inactiveTrackColor: Colors.white.withValues(alpha: 0.2),
                         thumbColor: AppColors.primary,
@@ -971,7 +1021,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                         onChanged: (val) {
                           if (_totalDuration.inMilliseconds > 0) {
                             final seekTarget = Duration(
-                              milliseconds: (val * _totalDuration.inMilliseconds).toInt(),
+                              milliseconds:
+                                  (val * _totalDuration.inMilliseconds).toInt(),
                             );
                             _seekCast(seekTarget);
                           }
@@ -1032,7 +1083,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     return Scaffold(
       backgroundColor: Colors.black,
       body: Focus(
-        autofocus: widget.isTv,
+        focusNode: _playerFocusNode,
+        canRequestFocus: _videoPlayerController != null,
+        skipTraversal: _videoPlayerController == null,
         onKeyEvent: (node, event) {
           if (!node.hasFocus) return KeyEventResult.ignored;
           return _handleRemoteMediaKey(event);
@@ -1200,10 +1253,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 ),
 
               // ── Controle Remoto de Transmissão na TV (Modo Cast Ativo) ──
-              if (_isCasting)
-                Positioned.fill(
-                  child: _buildCastRemoteOverlay(),
-                ),
+              if (_isCasting) Positioned.fill(child: _buildCastRemoteOverlay()),
             ],
           ),
         ),
@@ -1704,7 +1754,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
     // The provider owns playback controls for embedded sources.
     if (_webViewController != null) {
-      return WebViewWidget(controller: _webViewController!);
+      final controller = _webViewController!;
+      if (widget.isTv && controller.platform is AndroidWebViewController) {
+        final params =
+            AndroidWebViewWidgetCreationParams.fromPlatformWebViewWidgetCreationParams(
+              PlatformWebViewWidgetCreationParams(
+                controller: controller.platform,
+              ),
+              displayWithHybridComposition: true,
+            );
+        return WebViewWidget.fromPlatformCreationParams(params: params);
+      }
+      return WebViewWidget(controller: controller);
     }
     // ── Player Nativo (Chewie) ──
     if (_chewieController != null &&

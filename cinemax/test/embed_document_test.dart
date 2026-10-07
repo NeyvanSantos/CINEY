@@ -15,6 +15,7 @@ void main() {
     expect(frame.attributes['allow'], contains('autoplay'));
     expect(frame.attributes['allow'], contains('encrypted-media'));
     expect(frame.attributes.containsKey('allowfullscreen'), isTrue);
+    expect(frame.attributes['tabindex'], '0');
     expect(doc.querySelectorAll('video, button'), isEmpty);
     expect(doc.querySelector('script')!.text, contains('window.bridgeReady'));
   });
