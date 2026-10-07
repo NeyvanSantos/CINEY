@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/config/theme/app_colors.dart';
 import '../../../core/config/theme/app_typography.dart';
 import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/focusable_surface.dart';
 import '../../../plugin_engine/manager/plugin_manager.dart';
 import '../../../plugin_engine/models/content_item.dart';
 import '../../../plugin_engine/models/stream_source.dart';
@@ -246,11 +247,9 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                   final source = entry.value;
                   final isEmbedMovies = source.server.contains('EmbedMovies');
                   final isSuperFlix = source.server.contains('SuperFlix');
-
                   final badgeText = isEmbedMovies
                       ? 'Recomendado PT-BR'
                       : (isSuperFlix ? 'Dublado 1080p' : source.quality);
-
                   final badgeColor = isEmbedMovies || isSuperFlix
                       ? const Color(0xFF10B981)
                       : AppColors.primary;
@@ -264,7 +263,8 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                         color: AppColors.surfaceVariant.withValues(alpha: 0.8),
                       ),
                     ),
-                    child: InkWell(
+                    child: FocusableSurface(
+                      autofocus: index == 0,
                       borderRadius: BorderRadius.circular(16),
                       onTap: () {
                         Navigator.pop(ctx);

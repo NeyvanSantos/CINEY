@@ -6,6 +6,7 @@ class FocusableSurface extends StatefulWidget {
   final VoidCallback? onTap;
   final BorderRadius borderRadius;
   final bool autofocus;
+  final FocusNode? focusNode;
 
   const FocusableSurface({
     super.key,
@@ -13,6 +14,7 @@ class FocusableSurface extends StatefulWidget {
     this.onTap,
     this.borderRadius = BorderRadius.zero,
     this.autofocus = false,
+    this.focusNode,
   });
 
   @override
@@ -27,6 +29,7 @@ class _FocusableSurfaceState extends State<FocusableSurface> {
     if (widget.onTap == null) return widget.child;
 
     return InkWell(
+      focusNode: widget.focusNode,
       onTap: widget.onTap,
       onFocusChange: (hasFocus) {
         if (_hasFocus != hasFocus) {

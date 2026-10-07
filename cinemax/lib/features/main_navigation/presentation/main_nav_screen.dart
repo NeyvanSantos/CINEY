@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:iconsax/iconsax.dart';
 import '../../../core/config/theme/app_colors.dart';
+import '../../../core/widgets/focusable_surface.dart';
 
-class MainNavScreen extends StatelessWidget {
+class MainNavScreen extends StatefulWidget {
   final StatefulNavigationShell navigationShell;
   final bool isTv;
 
@@ -12,6 +14,77 @@ class MainNavScreen extends StatelessWidget {
     required this.navigationShell,
     this.isTv = false,
   });
+
+  @override
+  State<MainNavScreen> createState() => _MainNavScreenState();
+}
+
+class _MainNavScreenState extends State<MainNavScreen> {
+  final List<FocusNode> _tvNavigationFocusNodes = List.generate(
+    4,
+    (index) => FocusNode(debugLabel: 'TV navigation destination $index'),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && widget.isTv) {
+        _tvNavigationFocusNodes[widget.navigationShell.currentIndex]
+            .requestFocus();
+      }
+    });
+  }
+
+  StatefulNavigationShell get navigationShell => widget.navigationShell;
+  bool get isTv => widget.isTv;
+
+  @override
+  void dispose() {
+    for (final node in _tvNavigationFocusNodes) {
+      node.dispose();
+    }
+    super.dispose();
+  }
+
+  KeyEventResult _handleTvRailKey(int index, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
+    final nextIndex = switch (event.logicalKey) {
+      LogicalKeyboardKey.arrowDown => (index + 1).clamp(0, 3),
+      LogicalKeyboardKey.arrowUp => (index - 1).clamp(0, 3),
+      _ => null,
+    };
+    if (nextIndex != null) {
+      _tvNavigationFocusNodes[nextIndex].requestFocus();
+      return KeyEventResult.handled;
+    }
+
+    if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      return FocusManager.instance.primaryFocus?.focusInDirection(
+                TraversalDirection.right,
+              ) ==
+              true
+          ? KeyEventResult.handled
+          : KeyEventResult.ignored;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  KeyEventResult _handleTvContentKey(KeyEvent event) {
+    if (event is! KeyDownEvent ||
+        event.logicalKey != LogicalKeyboardKey.arrowLeft) {
+      return KeyEventResult.ignored;
+    }
+    final movedWithinContent =
+        FocusManager.instance.primaryFocus?.focusInDirection(
+          TraversalDirection.left,
+        ) ??
+        false;
+    if (movedWithinContent) return KeyEventResult.handled;
+    _tvNavigationFocusNodes[navigationShell.currentIndex].requestFocus();
+    return KeyEventResult.handled;
+  }
 
   void _onTap(int index) {
     navigationShell.goBranch(
@@ -29,55 +102,76 @@ class MainNavScreen extends StatelessWidget {
       return Scaffold(
         backgroundColor: AppColors.background,
         body: SafeArea(
-          child: Row(
-            children: [
-              NavigationRail(
-                backgroundColor: AppColors.navBackground,
-                selectedIndex: currentIndex,
-                onDestinationSelected: _onTap,
-                extended: isExtended,
-                labelType: isExtended ? null : NavigationRailLabelType.all,
-                minWidth: 88,
-                minExtendedWidth: 192,
-                groupAlignment: -0.55,
-                selectedIconTheme: const IconThemeData(
-                  color: AppColors.primary,
-                  size: 26,
+          child: FocusTraversalGroup(
+            policy: ReadingOrderTraversalPolicy(),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: isExtended ? 192 : 88,
+                  child: Material(
+                    color: AppColors.navBackground,
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildTvNavItem(
+                            destinationIndex: 0,
+                            icon: Iconsax.home_2,
+                            activeIcon: Iconsax.home_21,
+                            label: 'Início',
+                            isSelected: currentIndex == 0,
+                            autofocus: currentIndex == 0,
+                            extended: isExtended,
+                            onTap: () => _onTap(0),
+                          ),
+                          _buildTvNavItem(
+                            destinationIndex: 1,
+                            icon: Iconsax.search_normal_1,
+                            activeIcon: Iconsax.search_normal_11,
+                            label: 'Buscar',
+                            isSelected: currentIndex == 1,
+                            autofocus: currentIndex == 1,
+                            extended: isExtended,
+                            onTap: () => _onTap(1),
+                          ),
+                          _buildTvNavItem(
+                            destinationIndex: 2,
+                            icon: Iconsax.receive_square_2,
+                            activeIcon: Iconsax.receive_square_21,
+                            label: 'Downloads',
+                            isSelected: currentIndex == 2,
+                            autofocus: currentIndex == 2,
+                            extended: isExtended,
+                            onTap: () => _onTap(2),
+                          ),
+                          _buildTvNavItem(
+                            destinationIndex: 3,
+                            icon: Iconsax.setting_2,
+                            activeIcon: Iconsax.setting_21,
+                            label: 'Perfil',
+                            isSelected: currentIndex == 3,
+                            autofocus: currentIndex == 3,
+                            extended: isExtended,
+                            onTap: () => _onTap(3),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
-                unselectedIconTheme: const IconThemeData(
-                  color: AppColors.textTertiary,
-                  size: 24,
+                VerticalDivider(
+                  width: 1,
+                  thickness: 1,
+                  color: Colors.white.withValues(alpha: 0.06),
                 ),
-                destinations: const [
-                  NavigationRailDestination(
-                    icon: Icon(Iconsax.home_2),
-                    selectedIcon: Icon(Iconsax.home_21),
-                    label: Text('Início'),
+                Expanded(
+                  child: Focus(
+                    onKeyEvent: (_, event) => _handleTvContentKey(event),
+                    child: navigationShell,
                   ),
-                  NavigationRailDestination(
-                    icon: Icon(Iconsax.search_normal_1),
-                    selectedIcon: Icon(Iconsax.search_normal_11),
-                    label: Text('Buscar'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Iconsax.receive_square_2),
-                    selectedIcon: Icon(Iconsax.receive_square_21),
-                    label: Text('Downloads'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Iconsax.setting_2),
-                    selectedIcon: Icon(Iconsax.setting_21),
-                    label: Text('Perfil'),
-                  ),
-                ],
-              ),
-              VerticalDivider(
-                width: 1,
-                thickness: 1,
-                color: Colors.white.withValues(alpha: 0.06),
-              ),
-              Expanded(child: navigationShell),
-            ],
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -140,6 +234,87 @@ class MainNavScreen extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTvNavItem({
+    required int destinationIndex,
+    required IconData icon,
+    required IconData activeIcon,
+    required String label,
+    required bool isSelected,
+    required bool autofocus,
+    required bool extended,
+    required VoidCallback onTap,
+  }) {
+    return Focus(
+      onKeyEvent: (_, event) => _handleTvRailKey(destinationIndex, event),
+      child: FocusableSurface(
+        autofocus: autofocus,
+        focusNode: _tvNavigationFocusNodes[destinationIndex],
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(
+          width: extended ? 176 : 80,
+          height: extended ? 56 : 64,
+          child: extended
+              ? Row(
+                  children: [
+                    const SizedBox(width: 16),
+                    Icon(
+                      isSelected ? activeIcon : icon,
+                      color: isSelected
+                          ? AppColors.primary
+                          : AppColors.textTertiary,
+                      size: 24,
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Text(
+                        label,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: isSelected
+                              ? AppColors.primary
+                              : AppColors.textTertiary,
+                          fontSize: 14,
+                          fontWeight: isSelected
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      isSelected ? activeIcon : icon,
+                      color: isSelected
+                          ? AppColors.primary
+                          : AppColors.textTertiary,
+                      size: 24,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: isSelected
+                            ? AppColors.primary
+                            : AppColors.textTertiary,
+                        fontSize: 11,
+                        fontWeight: isSelected
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
         ),
       ),
     );

@@ -1,24 +1,19 @@
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="320dp"
-    android:height="180dp"
-    android:viewportWidth="320"
-    android:viewportHeight="180">
-    <path
-        android:fillColor="#10141D"
-        android:pathData="M0,0h320v180h-320z" />
-    <path
-        android:fillColor="#1B2430"
-        android:pathData="M0,0h320v10h-320z" />
-    <path
-        android:fillColor="#E65A4F"
-        android:pathData="M54,48h212v84h-212z" />
-    <path
-        android:fillColor="#F4F0E8"
-        android:pathData="M72,68h18v10h-18zM102,68h18v10h-18zM132,68h18v10h-18zM162,68h18v10h-18zM192,68h18v10h-18zM222,68h18v10h-18zM72,102h18v10h-18zM102,102h18v10h-18zM132,102h18v10h-18zM162,102h18v10h-18zM192,102h18v10h-18zM222,102h18v10h-18z" />
-    <path
-        android:fillColor="#10141D"
-        android:pathData="M54,82h212v18h-212z" />
-    <path
-        android:fillColor="#F4F0E8"
-        android:pathData="M146,84v14l18,-7z" />
-</vector>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="0"
+                android:startColor="#0A0A1A"
+                android:endColor="#151530" />
+        </shape>
+    </item>
+    <item
+        android:width="132dp"
+        android:height="132dp"
+        android:gravity="center">
+        <bitmap
+            android:src="@mipmap/ic_launcher"
+            android:gravity="fill"
+            android:filter="true" />
+    </item>
+</layer-list>

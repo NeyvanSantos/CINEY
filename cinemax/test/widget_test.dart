@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:cinemax/core/services/app_updater.dart';
 import 'package:cinemax/core/widgets/glass_card.dart';
+import 'package:cinemax/core/widgets/focusable_surface.dart';
 import 'package:cinemax/core/widgets/gradient_poster.dart';
 import 'package:cinemax/core/widgets/update_dialog.dart';
+import 'package:cinemax/features/main_navigation/presentation/main_nav_screen.dart';
 
 void main() {
   testWidgets('GlassCard smoke test', (WidgetTester tester) async {
@@ -125,5 +128,99 @@ void main() {
     await tester.pump();
 
     expect(opened, isTrue);
+  });
+
+  testWidgets('D-pad percorre e escolhe servidores em Assistir Agora', (
+    WidgetTester tester,
+  ) async {
+    int? selectedServer;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: FocusTraversalGroup(
+            policy: ReadingOrderTraversalPolicy(),
+            child: Column(
+              children: [
+                FocusableSurface(
+                  autofocus: true,
+                  onTap: () => selectedServer = 0,
+                  child: const Text('SuperFlix'),
+                ),
+                FocusableSurface(
+                  onTap: () => selectedServer = 1,
+                  child: const Text('EmbedMovies'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+
+    expect(selectedServer, 1);
+  });
+
+  testWidgets('controle remoto sai do conteúdo e troca destinos da TV', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final router = GoRouter(
+      initialLocation: '/tv-home',
+      routes: [
+        StatefulShellRoute.indexedStack(
+          builder: (context, state, navigationShell) =>
+              MainNavScreen(navigationShell: navigationShell, isTv: true),
+          branches: [
+            for (final destination in [
+              'tv-home',
+              'tv-search',
+              'tv-downloads',
+              'tv-profile',
+            ])
+              StatefulShellBranch(
+                routes: [
+                  GoRoute(
+                    path: '/$destination',
+                    builder: (context, state) => Scaffold(
+                      body: Center(
+                        child: FilledButton(
+                          onPressed: () {},
+                          child: Text(destination),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+    await tester.pumpAndSettle();
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'TV navigation destination 0',
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'TV navigation destination 1',
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+
+    expect(find.text('tv-search'), findsOneWidget);
   });
 }
