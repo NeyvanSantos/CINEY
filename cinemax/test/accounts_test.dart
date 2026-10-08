@@ -16,6 +16,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'support/fake_accounts.dart';
 
@@ -33,6 +34,8 @@ Future<GoRouter> _mount(
   WidgetTester tester,
   FakeAccounts accounts, {
   String initial = '/auth',
+  bool requireAccount = false,
+  bool startWithSignup = false,
 }) async {
   tester.view.reset();
   tester.view.physicalSize = const Size(1000, 1100);
@@ -42,7 +45,13 @@ Future<GoRouter> _mount(
   final router = GoRouter(
     initialLocation: initial,
     routes: [
-      GoRoute(path: '/auth', builder: (_, _) => const AuthScreen()),
+      GoRoute(
+        path: '/auth',
+        builder: (_, _) => AuthScreen(
+          requireAccount: requireAccount,
+          startWithSignup: startWithSignup,
+        ),
+      ),
       GoRoute(path: '/account', builder: (_, _) => const AccountScreen()),
       GoRoute(
         path: '/profile',
@@ -50,7 +59,11 @@ Future<GoRouter> _mount(
       ),
       GoRoute(
         path: '/home',
-        builder: (_, _) => const Scaffold(body: Text('Catálogo visitante')),
+        builder: (_, _) => const Scaffold(body: Text('Catálogo de destino')),
+      ),
+      GoRoute(
+        path: '/onboarding',
+        builder: (_, _) => const Scaffold(body: Text('Configuração inicial')),
       ),
     ],
   );
@@ -77,6 +90,7 @@ Future<void> _fill(WidgetTester tester, String label, String value) =>
 
 void main() {
   setUpAll(() => GoogleFonts.config.allowRuntimeFetching = false);
+  setUp(() => SharedPreferences.setMockInitialValues({}));
 
   test(
     'configuração recusa chaves secretas e aceita somente chaves públicas',
@@ -249,21 +263,42 @@ void main() {
       expect(accounts.calls.where((call) => call == 'signIn').length, 1);
       accounts.pendingLogin!.complete();
       await tester.pumpAndSettle();
-      expect(find.text('Catálogo visitante'), findsOneWidget);
+      expect(find.text('Catálogo de destino'), findsOneWidget);
     },
   );
 
-  testWidgets('contas sem configuração permitem voltar ao catálogo', (
+  testWidgets('contas sem configuração mantêm o acesso bloqueado', (
     tester,
   ) async {
     final accounts = FakeAccounts()..isConfigured = false;
     addTearDown(accounts.changes.close);
     await _mount(tester, accounts);
     expect(find.text('Contas ainda indisponíveis'), findsOneWidget);
-    await _tap(tester, 'Explorar catálogo');
-    expect(find.text('Catálogo visitante'), findsOneWidget);
+    expect(find.text('Explorar catálogo'), findsNothing);
+    expect(find.text('Catálogo de destino'), findsNothing);
     expect(accounts.calls, isEmpty);
   });
+
+  testWidgets(
+    'login na entrada retoma o catálogo com configuração já concluída',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({'onboarding_completed': true});
+      final accounts = FakeAccounts();
+      addTearDown(accounts.changes.close);
+      await _mount(
+        tester,
+        accounts,
+        requireAccount: true,
+        startWithSignup: true,
+      );
+      await _tap(tester, 'Já tenho uma conta');
+      await _fill(tester, 'E-mail', 'pessoa@example.com');
+      await _fill(tester, 'Senha', 'senha-123');
+      await _tap(tester, 'Entrar');
+      expect(find.text('Catálogo de destino'), findsOneWidget);
+      expect(find.text('Configuração inicial'), findsNothing);
+    },
+  );
 
   testWidgets('perfil salva nome e pede senha antes de excluir', (
     tester,

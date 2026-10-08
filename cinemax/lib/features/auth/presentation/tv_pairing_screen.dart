@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/config/theme/app_colors.dart';
 import '../../../core/config/theme/app_typography.dart';
 import '../../../core/widgets/glass_card.dart';
@@ -11,7 +12,9 @@ import '../services/account_messages.dart';
 import '../services/account_repository.dart';
 
 class TvPairingScreen extends ConsumerStatefulWidget {
-  const TvPairingScreen({super.key});
+  const TvPairingScreen({super.key, this.isEntry = false});
+
+  final bool isEntry;
 
   @override
   ConsumerState<TvPairingScreen> createState() => _TvPairingScreenState();
@@ -79,7 +82,17 @@ class _TvPairingScreenState extends ConsumerState<TvPairingScreen> {
           .checkTvPairing(request);
       if (connected && mounted) {
         _pollTimer?.cancel();
-        context.go('/profile');
+        if (widget.isEntry) {
+          final prefs = await SharedPreferences.getInstance();
+          if (!mounted) return;
+          context.go(
+            prefs.getBool('onboarding_completed') == true
+                ? '/home'
+                : '/onboarding',
+          );
+        } else {
+          context.go('/profile');
+        }
       } else if (mounted) {
         setState(() {});
       }

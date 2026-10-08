@@ -33,7 +33,10 @@ O projeto [`cinemax/`](cinemax/README.md) é a fonte única das telas, serviços
 
 ## Segurança e privacidade
 
-As contas são opcionais. O Supabase processa a autenticação e armazena o perfil
+É necessário criar uma conta ou entrar para usar o aplicativo, no celular e na
+TV. Na primeira entrada, o cadastro é apresentado antes do catálogo. Uma sessão
+salva permite entrar automaticamente nos acessos seguintes; sair da conta ou
+perder a sessão exige autenticação novamente. O Supabase armazena o perfil
 e os favoritos de cada usuário. A sessão fica no armazenamento seguro do
 dispositivo; senhas não são salvas pelo aplicativo. É possível excluir a conta
 e seus dados em **Perfil → Gerenciar conta**.

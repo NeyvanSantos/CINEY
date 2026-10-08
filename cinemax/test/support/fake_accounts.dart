@@ -16,6 +16,8 @@ class FakeAccounts implements AccountRepository {
   Completer<void>? pendingLogin;
   String? lastEmail;
   String name = 'Pessoa de teste';
+  bool signUpCreatesSession = false;
+  bool tvPairingApproved = false;
 
   @override
   Stream<AccountUser?> get userChanges => changes.stream;
@@ -42,7 +44,10 @@ class FakeAccounts implements AccountRepository {
   Future<bool> signUp(String name, String email, String password) async {
     _call('signUp');
     lastEmail = email;
-    return false;
+    if (signUpCreatesSession) {
+      emit(AccountUser(id: 'user-a', email: email));
+    }
+    return signUpCreatesSession;
   }
 
   @override
@@ -115,7 +120,10 @@ class FakeAccounts implements AccountRepository {
   @override
   Future<bool> checkTvPairing(TvPairingRequest request) async {
     _call('checkTvPairing');
-    return false;
+    if (tvPairingApproved) {
+      emit(const AccountUser(id: 'user-a', email: 'a@example.com'));
+    }
+    return tvPairingApproved;
   }
 }
 

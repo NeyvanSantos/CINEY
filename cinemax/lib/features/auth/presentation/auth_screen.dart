@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/config/theme/app_colors.dart';
 import '../../../core/config/theme/app_typography.dart';
@@ -13,7 +14,16 @@ import '../services/account_repository.dart';
 enum _Step { login, signup, confirm, forgot, recoveryCode, newPassword }
 
 class AuthScreen extends ConsumerStatefulWidget {
-  const AuthScreen({super.key});
+  const AuthScreen({
+    super.key,
+    this.requireAccount = false,
+    this.startWithSignup = false,
+    this.isTv = false,
+  });
+
+  final bool requireAccount;
+  final bool startWithSignup;
+  final bool isTv;
 
   @override
   ConsumerState<AuthScreen> createState() => _AuthScreenState();
@@ -31,6 +41,12 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   bool _hidePassword = true;
   String? _error;
   String? _notice;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.startWithSignup) _step = _Step.signup;
+  }
 
   @override
   void dispose() {
@@ -59,9 +75,15 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     });
   }
 
-  void _finish() {
+  Future<void> _finish() async {
     TextInput.finishAutofillContext();
-    if (context.canPop()) {
+    if (widget.requireAccount) {
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      context.go(
+        prefs.getBool('onboarding_completed') == true ? '/home' : '/onboarding',
+      );
+    } else if (context.canPop()) {
       context.pop(true);
     } else {
       context.go('/profile');
@@ -80,7 +102,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       switch (_step) {
         case _Step.login:
           await repository.signIn(_email.text, _password.text);
-          if (mounted) _finish();
+          if (mounted) await _finish();
         case _Step.signup:
           final signedIn = await repository.signUp(
             _name.text,
@@ -89,7 +111,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           );
           if (!mounted) return;
           if (signedIn) {
-            _finish();
+            await _finish();
           } else {
             _changeStep(
               _Step.confirm,
@@ -98,7 +120,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           }
         case _Step.confirm:
           await repository.confirmEmail(_email.text, _code.text);
-          if (mounted) _finish();
+          if (mounted) await _finish();
         case _Step.forgot:
           await repository.requestPasswordReset(_email.text);
           if (mounted) {
@@ -117,7 +139,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             ScaffoldMessenger.of(
               context,
             ).showSnackBar(const SnackBar(content: Text('Senha atualizada.')));
-            _finish();
+            await _finish();
           }
       }
     } catch (error) {
@@ -181,7 +203,10 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     return PopScope(
       canPop: !_busy,
       child: Scaffold(
-        appBar: AppBar(title: Text(title, style: AppTypography.headlineMedium)),
+        appBar: AppBar(
+          automaticallyImplyLeading: !widget.requireAccount,
+          title: Text(title, style: AppTypography.headlineMedium),
+        ),
         body: SafeArea(
           child: Center(
             child: SingleChildScrollView(
@@ -205,13 +230,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                             ),
                             const SizedBox(height: 12),
                             const Text(
-                              'Você pode continuar explorando o catálogo e assistir como visitante.',
+                              'Você precisa entrar na sua conta para usar o CiNey. Reabra o app para tentar novamente.',
                               textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 16),
-                            TextButton(
-                              onPressed: () => context.go('/home'),
-                              child: const Text('Explorar catálogo'),
                             ),
                           ],
                         )
@@ -228,7 +248,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                 ),
                                 const SizedBox(height: 16),
                                 Text(
-                                  'Seus favoritos no celular e na TV.',
+                                  widget.requireAccount
+                                      ? 'Crie sua conta ou entre para usar o CiNey.'
+                                      : 'Seus favoritos no celular e na TV.',
                                   style: AppTypography.bodyMedium,
                                   textAlign: TextAlign.center,
                                 ),
@@ -424,7 +446,21 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                     onPressed: _busy
                                         ? null
                                         : () => _changeStep(_Step.login),
-                                    child: const Text('Voltar para entrar'),
+                                    child: Text(
+                                      _step == _Step.signup
+                                          ? 'Já tenho uma conta'
+                                          : 'Voltar para entrar',
+                                    ),
+                                  ),
+                                if (widget.isTv &&
+                                    (_step == _Step.login ||
+                                        _step == _Step.signup))
+                                  OutlinedButton.icon(
+                                    onPressed: _busy
+                                        ? null
+                                        : () => context.push('/tv-pair'),
+                                    icon: const Icon(Icons.qr_code_2),
+                                    label: const Text('Conectar com Android'),
                                   ),
                               ],
                             ),

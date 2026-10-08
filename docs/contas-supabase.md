@@ -2,9 +2,13 @@
 
 A autenticação inclui cadastro com e-mail e senha, confirmação por código,
 recuperação de senha, perfil editável, saída, exclusão de conta, favoritos
-compartilhados e pareamento de Android TV por QR. O catálogo continua acessível
-como visitante. Histórico de reprodução, login social e planos pagos ficam para
-etapas posteriores.
+compartilhados e pareamento de Android TV por QR. Uma conta é obrigatória para
+usar o app no celular e na TV: a primeira entrada apresenta o cadastro, com uma
+opção para quem já tem conta. Depois da autenticação, o app mostra a configuração
+inicial ou o catálogo, conforme o estado do aparelho. A sessão salva dispensa
+novo login nos acessos seguintes; sair, excluir a conta ou perder a sessão
+bloqueia novamente o acesso. Se as contas estiverem indisponíveis, o catálogo
+permanece bloqueado. Login social e planos pagos ficam para etapas posteriores.
 
 ## Ativar no Supabase
 
@@ -54,7 +58,7 @@ que aprovam a conta validam o JWT do Android dentro da função. O segredo de
 pareamento é aleatório e válido por cinco minutos; o acesso da TV é um magic
 link de uso único.
 
-Na TV, abra **Perfil → Conectar com Android**. No Android já autenticado, abra
+Na entrada da TV, escolha **Conectar com Android**. No Android já autenticado, abra
 **Perfil → Conectar TV** e escaneie o QR mostrado na televisão. Cada aparelho
 mantém sua própria sessão; a TV passa a usar a conta aprovada e sincroniza os
 favoritos pelo mesmo perfil Supabase.
@@ -112,11 +116,13 @@ flutter run --dart-define=SUPABASE_URL=https://SEU-PROJETO.supabase.co --dart-de
 
 Verificação manual após ativar:
 
-1. Em **Perfil**, crie uma conta e confirme o código recebido por e-mail.
+1. Na primeira entrada, crie uma conta e confirme o código recebido por e-mail;
+   confira que o catálogo fica bloqueado até a confirmação.
 2. Favorite um título, abra **Perfil → Meus favoritos** e confira sua presença.
 3. Entre com a mesma conta no outro aparelho; confira inclusão e remoção.
 4. Feche e reabra o app para verificar a restauração da sessão.
-5. Edite seu nome e confira o perfil; saia e entre com outra conta para verificar o isolamento.
+5. Edite seu nome e confira o perfil; saia e confira que o app volta à
+   autenticação. Entre com outra conta para verificar o isolamento.
 6. Use **Esqueci minha senha**, confirme o código e defina a nova senha.
 7. Em uma conta de teste, use **Gerenciar conta → Excluir conta** e confirme com a senha.
 8. Na TV, gere o QR e autorize pelo Android; confira se o perfil e os favoritos
@@ -141,7 +147,7 @@ Testes Flutter (sem criar contas nem enviar e-mails reais):
 
 ```powershell
 cd cinemax
-flutter test --no-pub test/accounts_test.dart test/accounts_repository_test.dart
+flutter test --no-pub test/account_entry_test.dart test/accounts_test.dart test/accounts_repository_test.dart
 ```
 
 Testes do banco, a partir da raiz, com Docker em execução:

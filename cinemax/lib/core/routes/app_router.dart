@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../features/details/presentation/details_screen.dart';
 import '../../features/downloads/presentation/downloads_screen.dart';
@@ -17,18 +18,54 @@ import '../../features/auth/presentation/auth_screen.dart';
 import '../../features/auth/presentation/account_screen.dart';
 import '../../features/auth/presentation/tv_pairing_scanner_screen.dart';
 import '../../features/auth/presentation/tv_pairing_screen.dart';
+import '../../features/auth/services/account_repository.dart';
 import '../../features/favorites/presentation/favorites_screen.dart';
 
-GoRouter createAppRouter({bool isTv = false}) {
+final appRouterProvider = Provider.autoDispose.family<GoRouter, bool>((
+  ref,
+  isTv,
+) {
+  final router = createAppRouter(
+    accounts: ref.watch(accountRepositoryProvider),
+    isTv: isTv,
+  );
+  ref.listen(accountUserProvider, (_, _) => router.refresh());
+  ref.onDispose(router.dispose);
+  return router;
+});
+
+GoRouter createAppRouter({
+  required AccountRepository accounts,
+  bool isTv = false,
+}) {
   final rootNavigatorKey = GlobalKey<NavigatorState>();
+  var hadSession = accounts.currentUser != null;
   return GoRouter(
     navigatorKey: rootNavigatorKey,
     initialLocation: '/splash',
+    redirect: (context, state) {
+      if (accounts.currentUser != null) {
+        hadSession = true;
+        // Confirmation and password recovery finish on the authentication screen.
+        return null;
+      }
+      final path = state.uri.path;
+      if (path == '/splash' ||
+          path == '/auth' ||
+          (isTv && path == '/tv-pair')) {
+        return null;
+      }
+      return hadSession ? '/auth?mode=login' : '/auth';
+    },
     routes: [
       GoRoute(
         path: '/auth',
         parentNavigatorKey: rootNavigatorKey,
-        builder: (context, state) => const AuthScreen(),
+        builder: (context, state) => AuthScreen(
+          requireAccount: true,
+          startWithSignup: state.uri.queryParameters['mode'] != 'login',
+          isTv: isTv,
+        ),
       ),
       GoRoute(
         path: '/account',
@@ -43,7 +80,7 @@ GoRouter createAppRouter({bool isTv = false}) {
       GoRoute(
         path: '/tv-pair',
         parentNavigatorKey: rootNavigatorKey,
-        builder: (context, state) => const TvPairingScreen(),
+        builder: (context, state) => const TvPairingScreen(isEntry: true),
       ),
       GoRoute(
         path: '/tv-pair-scan',

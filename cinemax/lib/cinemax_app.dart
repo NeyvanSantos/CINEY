@@ -70,19 +70,18 @@ Future<void> runCinemaxApp({bool isTv = false}) async {
   );
 }
 
-class CinemaxApp extends StatelessWidget {
-  CinemaxApp({super.key, this.isTv = false});
+class CinemaxApp extends ConsumerWidget {
+  const CinemaxApp({super.key, this.isTv = false});
 
   final bool isTv;
-  late final _router = createAppRouter(isTv: isTv);
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return MaterialApp.router(
       title: 'CiNey',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
-      routerConfig: _router,
+      routerConfig: ref.watch(appRouterProvider(isTv)),
     );
   }
 }

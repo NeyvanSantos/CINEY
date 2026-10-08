@@ -33,7 +33,10 @@ O projeto [`cinemax/`](.) é a fonte única das telas, serviços, motor de plugi
 
 ## Segurança e privacidade
 
-As contas são opcionais. O Supabase processa a autenticação e armazena o perfil
+É necessário criar uma conta ou entrar para usar o aplicativo, no celular e na
+TV. Na primeira entrada, o cadastro é apresentado antes do catálogo. Uma sessão
+salva permite entrar automaticamente nos acessos seguintes; sair da conta ou
+perder a sessão exige autenticação novamente. O Supabase armazena o perfil
 e os favoritos de cada usuário. A sessão fica no armazenamento seguro do
 dispositivo; senhas não são salvas pelo aplicativo. É possível excluir a conta
 e seus dados em **Perfil → Gerenciar conta**.
@@ -55,7 +58,8 @@ A opção **Transmitir** utiliza o fluxo de espelhamento de tela pelo Google Hom
 O app inclui cadastro, login, recuperação de senha, perfil editável e favoritos
 sincronizados entre celular e TV. Antes de usar as contas, aplique a migração do
 banco e configure os e-mails seguindo o [guia do Supabase](../docs/contas-supabase.md).
-O catálogo também pode ser usado como visitante.
+O cadastro ou login é obrigatório antes da configuração inicial e do catálogo.
+Na TV, também é possível entrar pelo pareamento com o Android.
 
 Requisitos: Flutter com Dart 3.11.4 ou superior e Android SDK configurado.
 
