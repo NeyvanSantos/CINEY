@@ -16,6 +16,7 @@ class PlaybackPreferences {
     this.resumePlayback = true,
     this.autoHideControls = true,
     this.landscapeOnMobile = true,
+    this.autoPlayNextEpisode = true,
   });
 
   static const defaults = PlaybackPreferences();
@@ -23,16 +24,19 @@ class PlaybackPreferences {
   final bool resumePlayback;
   final bool autoHideControls;
   final bool landscapeOnMobile;
+  final bool autoPlayNextEpisode;
 
   PlaybackPreferences copyWith({
     bool? resumePlayback,
     bool? autoHideControls,
     bool? landscapeOnMobile,
+    bool? autoPlayNextEpisode,
   }) {
     return PlaybackPreferences(
       resumePlayback: resumePlayback ?? this.resumePlayback,
       autoHideControls: autoHideControls ?? this.autoHideControls,
       landscapeOnMobile: landscapeOnMobile ?? this.landscapeOnMobile,
+      autoPlayNextEpisode: autoPlayNextEpisode ?? this.autoPlayNextEpisode,
     );
   }
 }
@@ -45,6 +49,7 @@ class PlaybackPreferencesRepository {
   static const _resumePlaybackKey = 'playback-resume-enabled';
   static const _autoHideControlsKey = 'playback-auto-hide-controls';
   static const _landscapeOnMobileKey = 'playback-landscape-on-mobile';
+  static const _autoPlayNextEpisodeKey = 'playback-auto-next-episode';
 
   final Future<SharedPreferences> Function() _preferencesLoader;
 
@@ -54,6 +59,7 @@ class PlaybackPreferencesRepository {
       resumePlayback: preferences.getBool(_resumePlaybackKey) ?? true,
       autoHideControls: preferences.getBool(_autoHideControlsKey) ?? true,
       landscapeOnMobile: preferences.getBool(_landscapeOnMobileKey) ?? true,
+      autoPlayNextEpisode: preferences.getBool(_autoPlayNextEpisodeKey) ?? true,
     );
   }
 
@@ -62,6 +68,10 @@ class PlaybackPreferencesRepository {
     await preferences.setBool(_resumePlaybackKey, value.resumePlayback);
     await preferences.setBool(_autoHideControlsKey, value.autoHideControls);
     await preferences.setBool(_landscapeOnMobileKey, value.landscapeOnMobile);
+    await preferences.setBool(
+      _autoPlayNextEpisodeKey,
+      value.autoPlayNextEpisode,
+    );
   }
 }
 

@@ -139,6 +139,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
           ),
           _buildSettingTile(
+            icon: Icons.skip_next_rounded,
+            title: 'Próximo episódio automaticamente',
+            subtitle: 'Continuar a série quando o episódio terminar',
+            trailing: Switch(
+              value: preferences.autoPlayNextEpisode,
+              activeThumbColor: AppColors.primary,
+              onChanged: preferencesState.isLoading
+                  ? null
+                  : (value) => unawaited(
+                      _savePlaybackPreferences(
+                        preferences.copyWith(autoPlayNextEpisode: value),
+                      ),
+                    ),
+            ),
+          ),
+          _buildSettingTile(
             icon: Icons.visibility_off_outlined,
             title: 'Ocultar controles automaticamente',
             subtitle: 'Esconder após alguns segundos sem interação',

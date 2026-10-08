@@ -66,20 +66,29 @@ class WatchHistoryRepository {
     await _store([updated, ...entries.where((entry) => entry.key != key)]);
   }
 
+  Future<WatchProgress?> findProgress(
+    ContentItem item, {
+    int? season,
+    int? episode,
+  }) async {
+    final key = _key(item, season, episode);
+    return (await load()).where((entry) => entry.key == key).firstOrNull;
+  }
+
   Future<void> saveProgress(
     ContentItem item, {
     required Duration position,
     required Duration duration,
+    bool completed = false,
     int? season,
     int? episode,
   }) async {
-    if (position < const Duration(seconds: 5)) return;
+    if (position < Duration.zero || duration < Duration.zero) return;
     final entries = await load();
     final key = _key(item, season, episode);
     final remaining = entries.where((entry) => entry.key != key).toList();
     final isComplete =
-        duration > Duration.zero &&
-        position.inMilliseconds >= duration.inMilliseconds * 0.95;
+        completed || (duration > Duration.zero && position >= duration);
     if (!isComplete) {
       remaining.add(
         WatchProgress(

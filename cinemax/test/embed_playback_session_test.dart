@@ -2,6 +2,95 @@ import 'package:cinemax/features/player/services/embed_playback_session.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test(
+    'retomada pendente não confirma conclusão e consulta conserva a fração de segundo',
+    () {
+      var ended = 0;
+      final session = EmbedPlaybackSession(
+        onChanged: () {},
+        onFailure: (_) {},
+        onEnded: () => ended++,
+      );
+      session.receive(
+        '{"event":"media","mediaId":"film","readyState":4,"current":1200,"duration":1200,"paused":false,"ended":true,"restoring":true}',
+      );
+      expect(session.restoring, isTrue);
+      expect(session.completed, isFalse);
+      expect(ended, 0);
+      session.receive(
+        '{"event":"media","mediaId":"film","readyState":4,"current":987.654,"duration":1200,"paused":true,"restoring":false,"requestId":"close"}',
+      );
+      expect(session.position, 987.654);
+      expect(session.progressRequestId, 'close');
+      expect(session.restoring, isFalse);
+      session.dispose();
+    },
+  );
+  test('fim real avança uma vez; pausa, buffering e posição próxima não avançam', () {
+    var ended = 0;
+    final session = EmbedPlaybackSession(
+      onChanged: () {},
+      onFailure: (_) {},
+      onEnded: () => ended++,
+    );
+    session.receive(
+      '{"event":"media","mediaId":"episode","readyState":4,"current":10,"duration":1200,"paused":false}',
+    );
+    session.receive(
+      '{"event":"media","mediaId":"episode","readyState":4,"current":1199,"duration":1200,"paused":true}',
+    );
+    expect(ended, 0);
+    session.receive(
+      '{"event":"media","mediaId":"episode","readyState":1,"current":1200,"duration":1200,"paused":true,"ended":true}',
+    );
+    expect(ended, 0);
+    for (var n = 0; n < 2; n++) {
+      session.receive(
+        '{"event":"media","mediaId":"episode","readyState":4,"current":1200,"duration":1200,"paused":true,"ended":true}',
+      );
+    }
+    expect(ended, 1);
+    session.dispose();
+  });
+
+  test('anúncio curto e sinal antigo não concluem a mídia selecionada', () {
+    var ended = 0;
+    final session = EmbedPlaybackSession(
+      onChanged: () {},
+      onFailure: (_) {},
+      onEnded: () => ended++,
+    );
+    session.receive(
+      '{"event":"media","mediaId":"episode","readyState":4,"current":10,"duration":1200,"paused":false}',
+    );
+    expect(
+      session.receive(
+        '{"event":"media","mediaId":"ad","readyState":4,"current":30,"duration":30,"paused":true,"ended":true}',
+      ),
+      isFalse,
+    );
+    expect(ended, 0);
+    expect(session.duration, 1200);
+    session.dispose();
+    session.receive(
+      '{"event":"media","mediaId":"episode","readyState":4,"current":1200,"duration":1200,"paused":true,"ended":true}',
+    );
+    expect(ended, 0);
+  });
+
+  test('mensagem de término sem reprodução anterior não avança', () {
+    var ended = 0;
+    final session = EmbedPlaybackSession(
+      onChanged: () {},
+      onFailure: (_) {},
+      onEnded: () => ended++,
+    );
+    session.receive(
+      '{"event":"media","readyState":4,"current":1200,"duration":1200,"paused":true,"ended":true}',
+    );
+    expect(ended, 0);
+    session.dispose();
+  });
   testWidgets('página aberta e mensagens inválidas não confirmam vídeo', (
     tester,
   ) async {

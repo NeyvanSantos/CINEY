@@ -107,6 +107,13 @@ class StreamResolverService {
     'dr_4': ('99966', true), // All of Us Are Dead
   };
 
+  /// Identifica o catálogo real usado pelos servidores para um título local.
+  static String catalogIdFor(String contentId) {
+    final mapped = _internalIdMap[contentId];
+    if (mapped == null) return contentId;
+    return 'tmdb_${mapped.$1}_${mapped.$2 ? 'series' : 'movie'}';
+  }
+
   /// Resolve streams para um contentId genérico (tmdb_ ou interno)
   static List<StreamSource> resolveFromContentId(
     String contentId, {

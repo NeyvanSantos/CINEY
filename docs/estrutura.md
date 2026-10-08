@@ -15,6 +15,7 @@ serviços, componentes e testes compartilhados devem ficar em `cinemax/`.
 │   │   └── plugin_engine/      # Contratos, modelos, plugins e fontes
 │   ├── assets/                 # Recursos usados pelo aplicativo
 │   ├── test/                   # Testes Flutter e JavaScript
+│   ├── packages/               # Plugins locais, como o observador de mídia embed
 │   ├── android/                # Host Android mobile
 │   ├── ios/                    # Host iOS
 │   └── regras/                 # Diretrizes comuns às duas variantes
@@ -58,6 +59,8 @@ serviços usados por vários módulos pertencem a `core/`.
 - [Regras de desenvolvimento](../cinemax/regras/README.md)
 - [Política de builds e releases](../cinemax/regras/04-politica-build-e-releases.md)
 - [Notas de otimização](performance-optimization.md)
+- [Continuidade dos episódios](continuidade-episodios.md)
+- [Retomada do filme no ponto de parada](retomada-reproducao.md)
 - [Configuração do receptor Google Cast](../receiver/README.md)
 - [Configuração de contas e favoritos no Supabase](contas-supabase.md)
 - [Organização dos APKs locais](../releases/README.md)

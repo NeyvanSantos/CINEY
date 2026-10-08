@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:chewie/chewie.dart';
+import 'package:embed_media_observer/embed_media_observer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,12 +16,15 @@ import '../../../core/services/app_logger.dart';
 import '../../../plugin_engine/models/content_item.dart';
 import '../../../plugin_engine/manager/plugin_manager.dart';
 import '../../../plugin_engine/models/stream_source.dart';
+import '../../../plugin_engine/runtime/stream_resolver.dart';
+import '../../../plugin_engine/runtime/tmdb_service.dart';
 import '../../cast/presentation/cast_dialog.dart';
 import '../../cast/services/native_cast_bridge.dart';
 import '../../cast/services/web_cast_server.dart';
 import '../services/embed_playback_session.dart';
 import '../services/embed_navigation.dart';
 import '../services/embed_document.dart';
+import '../services/episode_sequence.dart';
 import '../services/watch_history_repository.dart';
 import '../../profile/services/playback_preferences.dart';
 
@@ -111,7 +116,7 @@ class PlayerScreen extends ConsumerStatefulWidget {
 }
 
 class _PlayerScreenState extends ConsumerState<PlayerScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   static const _tvPointerChannel = MethodChannel(
     'com.cinemax.cinemax/tv_pointer',
   );
@@ -132,7 +137,36 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   Offset? _tvPointerPosition;
   bool _tvPointerEnabled = false;
   late Future<void> _watchHistoryStarted;
+  late WatchHistoryRepository _historyRepository;
   DateTime _lastWatchProgressSave = DateTime.fromMillisecondsSinceEpoch(0);
+  Future<void> _historyWrites = Future.value();
+  late int? _season;
+  late int? _episode;
+  late String _title;
+  late int _resumePositionMs;
+  int _resumeDurationMs = 0;
+  bool _resumePending = false;
+  bool _closingPlayer = false;
+  bool _allowExit = false;
+  bool _appInBackground = false;
+  Completer<void>? _progressSample;
+  String? _progressRequestId;
+  int _progressRequestSequence = 0;
+  Future<void>? _checkpointInFlight;
+  late EpisodeSequence _episodeSequence;
+  Future<void>? _nextEpisodeRequest;
+  EpisodeTarget? _nextEpisode;
+  bool _nextEpisodeLoading = false;
+  bool _nextEpisodeFailed = false;
+  bool _advancingEpisode = false;
+  bool _completionHandled = false;
+  bool _autoPlayNextEpisode = true;
+  int _streamRequest = 0;
+  int? _observedWebViewId;
+  final _nextEpisodeFocusNode = FocusNode(debugLabel: 'Next episode');
+  final _nextEpisodeButtonKey = GlobalKey();
+
+  bool get _hasEpisode => _season != null && _episode != null;
 
   // Lista de fontes e estado
   List<StreamSource> _sources = [];
@@ -173,9 +207,30 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   @override
   void initState() {
     super.initState();
+    _season = widget.season;
+    _episode = widget.episode;
+    _title = widget.title;
+    _resumePositionMs = widget.resumePositionMs;
+    _historyRepository = ref.read(watchHistoryRepositoryProvider);
+    final manager = ref.read(pluginManagerProvider.notifier);
+    final catalogId = StreamResolverService.catalogIdFor(widget.contentId);
+    _episodeSequence = EpisodeSequence(
+      loadDetail: () => catalogId.startsWith('tmdb_')
+          ? TmdbService.getDetail(catalogId, widget.pluginId)
+          : manager.getDetail(catalogId, widget.pluginId),
+      loadEpisodes: (season) => catalogId.startsWith('tmdb_')
+          ? TmdbService.getEpisodes(
+              catalogId,
+              season,
+              pluginId: widget.pluginId,
+            )
+          : manager.getEpisodes(catalogId, widget.pluginId, season),
+    );
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    _watchHistoryStarted = _markWatchHistoryStarted();
+    WidgetsBinding.instance.addObserver(this);
+    _watchHistoryStarted = _prepareWatchHistory();
     unawaited(_loadPlaybackPreferences());
+    if (_hasEpisode) unawaited(_refreshNextEpisode());
   }
 
   Future<void> _loadPlaybackPreferences() async {
@@ -194,6 +249,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _autoHideControls = preferences.autoHideControls;
     _resumePlayback = preferences.resumePlayback;
     _landscapeOnMobile = preferences.landscapeOnMobile;
+    _autoPlayNextEpisode = preferences.autoPlayNextEpisode;
+    await _watchHistoryStarted;
+    if (!mounted) return;
     SystemChrome.setPreferredOrientations(
       widget.isTv || _landscapeOnMobile
           ? const [
@@ -215,38 +273,161 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   );
 
   Future<void> _markWatchHistoryStarted() async {
-    final repository = ref.read(watchHistoryRepositoryProvider);
+    final repository = _historyRepository;
     await repository.markStarted(
       _watchHistoryItem,
-      season: widget.season,
-      episode: widget.episode,
+      season: _season,
+      episode: _episode,
     );
     if (mounted) ref.invalidate(watchHistoryProvider);
+  }
+
+  Future<void> _prepareWatchHistory() async {
+    try {
+      final previous = await _historyRepository.findProgress(
+        _watchHistoryItem,
+        season: _season,
+        episode: _episode,
+      );
+      if (previous != null) {
+        _resumePositionMs = previous.position.inMilliseconds;
+        _resumeDurationMs = previous.duration.inMilliseconds;
+      }
+      await _markWatchHistoryStarted();
+    } catch (error) {
+      AppLogger.warn('Histórico indisponível: $error', tag: 'PLAYER');
+    }
   }
 
   Future<void> _saveWatchProgress({
     required Duration position,
     required Duration duration,
     bool force = false,
+    bool completed = false,
   }) async {
-    if (position < const Duration(seconds: 5)) return;
+    if (_resumePending ||
+        position < Duration.zero ||
+        duration <= Duration.zero) {
+      return;
+    }
     final now = DateTime.now();
     if (!force &&
-        now.difference(_lastWatchProgressSave) < const Duration(seconds: 12)) {
+        now.difference(_lastWatchProgressSave) < const Duration(seconds: 2)) {
       return;
     }
     _lastWatchProgressSave = now;
 
-    final repository = ref.read(watchHistoryRepositoryProvider);
-    await _watchHistoryStarted;
-    await repository.saveProgress(
-      _watchHistoryItem,
-      position: position,
-      duration: duration,
-      season: widget.season,
-      episode: widget.episode,
-    );
+    final repository = _historyRepository;
+    final item = _watchHistoryItem;
+    final season = _season;
+    final episode = _episode;
+    final started = _watchHistoryStarted;
+    // Capture the episode before awaiting and serialize writes across transitions.
+    final write = _historyWrites.then((_) async {
+      await started;
+      await repository.saveProgress(
+        item,
+        position: position,
+        duration: duration,
+        completed: completed,
+        season: season,
+        episode: episode,
+      );
+    });
+    _historyWrites = write.catchError((Object error) {
+      AppLogger.warn('Falha ao salvar progresso: $error', tag: 'PLAYER');
+    });
+    await _historyWrites;
     if (mounted) ref.invalidate(watchHistoryProvider);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appInBackground = state != AppLifecycleState.resumed;
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      unawaited(_checkpointPlayback(pause: true));
+    }
+  }
+
+  Future<void> _checkpointPlayback({bool pause = false}) {
+    final ongoing = _checkpointInFlight;
+    if (ongoing != null) return ongoing;
+    final request = _capturePlaybackProgress(pause: pause);
+    _checkpointInFlight = request;
+    return request.whenComplete(() => _checkpointInFlight = null);
+  }
+
+  Future<void> _capturePlaybackProgress({bool pause = false}) async {
+    try {
+      final native = _videoPlayerController;
+      if (native?.value.isInitialized == true) {
+        if (pause) await native!.pause().timeout(const Duration(seconds: 1));
+        final position =
+            await native!.position.timeout(const Duration(seconds: 1)) ??
+            native.value.position;
+        if (_videoPlayerController != native) return;
+        native.value = native.value.copyWith(position: position);
+        await _saveWatchProgress(
+          position: position,
+          duration: native.value.duration,
+          completed: native.value.isCompleted,
+          force: true,
+        );
+      } else {
+        final controller = _webViewController;
+        final session = _embedSession;
+        if (controller == null || session == null) return;
+        final sample = Completer<void>();
+        final requestId = '${++_progressRequestSequence}';
+        _progressSample = sample;
+        _progressRequestId = requestId;
+        final command = jsonEncode({
+          'event': 'ciney:progress',
+          'requestId': requestId,
+          'pause': pause,
+        });
+        await controller
+            .runJavaScript(
+              'window.__cineyRequestProgress && window.__cineyRequestProgress($command);',
+            )
+            .timeout(const Duration(seconds: 1));
+        await sample.future.timeout(
+          const Duration(milliseconds: 800),
+          onTimeout: () {},
+        );
+        if (_webViewController != controller ||
+            !session.ready ||
+            session.restoring) {
+          return;
+        }
+        await _saveWatchProgress(
+          position: Duration(milliseconds: (session.position * 1000).round()),
+          duration: Duration(milliseconds: (session.duration * 1000).round()),
+          completed: session.completed,
+          force: true,
+        );
+      }
+    } catch (error) {
+      AppLogger.warn(
+        'Não foi possível consultar a posição atual: $error',
+        tag: 'PLAYER',
+      );
+    } finally {
+      _progressRequestId = null;
+      _progressSample = null;
+    }
+  }
+
+  Future<void> _exitPlayer() async {
+    if (_closingPlayer) return;
+    _closingPlayer = true;
+    await _checkpointPlayback(pause: true);
+    await _historyWrites;
+    if (!mounted) return;
+    setState(() => _allowExit = true);
+    Navigator.of(context).pop();
   }
 
   void _startHideControlsTimer() {
@@ -268,9 +449,182 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     });
   }
 
+  Future<void> _refreshNextEpisode() {
+    final season = _season;
+    final episode = _episode;
+    if (season == null || episode == null) return Future.value();
+    setState(() {
+      _nextEpisode = null;
+      _nextEpisodeLoading = true;
+      _nextEpisodeFailed = false;
+    });
+    final request = () async {
+      try {
+        final next = await _episodeSequence
+            .next(season, episode)
+            .timeout(const Duration(seconds: 20));
+        if (!mounted || _season != season || _episode != episode) return;
+        setState(() => _nextEpisode = next);
+      } catch (error) {
+        if (!mounted || _season != season || _episode != episode) return;
+        AppLogger.warn(
+          'Lista do próximo episódio indisponível: $error',
+          tag: 'EPISODES',
+        );
+        setState(() => _nextEpisodeFailed = true);
+      } finally {
+        if (mounted && _season == season && _episode == episode) {
+          setState(() => _nextEpisodeLoading = false);
+        }
+      }
+    }();
+    _nextEpisodeRequest = request;
+    return request;
+  }
+
+  Future<void> _onPlaybackEnded() async {
+    if (!_hasEpisode ||
+        _completionHandled ||
+        _advancingEpisode ||
+        _isCasting ||
+        _closingPlayer ||
+        _appInBackground) {
+      return;
+    }
+    _completionHandled = true;
+    _hideControlsTimer?.cancel();
+    setState(() => _controlsVisible = true);
+    if (_autoPlayNextEpisode) await _advanceEpisode();
+  }
+
+  Future<void> _advanceEpisode() async {
+    if (!_hasEpisode || _advancingEpisode || _isCasting || _closingPlayer) {
+      return;
+    }
+    setState(() => _advancingEpisode = true);
+    try {
+      await _nextEpisodeRequest;
+      if (!mounted) return;
+      if (_nextEpisodeFailed) await _refreshNextEpisode();
+      if (!mounted) return;
+      final next = _nextEpisode;
+      if (next == null) {
+        if (_nextEpisodeFailed) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Não foi possível carregar o próximo episódio. Tente novamente.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+      final native = _videoPlayerController?.value;
+      final embed = _embedSession;
+      final position =
+          native?.position ??
+          Duration(milliseconds: ((embed?.position ?? 0) * 1000).round());
+      final duration =
+          native?.duration ??
+          Duration(milliseconds: ((embed?.duration ?? 0) * 1000).round());
+      // Stop old callbacks before switching the history identity.
+      final save = _saveWatchProgress(
+        position: position,
+        duration: duration,
+        force: true,
+        completed: native?.isCompleted == true || embed?.completed == true,
+      );
+      _disposeCurrentPlayer(saveProgress: false);
+      await save;
+      if (!mounted) return;
+      setState(() {
+        _season = next.season;
+        _episode = next.number;
+        _title =
+            '${widget.contentTitle ?? _watchHistoryItem.title} • ${next.title}';
+        _resumePositionMs = 0;
+        _resumeDurationMs = 0;
+        _currentPosition = Duration.zero;
+        _totalDuration = Duration.zero;
+        _completionHandled = false;
+        _lastWatchProgressSave = DateTime.fromMillisecondsSinceEpoch(0);
+        _isLoading = true;
+      });
+      _watchHistoryStarted = _markWatchHistoryStarted();
+      await _watchHistoryStarted;
+      if (!mounted) return;
+      unawaited(_refreshNextEpisode());
+      await _loadStreams();
+    } catch (error, stack) {
+      AppLogger.error(
+        'Falha ao avançar episódio: $error',
+        tag: 'PLAYER',
+        stackTrace: stack,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Não foi possível iniciar o próximo episódio. Tente novamente.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _advancingEpisode = false);
+    }
+  }
+
+  Widget _buildNextEpisodeButton() {
+    final next = _nextEpisode;
+    final busy = _advancingEpisode || _nextEpisodeLoading;
+    return Tooltip(
+      message: next == null
+          ? 'Recarregar episódios'
+          : 'Temporada ${next.season} • Episódio ${next.number}: ${next.title}',
+      child: FilledButton.icon(
+        key: _nextEpisodeButtonKey,
+        focusNode: _nextEpisodeFocusNode,
+        style: FilledButton.styleFrom(
+          backgroundColor: AppColors.surface,
+          foregroundColor: AppColors.primary,
+          side: const BorderSide(color: AppColors.primary),
+        ),
+        onPressed: busy || _isCasting
+            ? null
+            : () => unawaited(_advanceEpisode()),
+        icon: busy
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Icon(
+                _nextEpisodeFailed
+                    ? Icons.refresh_rounded
+                    : Icons.skip_next_rounded,
+              ),
+        label: Text(
+          _advancingEpisode
+              ? 'Abrindo episódio…'
+              : _nextEpisodeLoading
+              ? 'Buscando episódio…'
+              : _nextEpisodeFailed
+              ? 'Recarregar episódios'
+              : 'Próximo episódio',
+        ),
+      ),
+    );
+  }
+
   Future<void> _loadStreams() async {
+    final request = ++_streamRequest;
+    final preferredServer = _sources.isNotEmpty
+        ? _sources[_currentSourceIndex].server
+        : null;
     AppLogger.info(
-      'Abrindo "${widget.title}" (${widget.contentId}), plugin ${widget.pluginId}.',
+      'Abrindo "$_title" (${widget.contentId}), plugin ${widget.pluginId}.',
       tag: 'PLAYER',
     );
     setState(() {
@@ -285,11 +639,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           .getStreams(
             widget.contentId,
             widget.pluginId,
-            season: widget.season,
-            episode: widget.episode,
+            season: _season,
+            episode: _episode,
           );
 
-      if (!mounted) return;
+      if (!mounted || request != _streamRequest) return;
       if (sources.isEmpty) {
         AppLogger.warn(
           'Nenhum servidor disponível para ${widget.contentId}.',
@@ -312,6 +666,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         tag: 'PLAYER',
       );
       int startIndex = widget.initialSourceIndex;
+      if (preferredServer != null) {
+        final preferredIndex = sources.indexWhere(
+          (source) => source.server == preferredServer,
+        );
+        if (preferredIndex >= 0) startIndex = preferredIndex;
+      }
       if (startIndex < 0 || startIndex >= sources.length) {
         startIndex = 0;
       }
@@ -323,7 +683,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         tag: 'PLAYER',
         stackTrace: stack,
       );
-      if (!mounted) return;
+      if (!mounted || request != _streamRequest) return;
       setState(() {
         _isLoading = false;
         _errorMessage = 'Erro ao carregar servidores: $error';
@@ -345,6 +705,19 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }
 
     final source = _sources[index];
+    // Preserve the current point when switching servers for the same title.
+    final oldNative = _videoPlayerController?.value;
+    final oldEmbed = _embedSession;
+    if (_resumePlayback && !_resumePending) {
+      final position =
+          oldNative?.position.inMilliseconds ??
+          (oldEmbed?.ready == true ? (oldEmbed!.position * 1000).round() : 0);
+      if (position > 0) _resumePositionMs = position;
+      final duration =
+          oldNative?.duration.inMilliseconds ??
+          (oldEmbed?.ready == true ? (oldEmbed!.duration * 1000).round() : 0);
+      if (duration > 0) _resumeDurationMs = duration;
+    }
     AppLogger.info(
       'Carregando servidor ${index + 1}/${_sources.length}: ${source.server} (${source.isEmbed ? "WebView" : "nativo"}).',
       tag: 'PLAYER',
@@ -362,6 +735,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _tvPointerFocusNode.unfocus();
 
     _disposeCurrentPlayer();
+    _resumePending = _resumePlayback && _resumePositionMs > 0;
 
     if (source.isEmbed) {
       await _initWebViewPlayer(source);
@@ -388,6 +762,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final mainPage = Uri.parse(embedDocumentBaseUrl);
     late EmbedPlaybackSession session;
     session = EmbedPlaybackSession(
+      onEnded: () {
+        if (isCurrent()) unawaited(_onPlaybackEnded());
+      },
       onChanged: () {
         if (!isCurrent()) return;
         if (session.ready && !loggedReady) {
@@ -411,7 +788,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             tag: 'PLAYER',
           );
         }
-        if (widget.isTv && session.playing && _tvPointerEnabled) {
+        if (widget.isTv &&
+            session.playing &&
+            _tvPointerEnabled &&
+            !_hasEpisode) {
           _tvPointerEnabled = false;
           _tvPointerFocusNode.unfocus();
         }
@@ -421,13 +801,26 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         final duration = Duration(
           milliseconds: (session.duration * 1000).round(),
         );
+        final wasPlaying = _isPlaying;
+        if (session.ready) _resumePending = session.restoring;
         setState(() {
           _isLoading = !session.ready;
           _currentPosition = position;
           _totalDuration = duration;
+          _isPlaying = session.playing;
         });
         if (session.ready) {
-          unawaited(_saveWatchProgress(position: position, duration: duration));
+          unawaited(
+            _saveWatchProgress(
+              position: position,
+              duration: duration,
+              completed: session.completed,
+              force: wasPlaying && !session.playing,
+            ),
+          );
+          if (_appInBackground && session.playing) {
+            unawaited(_checkpointPlayback(pause: true));
+          }
         }
       },
       onFailure: (reason) {
@@ -437,9 +830,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _embedSession = session;
 
     try {
-      final bridge = await rootBundle.loadString(
+      var bridge = await rootBundle.loadString(
         AppEnvironment.assetPath('assets/player/embed_bridge.js'),
       );
+      final resumeHelper = await rootBundle.loadString(
+        AppEnvironment.assetPath('assets/player/playback_resume.js'),
+      );
+      final resumeConfiguration =
+          'window.__cineyResumePositionSeconds = ${_resumePlayback ? _resumePositionMs / 1000 : 0};\n'
+          'window.__cineyExpectedDurationSeconds = ${_resumeDurationMs / 1000};\n';
+      bridge = '$resumeConfiguration$resumeHelper\n$bridge';
       if (!isCurrent()) return;
       await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
       await controller.setBackgroundColor(Colors.black);
@@ -450,9 +850,48 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       await controller.addJavaScriptChannel(
         'PlayerBridge',
         onMessageReceived: (message) {
-          if (isCurrent()) session.receive(message.message);
+          if (!isCurrent()) return;
+          if (session.receive(message.message) &&
+              session.progressRequestId == _progressRequestId &&
+              _progressRequestId != null &&
+              !session.restoring) {
+            final sample = _progressSample;
+            if (sample != null && !sample.isCompleted) sample.complete();
+          }
         },
       );
+      if (controller.platform is AndroidWebViewController) {
+        final webViewId =
+            (controller.platform as AndroidWebViewController).webViewIdentifier;
+        try {
+          final script = await rootBundle.loadString(
+            AppEnvironment.assetPath('assets/player/embed_media_observer.js'),
+          );
+          if (!isCurrent()) return;
+          final installed = await EmbedMediaObserver.install(
+            webViewId,
+            '$resumeConfiguration$resumeHelper\n$script',
+          );
+          if (!isCurrent()) {
+            await EmbedMediaObserver.remove(webViewId);
+            return;
+          }
+          if (installed) {
+            _observedWebViewId = webViewId;
+            bridge = 'window.__cineyNativeFrameObserver = true;\n$bridge';
+          } else {
+            AppLogger.warn(
+              'WebView sem observação de frames; próximo episódio manual disponível.',
+              tag: 'PLAYER',
+            );
+          }
+        } catch (error) {
+          AppLogger.warn(
+            'Observador de episódios indisponível: $error',
+            tag: 'PLAYER',
+          );
+        }
+      }
       await controller.setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (url) {
@@ -557,6 +996,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (_videoPlayerController != null) {
       if (_videoPlayerController!.value.isPlaying) {
         _videoPlayerController!.pause();
+        unawaited(_checkpointPlayback(pause: true));
         setState(() => _isPlaying = false);
       } else {
         _videoPlayerController!.play();
@@ -658,6 +1098,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   Future<void> _dispatchTvPointerTap(Offset position, Size size) async {
     if (size.width <= 0 || size.height <= 0) return;
+    final button = _nextEpisodeButtonKey.currentContext?.findRenderObject();
+    if (button is RenderBox && button.hasSize) {
+      final bounds = button.localToGlobal(Offset.zero) & button.size;
+      if (bounds.contains(position)) {
+        if (!_nextEpisodeLoading) unawaited(_advanceEpisode());
+        return;
+      }
+    }
     try {
       await _tvPointerChannel.invokeMethod<bool>('tap', {
         'x': position.dx / size.width,
@@ -759,13 +1207,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         await controller.dispose();
         return;
       }
-      final resumePosition = Duration(milliseconds: widget.resumePositionMs);
+      final resumePosition = Duration(milliseconds: _resumePositionMs);
       if (_resumePlayback &&
           resumePosition > Duration.zero &&
-          controller.value.duration - resumePosition >
-              const Duration(seconds: 20)) {
+          resumePosition < controller.value.duration) {
         await controller.seekTo(resumePosition);
       }
+      if (!mounted || _videoPlayerController != controller) return;
+      _resumePending = false;
+      _resumeDurationMs = controller.value.duration.inMilliseconds;
       AppLogger.success(
         'Player nativo pronto: ${source.server}.',
         tag: 'PLAYER',
@@ -786,6 +1236,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         _nativeProgressTimer = Timer(const Duration(milliseconds: 250), () {
           if (!mounted || _videoPlayerController != controller) return;
           final value = controller.value;
+          final wasPlaying = _isPlaying;
           setState(() {
             _currentPosition = value.position;
             _totalDuration = value.duration;
@@ -795,17 +1246,19 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             _saveWatchProgress(
               position: value.position,
               duration: value.duration,
-              force:
-                  value.duration > Duration.zero &&
-                  value.position >= value.duration - const Duration(seconds: 2),
+              completed: value.isCompleted,
+              force: value.isCompleted || (wasPlaying && !value.isPlaying),
             ),
           );
+          if (value.isCompleted && !value.hasError) {
+            unawaited(_onPlaybackEnded());
+          }
         });
       });
 
       final chewie = ChewieController(
         videoPlayerController: controller,
-        autoPlay: true,
+        autoPlay: !_appInBackground && !_closingPlayer,
         looping: false,
         showControls: false, // Usamos nossa própria UI rica
         aspectRatio: controller.value.aspectRatio > 0
@@ -822,6 +1275,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         if (widget.isTv) _playerFocusNode.requestFocus();
       }
     } catch (e, stack) {
+      if (!mounted || _videoPlayerController != pendingController) return;
       final controller = pendingController;
       if (controller != null) {
         await controller.dispose();
@@ -852,17 +1306,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }
   }
 
-  void _disposeCurrentPlayer() {
+  void _disposeCurrentPlayer({bool saveProgress = true}) {
     final nativeController = _videoPlayerController;
-    if (nativeController?.value.isInitialized == true) {
+    if (saveProgress && nativeController?.value.isInitialized == true) {
       unawaited(
         _saveWatchProgress(
           position: nativeController!.value.position,
           duration: nativeController.value.duration,
+          completed: nativeController.value.isCompleted,
           force: true,
         ),
       );
-    } else if (_embedSession != null) {
+    } else if (saveProgress && _embedSession != null) {
       unawaited(
         _saveWatchProgress(
           position: Duration(
@@ -871,11 +1326,23 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           duration: Duration(
             milliseconds: (_embedSession!.duration * 1000).round(),
           ),
+          completed: _embedSession!.completed,
           force: true,
         ),
       );
     }
     _nativeProgressTimer?.cancel();
+    final sample = _progressSample;
+    if (sample != null && !sample.isCompleted) sample.complete();
+    final observedId = _observedWebViewId;
+    _observedWebViewId = null;
+    if (observedId != null) {
+      unawaited(
+        EmbedMediaObserver.remove(observedId).catchError((Object error) {
+          AppLogger.warn('Falha ao remover observador: $error', tag: 'PLAYER');
+        }),
+      );
+    }
     _nativeProgressTimer = null;
     _embedSession?.dispose();
     _embedSession = null;
@@ -888,7 +1355,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   @override
   void dispose() {
-    AppLogger.info('Player fechado: ${widget.title}.', tag: 'PLAYER');
+    WidgetsBinding.instance.removeObserver(this);
+    AppLogger.info('Player fechado: $_title.', tag: 'PLAYER');
+    _nextEpisodeFocusNode.dispose();
     _castPollTimer?.cancel();
     _hideControlsTimer?.cancel();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -897,7 +1366,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
     _playerFocusNode.dispose();
     _tvPointerFocusNode.dispose();
-    _disposeCurrentPlayer();
+    _disposeCurrentPlayer(saveProgress: !_allowExit);
     super.dispose();
   }
 
@@ -910,7 +1379,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         _videoPlayerController?.value.position ?? _currentPosition;
     await CastDialog.show(
       context,
-      title: widget.title,
+      title: _title,
       sources: _sources,
       initialSourceIndex: _currentSourceIndex,
       startPosition: currentPos,
@@ -1069,7 +1538,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          widget.title,
+                          _title,
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 16,
@@ -1297,238 +1766,268 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   @override
   Widget build(BuildContext context) {
-    final hasEpisode = widget.season != null && widget.episode != null;
-    final subtitleText = hasEpisode
-        ? 'Temporada ${widget.season} • Episódio ${widget.episode}'
+    final subtitleText = _hasEpisode
+        ? 'Temporada $_season • Episódio $_episode'
         : 'Filme Completo em HD';
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Focus(
-        focusNode: _playerFocusNode,
-        canRequestFocus: _videoPlayerController != null,
-        skipTraversal: _videoPlayerController == null,
-        onKeyEvent: (node, event) {
-          if (!node.hasFocus) return KeyEventResult.ignored;
-          return _handleRemoteMediaKey(event);
-        },
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: _webViewController == null ? _toggleControls : null,
-          onDoubleTapDown: _webViewController != null
-              ? null
-              : (details) {
-                  final screenWidth = MediaQuery.of(context).size.width;
-                  if (details.localPosition.dx < screenWidth / 2) {
-                    // Volta 10s
-                    _executeSeekRelative(-10);
-                    setState(() => _showDoubleTapRewind = true);
-                    Future.delayed(const Duration(milliseconds: 600), () {
-                      if (mounted) setState(() => _showDoubleTapRewind = false);
-                    });
-                  } else {
-                    // Avança 10s
-                    _executeSeekRelative(10);
-                    setState(() => _showDoubleTapForward = true);
-                    Future.delayed(const Duration(milliseconds: 600), () {
-                      if (mounted) {
-                        setState(() => _showDoubleTapForward = false);
-                      }
-                    });
-                  }
-                },
-          child: Stack(
-            children: [
-              // ── Área do Player de Vídeo ──
-              Center(child: _buildPlayerContent()),
+    return PopScope(
+      canPop: _allowExit,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          unawaited(_exitPlayer());
+        }
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Focus(
+          focusNode: _playerFocusNode,
+          canRequestFocus: _videoPlayerController != null,
+          skipTraversal: _videoPlayerController == null,
+          onKeyEvent: (node, event) {
+            if (!node.hasFocus) return KeyEventResult.ignored;
+            return _handleRemoteMediaKey(event);
+          },
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _webViewController == null ? _toggleControls : null,
+            onDoubleTapDown: _webViewController != null
+                ? null
+                : (details) {
+                    final screenWidth = MediaQuery.of(context).size.width;
+                    if (details.localPosition.dx < screenWidth / 2) {
+                      // Volta 10s
+                      _executeSeekRelative(-10);
+                      setState(() => _showDoubleTapRewind = true);
+                      Future.delayed(const Duration(milliseconds: 600), () {
+                        if (mounted) {
+                          setState(() => _showDoubleTapRewind = false);
+                        }
+                      });
+                    } else {
+                      // Avança 10s
+                      _executeSeekRelative(10);
+                      setState(() => _showDoubleTapForward = true);
+                      Future.delayed(const Duration(milliseconds: 600), () {
+                        if (mounted) {
+                          setState(() => _showDoubleTapForward = false);
+                        }
+                      });
+                    }
+                  },
+            child: Stack(
+              children: [
+                // ── Área do Player de Vídeo ──
+                Center(child: _buildPlayerContent()),
 
-              // ── Feedback Visual de Duplo Toque (+10s / -10s) ──
-              if (_showDoubleTapRewind)
-                Positioned(
-                  left: 60,
-                  top: 0,
-                  bottom: 0,
-                  child: Center(
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.black54,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.replay_10_rounded,
-                            color: Colors.white,
-                            size: 36,
-                          ),
-                          Text(
-                            '-10s',
-                            style: TextStyle(color: Colors.white, fontSize: 12),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-              if (_showDoubleTapForward)
-                Positioned(
-                  right: 60,
-                  top: 0,
-                  bottom: 0,
-                  child: Center(
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.black54,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.forward_10_rounded,
-                            color: Colors.white,
-                            size: 36,
-                          ),
-                          Text(
-                            '+10s',
-                            style: TextStyle(color: Colors.white, fontSize: 12),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-              // ── Overlay de Controles (Fade In/Out) ──
-              if (!_isScreenLocked && _webViewController == null)
-                AnimatedOpacity(
-                  opacity: _controlsVisible ? 1.0 : 0.0,
-                  duration: const Duration(milliseconds: 250),
-                  child: IgnorePointer(
-                    ignoring: !_controlsVisible,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.black.withOpacity(0.85),
-                            Colors.transparent,
-                            Colors.transparent,
-                            Colors.black.withOpacity(0.90),
-                          ],
-                          stops: const [0.0, 0.25, 0.70, 1.0],
+                // ── Feedback Visual de Duplo Toque (+10s / -10s) ──
+                if (_showDoubleTapRewind)
+                  Positioned(
+                    left: 60,
+                    top: 0,
+                    bottom: 0,
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          shape: BoxShape.circle,
                         ),
-                      ),
-                      child: SafeArea(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        child: const Column(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            // ── Barra Superior (Top Bar) ──
-                            _buildTopBar(subtitleText),
-
-                            // ── Centro (Botão Play/Pause Grande e Navegação 10s) ──
-                            _buildCenterControls(),
-
-                            // ── Barra Inferior com Barra de Progresso e Ajustes ──
-                            _buildBottomBar(),
+                            Icon(
+                              Icons.replay_10_rounded,
+                              color: Colors.white,
+                              size: 36,
+                            ),
+                            Text(
+                              '-10s',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                              ),
+                            ),
                           ],
                         ),
                       ),
                     ),
                   ),
-                ),
 
-              // ── Botão de Desbloqueio da Tela ──
-              if (_isScreenLocked && _webViewController == null)
-                Positioned(
-                  left: 20,
-                  top: 20,
-                  child: SafeArea(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.black54,
-                        borderRadius: BorderRadius.circular(30),
-                        border: Border.all(color: Colors.white24),
-                      ),
-                      child: IconButton(
-                        icon: const Icon(
-                          Icons.lock_rounded,
-                          color: AppColors.primary,
-                          size: 26,
+                if (_showDoubleTapForward)
+                  Positioned(
+                    right: 60,
+                    top: 0,
+                    bottom: 0,
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          shape: BoxShape.circle,
                         ),
-                        tooltip: 'Desbloquear Tela',
-                        onPressed: () {
-                          setState(() {
-                            _isScreenLocked = false;
-                            _controlsVisible = true;
-                          });
-                          _startHideControlsTimer();
-                        },
+                        child: const Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.forward_10_rounded,
+                              color: Colors.white,
+                              size: 36,
+                            ),
+                            Text(
+                              '+10s',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
 
-              // ── Controle Remoto de Transmissão na TV (Modo Cast Ativo) ──
-              if (_isCasting) Positioned.fill(child: _buildCastRemoteOverlay()),
-
-              if (widget.isTv &&
-                  _webViewController != null &&
-                  _tvPointerEnabled)
-                Positioned.fill(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final size = Size(
-                        constraints.maxWidth,
-                        constraints.maxHeight,
-                      );
-                      final position =
-                          _tvPointerPosition ??
-                          Offset(size.width / 2, size.height / 2);
-                      return Focus(
-                        focusNode: _tvPointerFocusNode,
-                        autofocus: true,
-                        onKeyEvent: (_, event) =>
-                            _handleTvPointerKey(event, size),
-                        child: IgnorePointer(
-                          child: Stack(
+                // ── Overlay de Controles (Fade In/Out) ──
+                if (!_isScreenLocked && _webViewController == null)
+                  AnimatedOpacity(
+                    opacity: _controlsVisible ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 250),
+                    child: IgnorePointer(
+                      ignoring: !_controlsVisible,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.black.withOpacity(0.85),
+                              Colors.transparent,
+                              Colors.transparent,
+                              Colors.black.withOpacity(0.90),
+                            ],
+                            stops: const [0.0, 0.25, 0.70, 1.0],
+                          ),
+                        ),
+                        child: SafeArea(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Positioned(
-                                left: position.dx - 14,
-                                top: position.dy - 14,
-                                child: DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    color: Colors.black87,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: AppColors.primary,
-                                      width: 2,
-                                    ),
-                                  ),
-                                  child: const SizedBox(
-                                    width: 28,
-                                    height: 28,
-                                    child: Icon(
-                                      Icons.near_me_rounded,
-                                      color: Colors.white,
-                                      size: 18,
-                                    ),
-                                  ),
-                                ),
-                              ),
+                              // ── Barra Superior (Top Bar) ──
+                              _buildTopBar(subtitleText),
+
+                              // ── Centro (Botão Play/Pause Grande e Navegação 10s) ──
+                              _buildCenterControls(),
+
+                              // ── Barra Inferior com Barra de Progresso e Ajustes ──
+                              _buildBottomBar(),
                             ],
                           ),
                         ),
-                      );
-                    },
+                      ),
+                    ),
                   ),
-                ),
-            ],
+
+                // ── Botão de Desbloqueio da Tela ──
+                if (_isScreenLocked && _webViewController == null)
+                  Positioned(
+                    left: 20,
+                    top: 20,
+                    child: SafeArea(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(30),
+                          border: Border.all(color: Colors.white24),
+                        ),
+                        child: IconButton(
+                          icon: const Icon(
+                            Icons.lock_rounded,
+                            color: AppColors.primary,
+                            size: 26,
+                          ),
+                          tooltip: 'Desbloquear Tela',
+                          onPressed: () {
+                            setState(() {
+                              _isScreenLocked = false;
+                              _controlsVisible = true;
+                            });
+                            _startHideControlsTimer();
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // ── Controle Remoto de Transmissão na TV (Modo Cast Ativo) ──
+                if (_isCasting)
+                  Positioned.fill(child: _buildCastRemoteOverlay()),
+
+                if (_hasEpisode &&
+                    !_isScreenLocked &&
+                    !_isCasting &&
+                    (_nextEpisode != null ||
+                        _nextEpisodeLoading ||
+                        _nextEpisodeFailed ||
+                        _advancingEpisode) &&
+                    (_webViewController != null || _controlsVisible))
+                  Positioned(
+                    right: 16,
+                    bottom: _webViewController != null ? 76 : 116,
+                    child: SafeArea(child: _buildNextEpisodeButton()),
+                  ),
+
+                if (widget.isTv &&
+                    _webViewController != null &&
+                    _tvPointerEnabled)
+                  Positioned.fill(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final size = Size(
+                          constraints.maxWidth,
+                          constraints.maxHeight,
+                        );
+                        final position =
+                            _tvPointerPosition ??
+                            Offset(size.width / 2, size.height / 2);
+                        return Focus(
+                          focusNode: _tvPointerFocusNode,
+                          autofocus: true,
+                          onKeyEvent: (_, event) =>
+                              _handleTvPointerKey(event, size),
+                          child: IgnorePointer(
+                            child: Stack(
+                              children: [
+                                Positioned(
+                                  left: position.dx - 14,
+                                  top: position.dy - 14,
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      color: Colors.black87,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: AppColors.primary,
+                                        width: 2,
+                                      ),
+                                    ),
+                                    child: const SizedBox(
+                                      width: 28,
+                                      height: 28,
+                                      child: Icon(
+                                        Icons.near_me_rounded,
+                                        color: Colors.white,
+                                        size: 18,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1560,7 +2059,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 color: Colors.white,
                 size: 18,
               ),
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () => unawaited(_exitPlayer()),
             ),
           ),
           const SizedBox(width: 14),
@@ -1572,7 +2071,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  widget.title,
+                  _title,
                   style: AppTypography.headlineMedium.copyWith(
                     fontSize: 16,
                     color: Colors.white,

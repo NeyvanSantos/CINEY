@@ -11,6 +11,7 @@ void main() {
     expect(preferences.resumePlayback, isTrue);
     expect(preferences.autoHideControls, isTrue);
     expect(preferences.landscapeOnMobile, isTrue);
+    expect(preferences.autoPlayNextEpisode, isTrue);
   });
 
   test('persiste preferências de reprodução', () async {
@@ -18,6 +19,7 @@ void main() {
       resumePlayback: false,
       autoHideControls: false,
       landscapeOnMobile: false,
+      autoPlayNextEpisode: false,
     );
     final repository = PlaybackPreferencesRepository();
 
@@ -27,5 +29,22 @@ void main() {
     expect(actual.resumePlayback, expected.resumePlayback);
     expect(actual.autoHideControls, expected.autoHideControls);
     expect(actual.landscapeOnMobile, expected.landscapeOnMobile);
+    expect(actual.autoPlayNextEpisode, isFalse);
   });
+
+  test(
+    'migrar preferências antigas ativa continuidade sem perder ajustes',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'playback-resume-enabled': false,
+      });
+      final value = await PlaybackPreferencesRepository().load();
+      expect(value.resumePlayback, isFalse);
+      expect(value.autoPlayNextEpisode, isTrue);
+      expect(
+        value.copyWith(autoPlayNextEpisode: false).resumePlayback,
+        isFalse,
+      );
+    },
+  );
 }

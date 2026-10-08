@@ -1,0 +1,16 @@
+name: embed_media_observer
+description: Observes HTML media inside Android WebView frames for episode continuity.
+version: 0.1.0
+publish_to: none
+environment:
+  sdk: ^3.11.4
+dependencies:
+  flutter:
+    sdk: flutter
+  webview_flutter_android: ^4.12.0
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.ciney.embedmedia
+        pluginClass: EmbedMediaObserverPlugin

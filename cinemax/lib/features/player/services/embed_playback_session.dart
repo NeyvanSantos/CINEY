@@ -3,12 +3,20 @@ import 'dart:convert';
 
 /// Tracks media signals separately from page navigation.
 class EmbedPlaybackSession {
-  EmbedPlaybackSession({required this.onChanged, required this.onFailure}) {
+  EmbedPlaybackSession({
+    required this.onChanged,
+    required this.onFailure,
+    this.onEnded,
+  }) {
     _startDeadline();
   }
 
   final void Function() onChanged;
   final void Function(String) onFailure;
+  final void Function()? onEnded;
+  String? _mediaId;
+  bool _hasPlayed = false;
+  bool _ended = false;
   Timer? _deadline;
   bool _closed = false;
   bool ready = false;
@@ -18,6 +26,9 @@ class EmbedPlaybackSession {
   bool waitExpired = false;
   double position = 0;
   double duration = 0;
+  bool restoring = false;
+  bool get completed => _ended;
+  String? progressRequestId;
 
   void _startDeadline() {
     _deadline = Timer(const Duration(seconds: 25), () {
@@ -44,6 +55,13 @@ class EmbedPlaybackSession {
     opaqueFrame = false;
     needsInteraction = false;
     waitExpired = false;
+    position = 0;
+    duration = 0;
+    _mediaId = null;
+    _hasPlayed = false;
+    _ended = false;
+    restoring = false;
+    progressRequestId = null;
     onChanged();
   }
 
@@ -72,11 +90,39 @@ class EmbedPlaybackSession {
               data['paused'] is! bool) {
             return false;
           }
+          final mediaId = data['mediaId'];
+          if (mediaId != null && mediaId is! String) return false;
+          if (_mediaId != null &&
+              mediaId != _mediaId &&
+              (mediaId == null || total < duration)) {
+            return false;
+          }
+          if (mediaId != _mediaId) {
+            _hasPlayed = false;
+            _ended = false;
+          }
+          _mediaId = mediaId as String?;
           ready = true;
           playing = data['paused'] == false;
           position = current.toDouble();
           duration = total.toDouble();
+          restoring = data['restoring'] == true;
+          progressRequestId = data['requestId'] is String
+              ? data['requestId'] as String
+              : null;
+          _hasPlayed |= playing && position > 0;
           _deadline?.cancel();
+          final justEnded =
+              !restoring &&
+              data['ended'] == true &&
+              _hasPlayed &&
+              !_ended &&
+              duration > 0 &&
+              position >= duration - 1;
+          if (justEnded) _ended = true;
+          onChanged();
+          if (justEnded && !_closed) onEnded?.call();
+          return true;
         case 'error':
           final code = data['code'];
           if (code is! int || code < 1 || code > 4) return false;

@@ -44,10 +44,48 @@ void main() {
       item,
       position: const Duration(minutes: 39),
       duration: const Duration(minutes: 40),
+      completed: true,
     );
 
     expect(await repository.load(), isEmpty);
   });
+
+  test(
+    'preserva milissegundos e ponto de parada mesmo depois de 95 por cento',
+    () async {
+      const position = Duration(milliseconds: 2376123);
+      await repository.saveProgress(
+        item,
+        position: position,
+        duration: const Duration(minutes: 40),
+      );
+      final restored = await WatchHistoryRepository().findProgress(item);
+      expect(restored?.position, position);
+      await repository.markStarted(item);
+      expect((await repository.findProgress(item))?.position, position);
+    },
+  );
+
+  test(
+    'salva paradas nos primeiros segundos e rebobinar para o início',
+    () async {
+      await repository.saveProgress(
+        item,
+        position: const Duration(milliseconds: 2456),
+        duration: const Duration(minutes: 40),
+      );
+      expect(
+        (await repository.findProgress(item))?.position.inMilliseconds,
+        2456,
+      );
+      await repository.saveProgress(
+        item,
+        position: Duration.zero,
+        duration: const Duration(minutes: 40),
+      );
+      expect((await repository.findProgress(item))?.position, Duration.zero);
+    },
+  );
 
   test('mantém filme e série com IDs iguais separados', () async {
     const movie = ContentItem(
