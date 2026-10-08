@@ -168,6 +168,22 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   bool get _hasEpisode => _season != null && _episode != null;
 
+  bool get _isNearEpisodeEnd {
+    if (_isLoading || _resumePending || _errorMessage != null) return false;
+    final durationMs = _totalDuration.inMilliseconds;
+    final positionMs = _currentPosition.inMilliseconds;
+    if (durationMs <= 0 || positionMs <= 0 || positionMs > durationMs) {
+      return false;
+    }
+    // No credits timestamp is provided by the sources. Estimate the closing
+    // credits using the last 10% of playback, capped at two minutes.
+    final windowMs = (durationMs ~/ 10).clamp(
+      1,
+      const Duration(minutes: 2).inMilliseconds,
+    );
+    return positionMs >= durationMs - windowMs;
+  }
+
   // Lista de fontes e estado
   List<StreamSource> _sources = [];
   int _currentSourceIndex = 0;
@@ -836,10 +852,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       final resumeHelper = await rootBundle.loadString(
         AppEnvironment.assetPath('assets/player/playback_resume.js'),
       );
+      final startupHelper = await rootBundle.loadString(
+        AppEnvironment.assetPath('assets/player/embed_startup.js'),
+      );
+      final providerUri = Uri.parse(source.url);
       final resumeConfiguration =
           'window.__cineyResumePositionSeconds = ${_resumePlayback ? _resumePositionMs / 1000 : 0};\n'
-          'window.__cineyExpectedDurationSeconds = ${_resumeDurationMs / 1000};\n';
-      bridge = '$resumeConfiguration$resumeHelper\n$bridge';
+          'window.__cineyExpectedDurationSeconds = ${_resumeDurationMs / 1000};\n'
+          'window.__cineyAutoStart = ${_resumePlayback && _resumePositionMs > 0};\n'
+          'window.__cineyProviderHost = ${jsonEncode(providerUri.host)};\n'
+          'window.__cineyProviderPath = ${jsonEncode(providerUri.path)};\n';
+      final helpers = '$resumeConfiguration$resumeHelper\n$startupHelper';
+      bridge = '$helpers\n$bridge';
       if (!isCurrent()) return;
       await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
       await controller.setBackgroundColor(Colors.black);
@@ -870,7 +894,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           if (!isCurrent()) return;
           final installed = await EmbedMediaObserver.install(
             webViewId,
-            '$resumeConfiguration$resumeHelper\n$script',
+            '$helpers\n$script',
           );
           if (!isCurrent()) {
             await EmbedMediaObserver.remove(webViewId);
@@ -1962,13 +1986,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                   Positioned.fill(child: _buildCastRemoteOverlay()),
 
                 if (_hasEpisode &&
+                    _isNearEpisodeEnd &&
                     !_isScreenLocked &&
                     !_isCasting &&
                     (_nextEpisode != null ||
                         _nextEpisodeLoading ||
                         _nextEpisodeFailed ||
-                        _advancingEpisode) &&
-                    (_webViewController != null || _controlsVisible))
+                        _advancingEpisode))
                   Positioned(
                     right: 16,
                     bottom: _webViewController != null ? 76 : 116,

@@ -81,7 +81,7 @@ Execute a partir de `cinemax/`:
 ```powershell
 flutter analyze
 flutter test --no-pub
-node --test test/embed_bridge_test.cjs
+node --test test/embed_bridge_test.cjs test/embed_media_observer_test.cjs test/embed_startup_test.cjs
 ```
 
 ## Estrutura do projeto

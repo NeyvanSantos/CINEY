@@ -71,6 +71,7 @@ class _VideoPlatform extends VideoPlayerPlatform {
   final positions = <int, Duration>{};
   final seeks = <(int, Duration)>[];
   int nextId = 0;
+  Duration duration = const Duration(minutes: 20);
 
   @override
   Future<void> init() async {}
@@ -81,7 +82,7 @@ class _VideoPlatform extends VideoPlayerPlatform {
       ..add(
         VideoEvent(
           eventType: VideoEventType.initialized,
-          duration: const Duration(minutes: 20),
+          duration: duration,
           size: const Size(1920, 1080),
         ),
       );
@@ -184,18 +185,96 @@ void main() {
     }
   }
 
+  Future<void> moveTo(WidgetTester tester, Duration position) async {
+    platform.positions[0] = position;
+    for (var n = 0; n < 4; n++) {
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+  }
+
+  testWidgets('botão aparece no fim com controles ocultos e some ao voltar', (
+    tester,
+  ) async {
+    await pumpPlayer(tester);
+    expect(find.text('Próximo episódio'), findsNothing);
+    // Let the normal playback controls disappear before entering the end window.
+    await tester.pump(const Duration(seconds: 5));
+    await moveTo(tester, const Duration(minutes: 7));
+    expect(find.text('Próximo episódio'), findsNothing);
+    await moveTo(tester, const Duration(milliseconds: 1079999));
+    expect(find.text('Próximo episódio'), findsNothing);
+    await moveTo(tester, const Duration(minutes: 18));
+    expect(find.text('Próximo episódio').hitTestable(), findsOneWidget);
+    expect(catalog.opened, [(1, 1)]);
+    await moveTo(tester, const Duration(minutes: 7));
+    expect(find.text('Próximo episódio'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
+  testWidgets('episódio curto limita a janela final a 10% da duração', (
+    tester,
+  ) async {
+    platform.duration = const Duration(minutes: 5);
+    await pumpPlayer(tester);
+    await moveTo(tester, const Duration(minutes: 3));
+    expect(find.text('Próximo episódio'), findsNothing);
+    await moveTo(tester, const Duration(milliseconds: 269999));
+    expect(find.text('Próximo episódio'), findsNothing);
+    await moveTo(tester, const Duration(seconds: 270));
+    expect(find.text('Próximo episódio'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
+  testWidgets(
+    'TV mostra o botão apenas nos dois minutos finais de episódio longo',
+    (tester) async {
+      platform.duration = const Duration(minutes: 60);
+      await pumpPlayer(tester, isTv: true);
+      await moveTo(tester, const Duration(minutes: 54));
+      expect(find.text('Próximo episódio'), findsNothing);
+      await moveTo(tester, const Duration(minutes: 58));
+      expect(find.text('Próximo episódio').hitTestable(), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    },
+  );
+
+  testWidgets('duração desconhecida não exibe botão de próximo episódio', (
+    tester,
+  ) async {
+    platform.duration = Duration.zero;
+    await pumpPlayer(tester, resumePositionMs: 0);
+    await moveTo(tester, const Duration(minutes: 18));
+    expect(find.text('Próximo episódio'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
+  testWidgets('filme não exibe próximo episódio durante os créditos', (
+    tester,
+  ) async {
+    await pumpPlayer(tester, movie: true);
+    await moveTo(tester, const Duration(minutes: 19));
+    expect(find.text('Próximo episódio'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
   testWidgets(
     'terminar avança uma vez, zera retomada e registra o próximo episódio',
     (tester) async {
       await pumpPlayer(tester);
       expect(catalog.opened, [(1, 1)]);
-      expect(find.text('Próximo episódio'), findsOneWidget);
+      expect(find.text('Próximo episódio'), findsNothing);
       await finish(tester, 0);
       expect(catalog.opened, [(1, 1), (1, 2)]);
       expect(platform.seeks.where((seek) => seek.$1 == 1), isEmpty);
       final entries = await WatchHistoryRepository().load();
       expect(entries.single.episode, 2);
       expect(entries.single.position, Duration.zero);
+      expect(find.text('Próximo episódio'), findsNothing);
       await tester.pumpWidget(const SizedBox());
       await tester.pump();
     },
@@ -236,9 +315,7 @@ void main() {
     tester,
   ) async {
     await pumpPlayer(tester);
-    platform.positions[0] = const Duration(minutes: 7);
-    await tester.pump(const Duration(milliseconds: 300));
-    await tester.pump(const Duration(milliseconds: 300));
+    await moveTo(tester, const Duration(minutes: 19));
     await tester.tap(find.text('Próximo episódio'));
     for (var n = 0; n < 8; n++) {
       await tester.pump(const Duration(milliseconds: 300));
@@ -247,7 +324,7 @@ void main() {
     expect(entries.first.episode, 2);
     expect(entries.first.position, Duration.zero);
     expect(entries.last.episode, 1);
-    expect(entries.last.position, const Duration(minutes: 7));
+    expect(entries.last.position, const Duration(minutes: 19));
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
   });
@@ -373,6 +450,8 @@ void main() {
     catalog.failEpisodes = true;
     await pumpPlayer(tester);
     expect(catalog.opened, [(1, 1)]);
+    expect(find.text('Recarregar episódios'), findsNothing);
+    await moveTo(tester, const Duration(minutes: 19));
     expect(find.text('Recarregar episódios'), findsOneWidget);
     catalog.failEpisodes = false;
     await tester.tap(find.text('Recarregar episódios'));

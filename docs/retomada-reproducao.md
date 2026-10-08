@@ -21,6 +21,29 @@ com registros próprios e o avanço para o episódio seguinte começa do zero.
 
 ## Vídeos dos servidores incorporados
 
+Ao retomar um ponto salvo, `assets/player/embed_startup.js` tenta abrir a opção
+de reprodução antes de aplicar a posição. No EmbedMovies/PlayerFlix, reconhece
+as opções do menu `#optionList` e usa o controle existente do fornecedor. Para
+o menu compacto com abas **Dublado/Legendado**, aciona **Servidor Principal**.
+A seleção só ocorre no domínio e caminho do título que o app abriu, com até
+20 segundos de espera pelo menu, e não aciona links de anúncios ou verificação.
+Uma interação da pessoa cancela a seleção automática.
+
+Quando o menu expõe áudio e servidor nas opções, a última escolha manual é
+guardada no armazenamento local da página. Na próxima retomada, ela tem prioridade
+se ainda existir; caso contrário, usa a primeira opção visível da aba de áudio
+atual. Essa preferência é local ao WebView e ao domínio do fornecedor.
+
+Depois de confirmar a posição de retomada, o script tenta reproduzir o vídeo
+uma vez. Se o fornecedor só liberar o intervalo de busca após iniciar o vídeo,
+essa tentativa pode ocorrer antes; o ponto salvo permanece protegido enquanto
+a busca estiver pendente. Uma pausa ou a consulta de saída cancela tentativas pendentes. Caso o
+fornecedor exija um gesto real, os controles continuam disponíveis para o toque
+manual; cliques de script não garantem permissão de autoplay, conforme o
+[guia de autoplay da MDN](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Autoplay).
+O script usa [`HTMLElement.click()`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/click)
+dentro da WebView e não depende de Python ou automação instalada no computador.
+
 O observador de frames Android também é instalado para filmes. O recurso
 `assets/player/playback_resume.js` aplica a posição usando
 [`HTMLMediaElement.currentTime`](https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/currentTime)
@@ -44,7 +67,8 @@ não altera as pontes protegidas de Cast nem sincroniza histórico entre aparelh
 ## Verificação
 
 Os testes usam o player nativo simulado e scripts executados em contexto de vídeo
-simulado. Cobrem retomada sem parâmetro de rota, histórico mais recente, créditos,
+simulado. Cobrem seleção do servidor, áudio salvo, menu assíncrono, cancelamento
+manual, falha de autoplay, retomada sem parâmetro de rota, histórico mais recente, créditos,
 preferência desligada, pausa/saída, mudança de aplicativo, milissegundos, espera
 pela capacidade de busca e consulta nos frames. A reprodução com os servidores
 remotos ainda precisa de validação em aparelho real.

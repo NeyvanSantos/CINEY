@@ -27,6 +27,7 @@
   let reportedOpaque = null;
   let reportedError = null;
   let attemptedVideo = null;
+  let observedVideo = null;
   let mediaSequence = 0;
   let mediaSource = null;
   let mediaId = null;
@@ -34,6 +35,7 @@
   let suppressAutoplay = false;
 
   function findVideo(doc, depth) {
+    if (window.__cineyStartPlayback) window.__cineyStartPlayback(doc);
     const candidates = Array.from(doc.querySelectorAll('video'));
     const result = candidates.find(v => !v.paused && v.readyState >= 2) ||
       candidates.find(v => v.readyState >= 2) || candidates[0];
@@ -65,7 +67,10 @@
   }
 
   function poll(command) {
-    if (command && command.pause === true) suppressAutoplay = true;
+    if (command && command.pause === true) {
+      suppressAutoplay = true;
+      if (window.__cineyCancelStartup) window.__cineyCancelStartup();
+    }
     opaque = false;
     video = findVideo(document, 0);
     if (reportedOpaque !== opaque) {
@@ -77,7 +82,8 @@
     const restoring = window.__cineyRestorePlayback ? window.__cineyRestorePlayback(video) : false;
     if (command && command.pause === true) video.pause();
     const source = video.currentSrc || video.src || '';
-    if (attemptedVideo !== video || mediaSource !== source) {
+    if (observedVideo !== video || mediaSource !== source) {
+      observedVideo = video;
       mediaSource = source;
       mediaId = 'parent:' + (++mediaSequence);
       hasPlayed = false;
@@ -92,7 +98,9 @@
       }
       return;
     }
-    if (!suppressAutoplay && !video.ended && video.readyState >= 2 && attemptedVideo !== video) {
+    if (window.__cineyAutoStart && window.__cineyAutoPlay) {
+      window.__cineyAutoPlay(video, restoring);
+    } else if (!suppressAutoplay && !video.ended && video.readyState >= 2 && attemptedVideo !== video) {
       attemptedVideo = video;
       play();
     }

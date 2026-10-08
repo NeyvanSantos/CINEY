@@ -4,12 +4,19 @@ O player compartilhado por celular e Android TV busca o próximo episódio no
 catálogo enquanto o atual está sendo reproduzido. Ao receber a confirmação de
 término, abre o seguinte no mesmo player, inclusive na próxima temporada. A opção
 **Próximo episódio automaticamente** em Ajustes & Perfil vem ativada por padrão.
-O botão **Próximo episódio** permite avançar manualmente durante a reprodução.
+O botão **Próximo episódio** aparece perto do fim e permite avançar manualmente,
+mesmo com os demais controles ocultos. Como as fontes não fornecem o instante
+dos créditos, o app estima esse período pelos últimos dois minutos, limitados a
+10% da duração. Ao voltar para uma parte anterior, o botão desaparece. Ele fica
+oculto enquanto o vídeo carrega, a retomada está pendente ou a duração é
+desconhecida. Essa regra é compartilhada pelos players nativo e incorporado,
+no celular e na TV.
+O avanço automático continua esperando o término real do episódio.
 
 A ordem usa os números informados pelo catálogo. Episódios com data de lançamento
 futura são excluídos. No último episódio, a reprodução para. Se o catálogo falhar,
-o botão permite recarregar a lista; o app não inventa episódios nem salta uma
-temporada que não conseguiu consultar. Os títulos locais mapeados usam o mesmo
+o botão permite recarregar a lista perto do fim; o app não inventa episódios nem
+salta uma temporada que não conseguiu consultar. Os títulos locais mapeados usam o mesmo
 ID TMDB dos endereços dos servidores, evitando os números de exemplo dos plugins.
 O catálogo indica a ordem; a disponibilidade do vídeo ainda depende do fornecedor.
 
@@ -31,12 +38,14 @@ O observador considera vídeos de pelo menos três minutos para evitar que anún
 curtos sejam tratados como episódios. Exige reprodução anterior, término real e
 posição final válida. A sessão descarta mensagens duplicadas e vídeos menores que
 a mídia já selecionada. Esse filtro é conservador: episódios incorporados menores
-que três minutos usam o avanço manual. Filmes e vídeos diretos mantêm seu player.
+que três minutos não têm avanço automático. Filmes e vídeos diretos mantêm seu
+player.
 
-WebViews sem suporte a `DOCUMENT_START_SCRIPT` mantêm a ponte do documento pai e o
-avanço manual. Players do fornecedor que não exponham um elemento HTML de vídeo
-observável também precisam do botão. Em TV, o cursor consegue acionar esse botão
-diretamente. Durante uma transmissão Cast, o avanço fica desativado.
+WebViews sem suporte a `DOCUMENT_START_SCRIPT` mantêm a observação pela ponte
+do documento pai. Se ela não conseguir observar a posição
+e duração, o botão fica oculto e é necessário escolher o próximo episódio na tela
+de detalhes. Em TV, o cursor consegue acionar o botão quando ele aparece.
+Durante uma transmissão Cast, o avanço fica desativado.
 
 ## Validação
 

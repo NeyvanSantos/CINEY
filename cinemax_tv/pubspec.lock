@@ -103,7 +103,7 @@ packages:
       path: "../cinemax"
       relative: true
     source: path
-    version: "1.0.18+20"
+    version: "1.0.19+21"
   clock:
     dependency: transitive
     description:

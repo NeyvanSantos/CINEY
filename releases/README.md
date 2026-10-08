@@ -6,8 +6,8 @@ do repositório.
 
 | Variante | Pasta | Último lançamento mantido nesta organização |
 | --- | --- | --- |
-| Mobile | `mobile/` | `CiNey-v1.0.18.apk` |
-| Android TV | `tv/` | `CiNey-v1.0.21-TV.apk` |
+| Mobile | `mobile/` | `CiNey-v1.0.19.apk` |
+| Android TV | `tv/` | `CiNey-v1.0.22-TV.apk` |
 
 Ao guardar uma nova versão publicada, substitua apenas o APK anterior da mesma
 variante e atualize a tabela. Mantenha um único APK em cada pasta, com o nome

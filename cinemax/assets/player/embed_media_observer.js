@@ -3,11 +3,14 @@
   // The local wrapper has its own bridge. Observe provider documents in-place.
   if (window === window.top || window.__cineyMediaObserver) return;
   window.__cineyMediaObserver = true;
+  if (window.__cineyStartPlayback) window.__cineyStartPlayback(document);
   const frameId = Math.random().toString(36).slice(2);
   const identities = new WeakMap();
   let sequence = 0;
 
   function poll(command) {
+    if (command && command.pause === true && window.__cineyCancelStartup) window.__cineyCancelStartup();
+    if (window.__cineyStartPlayback) window.__cineyStartPlayback(document);
     // Short clips in advertising frames must not finish the episode.
     const videos = Array.from(document.querySelectorAll('video'))
       .filter(v => v.readyState >= 2 && Number.isFinite(v.duration) && v.duration >= 180 &&
@@ -16,6 +19,7 @@
     const video = videos[0];
     if (!video || !Number.isFinite(video.currentTime) || video.error) return;
     const restoring = window.__cineyRestorePlayback ? window.__cineyRestorePlayback(video) : false;
+    if (window.__cineyAutoPlay) window.__cineyAutoPlay(video, restoring);
     if (command && command.pause === true) video.pause();
     const source = video.currentSrc || video.src || '';
     let identity = identities.get(video);
