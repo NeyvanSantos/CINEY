@@ -34,7 +34,14 @@
     const hasAudioTabs = ['Dublado', 'Legendado'].every(text =>
       controls.some(element => label(element) === text && visible(element, doc)));
     if (!hasAudioTabs) return [];
-    return controls.filter(element => label(element) === 'Servidor Principal');
+    // Compact menus can use delegated events on a div rather than a button.
+    // Click the exact label once; its event bubbles to the provider's row.
+    const candidates = Array.from(new Set(controls.concat(
+      Array.from(doc.querySelectorAll('div, span')))));
+    const principal = candidates.filter(element => label(element) === 'Servidor Principal' &&
+      !Array.from(element.children || []).some(child => label(child) === 'Servidor Principal') &&
+      visible(element, doc));
+    return principal.length === 1 ? principal : [];
   }
 
   function attach(doc) {

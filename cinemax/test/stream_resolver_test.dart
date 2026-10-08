@@ -10,6 +10,41 @@ void expectSources(List<StreamSource> sources, List<String> urls) {
 
 void main() {
   group('StreamResolverService', () {
+    test('escolha automática usa o índice do EmbedMovies disponível', () {
+      final sources = StreamResolverService.resolveFromContentId(
+        'tmdb_969681_movie',
+      );
+      expect(StreamResolverService.automaticSourceIndex(sources), 1);
+      expect(
+        StreamResolverService.automaticSourceIndex(sources.reversed.toList()),
+        0,
+      );
+      expect(
+        StreamResolverService.automaticSourceIndex([sources.first]),
+        isNull,
+      );
+      expect(StreamResolverService.automaticSourceIndex([]), isNull);
+    });
+
+    test('nome do servidor não autoriza domínio diferente ou vídeo direto', () {
+      for (final source in [
+        StreamSource(
+          url: 'https://myembed.biz.example/filme/969681',
+          quality: 'HD',
+          server: 'EmbedMovies',
+          isEmbed: true,
+        ),
+        StreamSource(
+          url: 'https://myembed.biz/video.mp4',
+          quality: 'HD',
+          server: 'EmbedMovies',
+          isEmbed: false,
+        ),
+      ]) {
+        expect(StreamResolverService.automaticSourceIndex([source]), isNull);
+      }
+    });
+
     test('gera somente SuperFlix e EmbedMovies para um filme TMDB', () {
       final sources = StreamResolverService.resolveFromContentId(
         'tmdb_693134_movie',

@@ -227,8 +227,9 @@ GoRouter createAppRouter({
           final episode = int.tryParse(
             state.uri.queryParameters['episode'] ?? '',
           );
-          final initialSourceIndex =
-              int.tryParse(state.uri.queryParameters['serverIndex'] ?? '') ?? 0;
+          final initialSourceIndex = int.tryParse(
+            state.uri.queryParameters['serverIndex'] ?? '',
+          );
           return PlayerScreen(
             contentId: contentId,
             pluginId: pluginId,

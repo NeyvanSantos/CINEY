@@ -3,6 +3,17 @@ import '../models/stream_source.dart';
 /// Resolve os endereços dos servidores a partir dos IDs do catálogo.
 /// Os endereços devem ser incorporados em iframe.
 class StreamResolverService {
+  /// The watch button opens EmbedMovies directly when it is available.
+  static int? automaticSourceIndex(List<StreamSource> sources) {
+    final index = sources.indexWhere((source) {
+      final uri = Uri.tryParse(source.url);
+      return source.isEmbed &&
+          uri?.scheme == 'https' &&
+          uri?.host == 'myembed.biz';
+    });
+    return index < 0 ? null : index;
+  }
+
   /// Gera as fontes de streaming priorizando servidores com áudio Dublado PT-BR.
   /// A ordem de prioridade é: Dublado > Multi-Áudio.
   /// A disponibilidade real depende de cada fornecedor.

@@ -15,6 +15,7 @@ import 'package:video_player_platform_interface/video_player_platform_interface.
 class _Catalog extends PluginManager {
   final opened = <(int?, int?)>[];
   bool failEpisodes = false;
+  List<StreamSource>? sources;
 
   @override
   Future<List<StreamSource>> getStreams(
@@ -24,14 +25,16 @@ class _Catalog extends PluginManager {
     int? episode,
   }) async {
     opened.add((season, episode));
-    return [
-      StreamSource(
-        url: 'https://video.test/$season/$episode.mp4',
-        quality: 'HD',
-        server: 'Teste',
-        isEmbed: false,
-      ),
-    ];
+    return sources == null
+        ? [
+            StreamSource(
+              url: 'https://video.test/$season/$episode.mp4',
+              quality: 'HD',
+              server: 'Teste',
+              isEmbed: false,
+            ),
+          ]
+        : List.of(sources!);
   }
 
   @override
@@ -70,6 +73,7 @@ class _VideoPlatform extends VideoPlayerPlatform {
   final streams = <int, StreamController<VideoEvent>>{};
   final positions = <int, Duration>{};
   final seeks = <(int, Duration)>[];
+  final openedUrls = <String>[];
   int nextId = 0;
   Duration duration = const Duration(minutes: 20);
 
@@ -77,6 +81,7 @@ class _VideoPlatform extends VideoPlayerPlatform {
   Future<void> init() async {}
   @override
   Future<int> createWithOptions(VideoCreationOptions options) async {
+    openedUrls.add(options.dataSource.uri!);
     final id = nextId++;
     streams[id] = StreamController<VideoEvent>()
       ..add(
@@ -152,6 +157,7 @@ void main() {
     bool isTv = false,
     bool movie = false,
     int resumePositionMs = 60000,
+    int? initialSourceIndex,
   }) async {
     await tester.binding.setSurfaceSize(const Size(1280, 720));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -169,6 +175,7 @@ void main() {
             episode: movie ? null : episode,
             resumePositionMs: resumePositionMs,
             isTv: isTv,
+            initialSourceIndex: initialSourceIndex,
           ),
         ),
       ),
@@ -323,6 +330,7 @@ void main() {
     final entries = await WatchHistoryRepository().load();
     expect(entries.first.episode, 2);
     expect(entries.first.position, Duration.zero);
+    expect(entries.first.server, 'Teste');
     expect(entries.last.episode, 1);
     expect(entries.last.position, const Duration(minutes: 19));
     await tester.pumpWidget(const SizedBox());
@@ -336,6 +344,115 @@ void main() {
     type: ContentType.movie,
     pluginId: 'test',
   );
+
+  const superFlix = StreamSource(
+    url: 'https://video.test/superflix.mp4',
+    quality: 'HD',
+    server: 'SuperFlix',
+    priority: 1,
+  );
+  const embed = StreamSource(
+    url: 'https://video.test/embed.mp4',
+    quality: 'HD',
+    server: 'EmbedMovies',
+    priority: 2,
+  );
+
+  for (final source in [superFlix, embed]) {
+    testWidgets('continuação reabre no servidor salvo ${source.server}', (
+      tester,
+    ) async {
+      catalog.sources = [superFlix, embed];
+      await WatchHistoryRepository().saveProgress(
+        film,
+        position: const Duration(milliseconds: 321987),
+        duration: const Duration(minutes: 20),
+        server: source.server,
+      );
+      await pumpPlayer(tester, movie: true, resumePositionMs: 0);
+      expect(platform.openedUrls, [source.url]);
+      expect(platform.seeks.first.$2.inMilliseconds, 321987);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    });
+  }
+
+  testWidgets('servidor salvo continua correto após mudar ordem das fontes', (
+    tester,
+  ) async {
+    catalog.sources = [
+      const StreamSource(
+        url: 'https://video.test/embed.mp4',
+        quality: 'HD',
+        server: 'EmbedMovies',
+        priority: 0,
+      ),
+      superFlix,
+    ];
+    await WatchHistoryRepository().saveProgress(
+      film,
+      position: const Duration(seconds: 30),
+      duration: const Duration(minutes: 20),
+      server: 'SuperFlix',
+    );
+    await pumpPlayer(tester, movie: true);
+    expect(platform.openedUrls, [superFlix.url]);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
+  testWidgets('nova escolha explícita de servidor prevalece sobre histórico', (
+    tester,
+  ) async {
+    catalog.sources = [superFlix, embed];
+    await WatchHistoryRepository().saveProgress(
+      film,
+      position: const Duration(seconds: 30),
+      duration: const Duration(minutes: 20),
+      server: 'EmbedMovies',
+    );
+    await pumpPlayer(tester, movie: true, initialSourceIndex: 0);
+    expect(platform.openedUrls, [superFlix.url]);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
+  testWidgets('troca manual passa a gravar o progresso no novo servidor', (
+    tester,
+  ) async {
+    catalog.sources = [superFlix, embed];
+    await pumpPlayer(
+      tester,
+      movie: true,
+      resumePositionMs: 0,
+      initialSourceIndex: 0,
+    );
+    platform.positions[0] = const Duration(milliseconds: 123456);
+    final serverButton = tester.widget<IconButton>(
+      find.byWidgetPredicate(
+        (widget) => widget is IconButton && widget.tooltip == 'Trocar Servidor',
+      ),
+    );
+    serverButton.onPressed!();
+    await tester.pumpAndSettle();
+    expect(find.text('Servidores de Transmissão'), findsOneWidget);
+    await tester.tap(find.text('EmbedMovies').last);
+    for (var n = 0; n < 8; n++) {
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+    expect(platform.openedUrls, [superFlix.url, embed.url]);
+    platform.positions[1] = const Duration(milliseconds: 234567);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    for (var n = 0; n < 3; n++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    final saved = await WatchHistoryRepository().findProgress(film);
+    expect(saved?.server, 'EmbedMovies');
+    expect(saved?.position.inMilliseconds, 234567);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
 
   testWidgets(
     'filme aberto sem parâmetro de retomada usa milissegundos salvos',

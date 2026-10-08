@@ -51,6 +51,7 @@ class WatchHistoryRepository {
     ContentItem item, {
     int? season,
     int? episode,
+    String? server,
   }) async {
     final entries = await load();
     final key = _key(item, season, episode);
@@ -62,6 +63,7 @@ class WatchHistoryRepository {
       lastWatched: DateTime.now(),
       season: season,
       episode: episode,
+      server: server ?? previous?.server,
     );
     await _store([updated, ...entries.where((entry) => entry.key != key)]);
   }
@@ -82,10 +84,12 @@ class WatchHistoryRepository {
     bool completed = false,
     int? season,
     int? episode,
+    String? server,
   }) async {
     if (position < Duration.zero || duration < Duration.zero) return;
     final entries = await load();
     final key = _key(item, season, episode);
+    final previous = entries.where((entry) => entry.key == key).firstOrNull;
     final remaining = entries.where((entry) => entry.key != key).toList();
     final isComplete =
         completed || (duration > Duration.zero && position >= duration);
@@ -98,6 +102,7 @@ class WatchHistoryRepository {
           lastWatched: DateTime.now(),
           season: season,
           episode: episode,
+          server: server ?? previous?.server,
         ),
       );
     }

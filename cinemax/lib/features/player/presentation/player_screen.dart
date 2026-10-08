@@ -106,10 +106,11 @@ class PlayerScreen extends ConsumerStatefulWidget {
     this.season,
     this.episode,
     this.isTv = false,
-    this.initialSourceIndex = 0,
+    this.initialSourceIndex,
   });
 
-  final int initialSourceIndex;
+  /// Null restores the saved provider; an explicit selection overrides it.
+  final int? initialSourceIndex;
 
   @override
   ConsumerState<PlayerScreen> createState() => _PlayerScreenState();
@@ -187,6 +188,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   // Lista de fontes e estado
   List<StreamSource> _sources = [];
   int _currentSourceIndex = 0;
+  String? _savedServer;
+  // Keep the old media's provider until its pending progress has been captured.
+  String? _playbackServer;
   bool _isLoading = true;
   String? _errorMessage;
 
@@ -294,6 +298,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _watchHistoryItem,
       season: _season,
       episode: _episode,
+      server: _playbackServer,
     );
     if (mounted) ref.invalidate(watchHistoryProvider);
   }
@@ -308,6 +313,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       if (previous != null) {
         _resumePositionMs = previous.position.inMilliseconds;
         _resumeDurationMs = previous.duration.inMilliseconds;
+        _savedServer = previous.server;
       }
       await _markWatchHistoryStarted();
     } catch (error) {
@@ -337,6 +343,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final item = _watchHistoryItem;
     final season = _season;
     final episode = _episode;
+    final server = _playbackServer;
     final started = _watchHistoryStarted;
     // Capture the episode before awaiting and serialize writes across transitions.
     final write = _historyWrites.then((_) async {
@@ -348,6 +355,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         completed: completed,
         season: season,
         episode: episode,
+        server: server,
       );
     });
     _historyWrites = write.catchError((Object error) {
@@ -638,7 +646,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final request = ++_streamRequest;
     final preferredServer = _sources.isNotEmpty
         ? _sources[_currentSourceIndex].server
-        : null;
+        : (widget.initialSourceIndex == null ? _savedServer : null);
     AppLogger.info(
       'Abrindo "$_title" (${widget.contentId}), plugin ${widget.pluginId}.',
       tag: 'PLAYER',
@@ -681,7 +689,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         '${sources.length} servidor(es) disponível(eis).',
         tag: 'PLAYER',
       );
-      int startIndex = widget.initialSourceIndex;
+      int startIndex =
+          widget.initialSourceIndex ??
+          StreamResolverService.automaticSourceIndex(sources) ??
+          0;
       if (preferredServer != null) {
         final preferredIndex = sources.indexWhere(
           (source) => source.server == preferredServer,
@@ -751,6 +762,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _tvPointerFocusNode.unfocus();
 
     _disposeCurrentPlayer();
+    _playbackServer = source.server;
     _resumePending = _resumePlayback && _resumePositionMs > 0;
 
     if (source.isEmbed) {
@@ -855,13 +867,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       final startupHelper = await rootBundle.loadString(
         AppEnvironment.assetPath('assets/player/embed_startup.js'),
       );
-      final providerUri = Uri.parse(source.url);
-      final resumeConfiguration =
-          'window.__cineyResumePositionSeconds = ${_resumePlayback ? _resumePositionMs / 1000 : 0};\n'
-          'window.__cineyExpectedDurationSeconds = ${_resumeDurationMs / 1000};\n'
-          'window.__cineyAutoStart = ${_resumePlayback && _resumePositionMs > 0};\n'
-          'window.__cineyProviderHost = ${jsonEncode(providerUri.host)};\n'
-          'window.__cineyProviderPath = ${jsonEncode(providerUri.path)};\n';
+      final resumeConfiguration = buildEmbedPlaybackConfiguration(
+        playerUrl: source.url,
+        resumePlayback: _resumePlayback,
+        resumePositionMs: _resumePositionMs,
+        durationMs: _resumeDurationMs,
+      );
       final helpers = '$resumeConfiguration$resumeHelper\n$startupHelper';
       bridge = '$helpers\n$bridge';
       if (!isCurrent()) return;

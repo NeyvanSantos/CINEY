@@ -8,6 +8,7 @@ class WatchProgress {
     required this.lastWatched,
     this.season,
     this.episode,
+    this.server,
   });
 
   final ContentItem item;
@@ -16,6 +17,9 @@ class WatchProgress {
   final DateTime lastWatched;
   final int? season;
   final int? episode;
+
+  /// Provider name, independent of its current position in the source list.
+  final String? server;
 
   String get key =>
       '${item.pluginId}:${item.type.value}:${item.id}:${season ?? 0}:${episode ?? 0}';
@@ -32,6 +36,7 @@ class WatchProgress {
     'lastWatched': lastWatched.toIso8601String(),
     'season': season,
     'episode': episode,
+    'server': server,
   };
 
   factory WatchProgress.fromJson(Map<String, dynamic> json) {
@@ -54,6 +59,11 @@ class WatchProgress {
       lastWatched: lastWatched,
       season: _optionalInt(json['season']),
       episode: _optionalInt(json['episode']),
+      server:
+          json['server'] is String &&
+              (json['server'] as String).trim().isNotEmpty
+          ? json['server'] as String
+          : null,
     );
   }
 

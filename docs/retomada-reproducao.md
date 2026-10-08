@@ -6,6 +6,19 @@ tela de detalhes. O registro mais recente tem prioridade sobre uma posição ant
 recebida pela rota. A opção **Retomar reprodução** em Ajustes & Perfil controla
 esse comportamento.
 
+O histórico também guarda o nome do servidor usado para reproduzir cada filme
+ou episódio. **Continuar Assistindo** procura esse nome nas fontes atuais antes
+de abrir o player: EmbedMovies continua no EmbedMovies, SuperFlix no SuperFlix.
+A escolha independe da ordem da lista de servidores. Uma troca manual passa a
+ser registrada com o progresso da reprodução no novo servidor; as escritas
+pendentes da reprodução anterior mantêm o servidor anterior.
+
+Uma escolha explícita de servidor prevalece sobre o histórico. Na transição para
+o próximo episódio, o player conserva o servidor da sessão. Os registros antigos
+não contêm essa informação; continuam legíveis e usam o padrão atual do app
+(EmbedMovies quando disponível) até uma reprodução gravar o servidor. Se o
+servidor salvo deixar de existir na lista, o player usa uma fonte disponível.
+
 A posição é armazenada em milissegundos, sem arredondar para minutos. Ao pausar,
 sair pelo botão Voltar ou pelo retorno do sistema, ou mudar de aplicativo, o player
 consulta a posição atual. A saída pelo player espera a escrita do histórico antes
@@ -21,10 +34,20 @@ com registros próprios e o avanço para o episódio seguinte começa do zero.
 
 ## Vídeos dos servidores incorporados
 
-Ao retomar um ponto salvo, `assets/player/embed_startup.js` tenta abrir a opção
-de reprodução antes de aplicar a posição. No EmbedMovies/PlayerFlix, reconhece
-as opções do menu `#optionList` e usa o controle existente do fornecedor. Para
-o menu compacto com abas **Dublado/Legendado**, aciona **Servidor Principal**.
+O botão **Assistir Agora** e a escolha de um episódio na tela de detalhes abrem
+diretamente o EmbedMovies (`https://myembed.biz`) quando ele está disponível,
+tanto no celular como na TV. O player mantém a seleção manual de servidor.
+Sem EmbedMovies, a tela de detalhes conserva o fluxo anterior de escolha.
+
+No EmbedMovies, `assets/player/embed_startup.js` tenta abrir a opção de reprodução
+também na primeira abertura, sem precisar de histórico salvo. Desligar
+**Retomar reprodução** inicia do zero e mantém essa tentativa de início automático.
+Nos demais fornecedores, a ativação automática continua condicionada à retomada.
+No EmbedMovies/PlayerFlix, reconhece as opções do menu `#optionList` e usa o
+controle existente do fornecedor. Para
+o menu compacto com abas **Dublado/Legendado**, aciona **Servidor Principal**,
+inclusive quando o texto está em um `div` ou `span` com evento delegado.
+Se houver mais de um controle visível com esse nome, mantém a seleção manual.
 A seleção só ocorre no domínio e caminho do título que o app abriu, com até
 20 segundos de espera pelo menu, e não aciona links de anúncios ou verificação.
 Uma interação da pessoa cancela a seleção automática.
@@ -34,8 +57,9 @@ guardada no armazenamento local da página. Na próxima retomada, ela tem priori
 se ainda existir; caso contrário, usa a primeira opção visível da aba de áudio
 atual. Essa preferência é local ao WebView e ao domínio do fornecedor.
 
-Depois de confirmar a posição de retomada, o script tenta reproduzir o vídeo
-uma vez. Se o fornecedor só liberar o intervalo de busca após iniciar o vídeo,
+Depois de confirmar a posição de retomada, ou quando não há ponto a restaurar,
+o script tenta reproduzir o vídeo uma vez. Se o fornecedor só liberar o intervalo
+de busca após iniciar o vídeo,
 essa tentativa pode ocorrer antes; o ponto salvo permanece protegido enquanto
 a busca estiver pendente. Uma pausa ou a consulta de saída cancela tentativas pendentes. Caso o
 fornecedor exija um gesto real, os controles continuam disponíveis para o toque
@@ -67,8 +91,23 @@ não altera as pontes protegidas de Cast nem sincroniza histórico entre aparelh
 ## Verificação
 
 Os testes usam o player nativo simulado e scripts executados em contexto de vídeo
-simulado. Cobrem seleção do servidor, áudio salvo, menu assíncrono, cancelamento
-manual, falha de autoplay, retomada sem parâmetro de rota, histórico mais recente, créditos,
+simulado. Cobrem navegação de **Assistir Agora** no celular e na TV, temporada e
+número do episódio escolhido, início sem histórico, seleção do servidor, áudio
+salvo, menu assíncrono, cancelamento manual, falha de autoplay, retomada sem
+parâmetro de rota, histórico mais recente, créditos,
 preferência desligada, pausa/saída, mudança de aplicativo, milissegundos, espera
-pela capacidade de busca e consulta nos frames. A reprodução com os servidores
-remotos ainda precisa de validação em aparelho real.
+pela capacidade de busca e consulta nos frames. O início automático de um filme
+e a retomada pela tela de detalhes foram confirmados no emulador com build debug
+contendo esta alteração. O episódio T1E1 de A Coroa Perfeita carregou sem opções
+de vídeo; reprodução da série, créditos e avanço de episódios continuam sem
+validação remota. Consulte o
+[relatório do início automático](teste-inicio-automatico-android-2026-10-08.md).
+
+Validação do início automático em 08/10/2026: passaram 46 testes Flutter
+(`details_auto_play`, `embed_document`, `stream_resolver`,
+`player_episode_continuity`, `playback_preferences`, `embed_playback_session` e
+`embed_navigation`) e 37 testes Node (`embed_startup`, `embed_media_observer` e
+`embed_bridge`). A análise completa do celular continua com dois erros anteriores
+em `test/app_updater_test.dart`, por chamar `AppUpdater.selectLatestRelease`,
+ausente na implementação atual, e 20 avisos informativos de `withOpacity`.
+A análise de `cinemax_tv` passou sem problemas.

@@ -126,7 +126,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
     );
   }
 
-  void _playWithServerSelection({
+  void _playContent({
     required ContentDetail item,
     int? season,
     int? episode,
@@ -164,6 +164,12 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
           },
         ).toString(),
       );
+    }
+
+    final automaticIndex = StreamResolverService.automaticSourceIndex(sources);
+    if (automaticIndex != null) {
+      navigateToPlayer(automaticIndex);
+      return;
     }
 
     if (widget.isTv || sources.length <= 1) {
@@ -560,7 +566,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                     children: [
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: () => _playWithServerSelection(item: item),
+                          onPressed: () => _playContent(item: item),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.primary,
                             padding: const EdgeInsets.symmetric(vertical: 14),
@@ -745,7 +751,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                           return GlassCard(
                             padding: const EdgeInsets.all(12),
                             onTap: () {
-                              _playWithServerSelection(
+                              _playContent(
                                 item: item,
                                 season: _selectedSeason,
                                 episode: episodeNumber,

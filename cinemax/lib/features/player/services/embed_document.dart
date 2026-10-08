@@ -4,6 +4,24 @@ import 'dart:convert';
 /// EmbedMovies. This origin belongs to the app; no page is fetched from it.
 const embedDocumentBaseUrl = 'https://cinemax.invalid/player/';
 
+/// EmbedMovies starts on first play too; resuming remains a separate preference.
+String buildEmbedPlaybackConfiguration({
+  required String playerUrl,
+  required bool resumePlayback,
+  required int resumePositionMs,
+  required int durationMs,
+}) {
+  final provider = Uri.parse(playerUrl);
+  final autoStart =
+      (provider.scheme == 'https' && provider.host == 'myembed.biz') ||
+      (resumePlayback && resumePositionMs > 0);
+  return 'window.__cineyResumePositionSeconds = ${resumePlayback ? resumePositionMs / 1000 : 0};\n'
+      'window.__cineyExpectedDurationSeconds = ${durationMs / 1000};\n'
+      'window.__cineyAutoStart = $autoStart;\n'
+      'window.__cineyProviderHost = ${jsonEncode(provider.host)};\n'
+      'window.__cineyProviderPath = ${jsonEncode(provider.path)};\n';
+}
+
 String buildEmbedDocument(String playerUrl, String bridgeScript) {
   final src = const HtmlEscape(HtmlEscapeMode.attribute).convert(playerUrl);
   final script = bridgeScript.replaceAll(

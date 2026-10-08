@@ -16,7 +16,7 @@ function row(text, audio = 'pt-br', hidden = false) {
   };
 }
 
-function setup({ rows = [], controls = [], enabled = true, host = 'playerflix.ink',
+function setup({ rows = [], controls = [], labels = [], enabled = true, host = 'playerflix.ink',
   pathname = '/serie/1/1/1', saved = null, selector = null, resume = 300.123 } = {}) {
   const events = {}, windowEvents = {}, messages = [], timers = [], videos = [];
   const stored = new Map(saved ? [['ciney-player-selection-v1', JSON.stringify(saved)]] : []);
@@ -27,6 +27,7 @@ function setup({ rows = [], controls = [], enabled = true, host = 'playerflix.in
       if (query === '#optionList .option[data-embed][data-audio]') return rows;
       if (query === 'video') return videos;
       if (query === 'iframe') return [];
+      if (query === 'div, span') return labels;
       return controls;
     },
     querySelector: () => selector,
@@ -65,7 +66,7 @@ test('retomada escolhe opção visível uma vez, sem trocar a aba de áudio atua
   assert.equal(subtitled.clicks, 1);
 });
 
-test('primeira reprodução ou retomada desligada mantém escolha manual', () => {
+test('início automático desativado mantém escolha manual', () => {
   const server = row('Servidor Principal');
   const fixture = setup({ rows: [server], enabled: false });
   fixture.start();
@@ -89,6 +90,62 @@ test('menu compacto reconhece abas e aciona apenas Servidor Principal', () => {
   const fixture = setup({ controls });
   fixture.start();
   assert.deepEqual(controls.map(control => control.clicks), [0, 0, 1, 0, 0]);
+});
+
+test('menu compacto com evento delegado abre pelo texto sem depender de IDs', () => {
+  const server = row('Servidor Principal', null);
+  const parent = row('Servidor Principal', null);
+  parent.children = [server];
+  server.click = () => { server.clicks++; parent.clicks++; };
+  const external = row('Telegram', null);
+  const fixture = setup({
+    controls: ['Dublado', 'Legendado'].map(text => row(text, null)),
+    labels: [parent, server, external], resume: 0,
+  });
+  fixture.start();
+  fixture.start();
+  assert.equal(server.clicks, 1);
+  assert.equal(parent.clicks, 1);
+  assert.equal(external.clicks, 0);
+});
+
+test('menu compacto ambíguo ou sem abas verificadas mantém seleção manual', () => {
+  for (const controls of [[], ['Dublado', 'Legendado'].map(text => row(text, null))]) {
+    const labels = [row('Servidor Principal', null), row('Servidor Principal', null)];
+    const fixture = setup({ controls, labels });
+    fixture.start();
+    assert.deepEqual(labels.map(element => element.clicks), [0, 0]);
+  }
+});
+
+test('primeira reprodução abre áudio disponível e reproduz sem buscar posição antiga', () => {
+  const server = row('WatchPlay Sem anúncios', 'pt-br');
+  const fixture = setup({ rows: [server], resume: 0 });
+  server.click = () => {
+    server.clicks++;
+    fixture.videos.push({ ownerDocument: fixture.document, readyState: 4,
+      duration: 8700, currentTime: 0, paused: true, ended: false, plays: 0,
+      play() { this.plays++; this.paused = false; return Promise.resolve(); } });
+  };
+  vm.runInContext(read('embed_media_observer.js'), fixture.context);
+  fixture.timers[0]();
+  fixture.timers[0]();
+  assert.equal(server.clicks, 1);
+  assert.equal(fixture.videos[0].plays, 1);
+  assert.equal(fixture.videos[0].currentTime, 0);
+  assert.equal(fixture.messages.at(-1).restoring, false);
+  fixture.videos[0].paused = true;
+  fixture.timers[0]();
+  assert.equal(fixture.videos[0].plays, 1);
+});
+
+test('episódio apenas legendado abre opção do áudio atual sem clicar em próximo episódio', () => {
+  const subtitled = row('Embed Play', 'en-us');
+  const next = row('Próximo episódio', null);
+  const fixture = setup({ rows: [subtitled], controls: [next], resume: 0 });
+  fixture.start();
+  assert.equal(subtitled.clicks, 1);
+  assert.equal(next.clicks, 0);
 });
 
 test('recusa menu em anúncio, fornecedor desconhecido ou outro episódio', () => {

@@ -3,6 +3,59 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:html/parser.dart';
 
 void main() {
+  test('EmbedMovies inicia na primeira abertura sem ponto salvo', () {
+    final config = buildEmbedPlaybackConfiguration(
+      playerUrl: 'https://myembed.biz/filme/969681',
+      resumePlayback: true,
+      resumePositionMs: 0,
+      durationMs: 0,
+    );
+    expect(config, contains('__cineyAutoStart = true'));
+    expect(config, contains('__cineyResumePositionSeconds = 0.0'));
+    expect(config, contains('__cineyProviderPath = "/filme/969681"'));
+  });
+
+  test('desligar retomada não impede início automático no EmbedMovies', () {
+    final config = buildEmbedPlaybackConfiguration(
+      playerUrl: 'https://myembed.biz/serie/1396/2/3',
+      resumePlayback: false,
+      resumePositionMs: 300123,
+      durationMs: 1200000,
+    );
+    expect(config, contains('__cineyAutoStart = true'));
+    expect(config, contains('__cineyResumePositionSeconds = 0;'));
+    expect(config, contains('__cineyExpectedDurationSeconds = 1200.0'));
+  });
+
+  test('outros fornecedores preservam início condicionado à retomada', () {
+    for (final resumePlayback in [true, false]) {
+      final config = buildEmbedPlaybackConfiguration(
+        playerUrl: 'https://superflixapi.quest/filme/969681',
+        resumePlayback: resumePlayback,
+        resumePositionMs: 300123,
+        durationMs: 1200000,
+      );
+      expect(config, contains('__cineyAutoStart = $resumePlayback'));
+      if (resumePlayback) {
+        expect(config, contains('__cineyResumePositionSeconds = 300.123'));
+      }
+    }
+    for (final url in [
+      'https://superflixapi.quest/filme/969681',
+      'https://myembed.biz.example/filme/969681',
+    ]) {
+      expect(
+        buildEmbedPlaybackConfiguration(
+          playerUrl: url,
+          resumePlayback: true,
+          resumePositionMs: 0,
+          durationMs: 0,
+        ),
+        contains('__cineyAutoStart = false'),
+      );
+    }
+  });
+
   test('incorpora player em iframe com permissões e sem controles do app', () {
     final doc = parse(
       buildEmbedDocument(
