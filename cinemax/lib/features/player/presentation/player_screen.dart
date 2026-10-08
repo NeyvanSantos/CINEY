@@ -21,6 +21,7 @@ import '../services/embed_playback_session.dart';
 import '../services/embed_navigation.dart';
 import '../services/embed_document.dart';
 import '../services/watch_history_repository.dart';
+import '../../profile/services/playback_preferences.dart';
 
 enum VideoQuality {
   auto('Automática', 'Adapta à conexão', Icons.auto_awesome_rounded),
@@ -152,6 +153,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   // Controles e Customizações
   bool _controlsVisible = true;
   bool _isScreenLocked = false;
+  bool _autoHideControls = true;
+  bool _resumePlayback = true;
+  bool _landscapeOnMobile = true;
   Timer? _hideControlsTimer;
 
   // Estado do Cast / Controle Remoto da TV
@@ -169,15 +173,37 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   @override
   void initState() {
     super.initState();
-    // Forçar modo paisagem horizontal obrigatório
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
     _watchHistoryStarted = _markWatchHistoryStarted();
+    unawaited(_loadPlaybackPreferences());
+  }
+
+  Future<void> _loadPlaybackPreferences() async {
+    PlaybackPreferences preferences;
+    try {
+      preferences = await ref.read(playbackPreferencesProvider.future);
+    } catch (error) {
+      AppLogger.warn(
+        'Preferências de reprodução indisponíveis (${error.runtimeType}); usando padrões.',
+        tag: 'PLAYER',
+      );
+      preferences = PlaybackPreferences.defaults;
+    }
+    if (!mounted) return;
+
+    _autoHideControls = preferences.autoHideControls;
+    _resumePlayback = preferences.resumePlayback;
+    _landscapeOnMobile = preferences.landscapeOnMobile;
+    SystemChrome.setPreferredOrientations(
+      widget.isTv || _landscapeOnMobile
+          ? const [
+              DeviceOrientation.landscapeLeft,
+              DeviceOrientation.landscapeRight,
+            ]
+          : const [DeviceOrientation.portraitUp],
+    );
     _startHideControlsTimer();
-    _loadStreams();
+    await _loadStreams();
   }
 
   ContentItem get _watchHistoryItem => ContentItem(
@@ -225,6 +251,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   void _startHideControlsTimer() {
     _hideControlsTimer?.cancel();
+    if (!_autoHideControls) return;
     _hideControlsTimer = Timer(Duration(seconds: widget.isTv ? 8 : 4), () {
       if (mounted && _controlsVisible && !_isLoading && !_isDraggingSlider) {
         setState(() => _controlsVisible = false);
@@ -733,7 +760,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         return;
       }
       final resumePosition = Duration(milliseconds: widget.resumePositionMs);
-      if (resumePosition > Duration.zero &&
+      if (_resumePlayback &&
+          resumePosition > Duration.zero &&
           controller.value.duration - resumePosition >
               const Duration(seconds: 20)) {
         await controller.seekTo(resumePosition);

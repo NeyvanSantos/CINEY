@@ -6,7 +6,7 @@ const path = require('node:path');
 const code = fs.readFileSync(path.join(__dirname, '../assets/player/embed_bridge.js'), 'utf8');
 
 function setup({ videos = [], frames = [] } = {}) {
-  const messages = [], timers = [], listeners = {};
+  const messages = [], timers = [], intervals = [], listeners = {};
   const document = {
     baseURI: 'https://provider.test/player',
     querySelectorAll: selector => selector === 'video' ? videos : frames,
@@ -15,19 +15,24 @@ function setup({ videos = [], frames = [] } = {}) {
   const context = vm.createContext({ document, URL,
     location: { origin: 'https://provider.test' },
     PlayerBridge: { postMessage: message => messages.push(JSON.parse(message)) },
-    setInterval: callback => { timers.push(callback); return timers.length; },
+    setInterval: (callback, interval) => {
+      timers.push(callback);
+      intervals.push(interval);
+      return timers.length;
+    },
     clearInterval: () => {},
   });
   context.window = context;
   context.addEventListener = () => {};
   vm.runInContext(code, context);
-  return { context, messages, timers, listeners };
+  return { context, messages, timers, intervals, listeners };
 }
 
 test('bridge válido, idempotente e não anuncia vídeo para página vazia', () => {
   const fixture = setup();
   vm.runInContext(code, fixture.context);
   assert.equal(fixture.timers.length, 1);
+  assert.deepEqual(fixture.intervals, [1000]);
   assert.deepEqual(fixture.messages, [{ event: 'frame', opaque: false }]);
 });
 

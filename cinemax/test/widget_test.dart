@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cinemax/core/services/app_updater.dart';
 import 'package:cinemax/core/widgets/glass_card.dart';
@@ -128,6 +129,27 @@ void main() {
     await tester.pump();
 
     expect(opened, isTrue);
+  });
+
+  testWidgets('GradientPoster limita decode ao tamanho físico do card', (
+    WidgetTester tester,
+  ) async {
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: GradientPoster(title: 'Poster', posterUrl: ''),
+        ),
+      ),
+    );
+
+    final image = tester.widget<CachedNetworkImage>(
+      find.byType(CachedNetworkImage),
+    );
+    expect(image.memCacheWidth, 260);
+    expect(image.memCacheHeight, 390);
   });
 
   testWidgets('D-pad percorre e escolhe servidores em Assistir Agora', (

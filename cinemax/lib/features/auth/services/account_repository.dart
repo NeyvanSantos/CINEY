@@ -201,13 +201,8 @@ class SupabaseAccountRepository implements AccountRepository {
     final result = Map<String, dynamic>.from(response.data as Map);
     if (result['status'] != 'ready') return false;
 
-    final email = result['email'] as String;
     final tokenHash = result['tokenHash'] as String;
-    await _client.auth.verifyOTP(
-      email: email,
-      token: tokenHash,
-      type: OtpType.magiclink,
-    );
+    await _client.auth.verifyOTP(tokenHash: tokenHash, type: OtpType.magiclink);
     try {
       await _client.functions.invoke(
         'tv-pairing',

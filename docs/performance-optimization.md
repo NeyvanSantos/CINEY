@@ -12,6 +12,12 @@ Reduzir travamentos, jank, consumo de memória e tempo percebido no CineMax sem 
 - [x] Adicionar testes de regressao para os caminhos alterados -> cobrir carga, erro, retry e descarte.
 - [x] Validar com analyze, testes e build debug -> comparar com a linha de base.
 
+## Ajustes Android TV
+
+- O bridge do player embed consulta a árvore de mídia a cada 1 s, reduzindo pela metade as varreduras e mensagens em relação ao intervalo anterior de 500 ms.
+- Posters e banner da Home limitam o decode à dimensão exibida multiplicada pelo device pixel ratio, reduzindo memória de imagem sem reduzir a resolução visível.
+- Validar tempos de frame em uma TV física ou em build profile; o ambiente de desenvolvimento não substitui essa medição.
+
 ## Feito quando
 - O projeto passa em `flutter analyze` e nos testes existentes.
 - Não há novos vazamentos conhecidos de controllers, timers, subscriptions ou WebViews.

@@ -31,6 +31,7 @@ class GradientPoster extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
     return FocusableSurface(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
@@ -56,6 +57,8 @@ class GradientPoster extends StatelessWidget {
               CachedNetworkImage(
                 imageUrl: posterUrl,
                 fit: BoxFit.cover,
+                memCacheWidth: (width * devicePixelRatio).round(),
+                memCacheHeight: (height * devicePixelRatio).round(),
                 placeholder: (context, url) =>
                     ShimmerLoading.poster(width: width, height: height),
                 errorWidget: (context, url, error) => Container(

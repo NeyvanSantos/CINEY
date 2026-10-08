@@ -163,6 +163,7 @@ GoRouter createAppRouter({bool isTv = false}) {
             contentId: contentId,
             pluginId: pluginId,
             initialDetail: initialDetail,
+            isTv: isTv,
           );
         },
       ),

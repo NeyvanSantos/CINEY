@@ -39,6 +39,9 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: ♻️ Cache Gradle
+        uses: gradle/actions/setup-gradle@v4
+
       - name: 💙 Configurar Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -97,7 +100,7 @@ jobs:
 
       - name: 🔨 Compilar APK de Release (CineMax)
         working-directory: cinemax
-        run: flutter build apk --release
+        run: flutter build apk --release --no-pub
 
       - name: 🏷️ Determinar Tag e Título
         id: vars

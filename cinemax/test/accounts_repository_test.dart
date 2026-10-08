@@ -194,7 +194,8 @@ void main() {
       (request) => request.path == '/auth/v1/verify',
     );
     expect(verification.body['type'], 'magiclink');
-    expect(verification.body['token'], 'one-time-token-hash');
+    expect(verification.body['token_hash'], 'one-time-token-hash');
+    expect(verification.body.containsKey('token'), isFalse);
     expect(requests.last.body['action'], 'complete');
     expect(accounts.currentUser?.id, _userId);
   });

@@ -83,6 +83,6 @@
   }
 
   poll();
-  const interval = setInterval(poll, 500);
+  const interval = setInterval(poll, 1000);
   window.addEventListener('pagehide', () => clearInterval(interval), { once: true });
 })();

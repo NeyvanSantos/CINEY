@@ -17,12 +17,14 @@ class DetailsScreen extends ConsumerStatefulWidget {
   final String contentId;
   final String pluginId;
   final ContentDetail? initialDetail;
+  final bool isTv;
 
   const DetailsScreen({
     super.key,
     required this.contentId,
     required this.pluginId,
     this.initialDetail,
+    this.isTv = false,
   });
 
   @override
@@ -164,7 +166,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
       );
     }
 
-    if (sources.length <= 1) {
+    if (widget.isTv || sources.length <= 1) {
       navigateToPlayer(0);
       return;
     }

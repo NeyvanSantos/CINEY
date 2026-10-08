@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:iconsax/iconsax.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -10,15 +13,16 @@ import '../../../core/services/app_updater.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/update_dialog.dart';
 import '../../auth/presentation/account_card.dart';
+import '../services/playback_preferences.dart';
 
-class ProfileScreen extends StatefulWidget {
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  State<ProfileScreen> createState() => _ProfileScreenState();
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _checkingUpdate = false;
   String _appVersion = '1.0.3';
 
@@ -76,8 +80,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _savePlaybackPreferences(PlaybackPreferences preferences) async {
+    try {
+      await ref
+          .read(playbackPreferencesProvider.notifier)
+          .setPreferences(preferences);
+    } catch (error) {
+      AppLogger.warn(
+        'Não foi possível salvar as preferências de reprodução (${error.runtimeType}).',
+        tag: 'SETTINGS',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Não foi possível salvar a preferência.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final preferencesState = ref.watch(playbackPreferencesProvider);
+    final preferences =
+        preferencesState.valueOrNull ?? PlaybackPreferences.defaults;
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -96,31 +123,54 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 12),
 
           _buildSettingTile(
-            icon: Iconsax.video_circle,
-            title: 'Qualidade Padrão de Vídeo',
-            subtitle: '1080p FHD (Automático)',
-            onTap: () {},
-          ),
-          _buildSettingTile(
-            icon: Iconsax.subtitle,
-            title: 'Legendas em Português',
-            subtitle: 'Ativar automaticamente quando disponível',
+            icon: Iconsax.play_circle,
+            title: 'Retomar reprodução',
+            subtitle: 'Continuar do último ponto salvo',
             trailing: Switch(
-              value: true,
+              value: preferences.resumePlayback,
               activeThumbColor: AppColors.primary,
-              onChanged: (_) {},
+              onChanged: preferencesState.isLoading
+                  ? null
+                  : (value) => unawaited(
+                      _savePlaybackPreferences(
+                        preferences.copyWith(resumePlayback: value),
+                      ),
+                    ),
             ),
           ),
           _buildSettingTile(
-            icon: Iconsax.cpu,
-            title: 'Aceleração por Hardware',
-            subtitle: 'Melhora o desempenho da reprodução',
+            icon: Icons.visibility_off_outlined,
+            title: 'Ocultar controles automaticamente',
+            subtitle: 'Esconder após alguns segundos sem interação',
             trailing: Switch(
-              value: true,
+              value: preferences.autoHideControls,
               activeThumbColor: AppColors.primary,
-              onChanged: (_) {},
+              onChanged: preferencesState.isLoading
+                  ? null
+                  : (value) => unawaited(
+                      _savePlaybackPreferences(
+                        preferences.copyWith(autoHideControls: value),
+                      ),
+                    ),
             ),
           ),
+          if (!AppEnvironment.isTv)
+            _buildSettingTile(
+              icon: Icons.screen_rotation,
+              title: 'Player em paisagem',
+              subtitle: 'Girar o celular durante a reprodução',
+              trailing: Switch(
+                value: preferences.landscapeOnMobile,
+                activeThumbColor: AppColors.primary,
+                onChanged: preferencesState.isLoading
+                    ? null
+                    : (value) => unawaited(
+                        _savePlaybackPreferences(
+                          preferences.copyWith(landscapeOnMobile: value),
+                        ),
+                      ),
+              ),
+            ),
 
           const SizedBox(height: 24),
           Text('Fontes & Armazenamento', style: AppTypography.headlineMedium),

@@ -979,6 +979,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildHeroItem(ContentItem item) {
+    final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+    final screenWidth = MediaQuery.sizeOf(context).width;
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
@@ -1000,6 +1002,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ? item.backdropUrl!
                   : item.posterUrl,
               fit: BoxFit.cover,
+              memCacheWidth: (screenWidth * devicePixelRatio).round(),
+              memCacheHeight: (220 * devicePixelRatio).round(),
               errorWidget: (context, url, error) => const ColoredBox(
                 color: AppColors.surface,
                 child: Icon(
