@@ -1,6 +1,6 @@
 # APKs locais
 
-Esta pasta guarda **somente o último APK publicado de cada variante** para
+Esta pasta deve guardar **somente o último APK publicado de cada variante** para
 instalação local. Os binários são ignorados pelo Git e não acompanham um clone
 do repositório.
 
@@ -8,6 +8,10 @@ do repositório.
 | --- | --- | --- |
 | Mobile | `mobile/` | `CiNey-v1.0.19.apk` |
 | Android TV | `tv/` | `CiNey-v1.0.22-TV.apk` |
+
+As cópias anteriores `mobile/CiNey-v1.0.18.apk` e `tv/CiNey-v1.0.21-TV.apk`
+ainda aguardam limpeza: a revisão automática bloqueou a exclusão local nesta
+publicação. Os dois novos APKs foram conferidos e publicados normalmente.
 
 Ao guardar uma nova versão publicada, substitua apenas o APK anterior da mesma
 variante e atualize a tabela. Mantenha um único APK em cada pasta, com o nome
