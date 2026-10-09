@@ -19,6 +19,7 @@ import '../../../plugin_engine/models/stream_source.dart';
 import '../../../plugin_engine/runtime/stream_resolver.dart';
 import '../../../plugin_engine/runtime/tmdb_service.dart';
 import '../../cast/presentation/cast_dialog.dart';
+import '../../cast/services/media_stream_sniffer.dart';
 import '../../cast/services/native_cast_bridge.dart';
 import '../../cast/services/web_cast_server.dart';
 import '../services/embed_playback_session.dart';
@@ -129,6 +130,14 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   // WebView (Embed Sources)
   WebViewController? _webViewController;
   EmbedPlaybackSession? _embedSession;
+
+  // TV Direct Stream Sniffer (Headless Extraction)
+  WebViewController? _tvSnifferController;
+  Completer<SniffedStreamResult?>? _tvSnifferCompleter;
+  Timer? _tvSnifferTimer;
+  bool _isTvSniffing = false;
+  String _tvSnifferStatus = '';
+
   final FocusNode _playerFocusNode = FocusNode(
     debugLabel: 'Native player media controls',
   );
@@ -766,10 +775,100 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _resumePending = _resumePlayback && _resumePositionMs > 0;
 
     if (source.isEmbed) {
-      await _initWebViewPlayer(source);
+      if (widget.isTv) {
+        await _initTvNativeSnifferPlayer(source, index);
+      } else {
+        await _initWebViewPlayer(source);
+      }
     } else {
       await _initNativePlayer(source, index);
     }
+  }
+
+  Future<void> _initTvNativeSnifferPlayer(
+    StreamSource source,
+    int index,
+  ) async {
+    _disposeTvSniffer();
+    _playerFocusNode.unfocus();
+    _tvPointerFocusNode.unfocus();
+
+    setState(() {
+      _isTvSniffing = true;
+      _isLoading = true;
+      _errorMessage = null;
+      _tvPointerEnabled = false;
+      _tvPointerPosition = null;
+      _tvSnifferStatus = 'Otimizando reprodução direta na Smart TV...';
+    });
+
+    final completer = Completer<SniffedStreamResult?>();
+    _tvSnifferCompleter = completer;
+
+    try {
+      final controller = MediaStreamSniffer.createSnifferController(
+        onMediaFound: (result) {
+          if (!mounted || _tvSnifferCompleter != completer) return;
+          if (!completer.isCompleted) {
+            completer.complete(result);
+          }
+        },
+      );
+      _tvSnifferController = controller;
+
+      AppLogger.info(
+        'Iniciando sniffer em segundo plano para TV (${source.server}): ${source.url}',
+        tag: 'PLAYER',
+      );
+
+      await controller.loadRequest(Uri.parse(source.url));
+
+      // Aguarda até 8 segundos pela captura do fluxo direto (.m3u8 / .mp4)
+      final sniffedResult = await completer.future.timeout(
+        const Duration(seconds: 8),
+        onTimeout: () => null,
+      );
+
+      if (!mounted || _tvSnifferCompleter != completer) return;
+
+      if (sniffedResult != null && sniffedResult.url.isNotEmpty) {
+        AppLogger.success(
+          'Fluxo direto capturado para TV (${source.server}): ${sniffedResult.url}',
+          tag: 'PLAYER',
+        );
+
+        // Desaloca o sniffer imediatamente para economizar a memória RAM da TV
+        _disposeTvSniffer();
+
+        // Converte em StreamSource nativo com cabeçalhos capturados
+        final directSource = StreamSource(
+          url: sniffedResult.url,
+          quality: source.quality,
+          server: source.server,
+          headers: sniffedResult.headers,
+          isEmbed: false,
+          isDirect: true,
+          priority: source.priority,
+          audioType: source.audioType,
+        );
+
+        // Inicia a reprodução direta no ExoPlayer nativo com aceleração de hardware
+        await _initNativePlayer(directSource, index);
+        return;
+      }
+    } catch (e) {
+      AppLogger.warn('Sniffer TV encontrou erro: $e', tag: 'PLAYER');
+    }
+
+    if (!mounted || _tvSnifferCompleter != completer) return;
+
+    // Fallback: se o sniffer não capturou fluxo direto, abre na WebView
+    AppLogger.warn(
+      'Sniffer não capturou fluxo direto em 8s. Usando WebView como fallback seguro.',
+      tag: 'PLAYER',
+    );
+    _disposeTvSniffer();
+    await _initWebViewPlayer(source);
   }
 
   Future<void> _initWebViewPlayer(StreamSource source) async {
@@ -1059,22 +1158,41 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
     switch (event.logicalKey) {
       case LogicalKeyboardKey.mediaPlayPause:
+      case LogicalKeyboardKey.select:
+      case LogicalKeyboardKey.enter:
         if (!_controlsVisible) {
           setState(() => _controlsVisible = true);
+          _startHideControlsTimer();
+        } else {
+          _executePlayPause();
         }
-        _executePlayPause();
         return KeyEventResult.handled;
       case LogicalKeyboardKey.mediaRewind:
+      case LogicalKeyboardKey.arrowLeft:
         if (!_controlsVisible) {
           setState(() => _controlsVisible = true);
         }
         _executeSeekRelative(-10);
+        setState(() => _showDoubleTapRewind = true);
+        Future.delayed(const Duration(milliseconds: 600), () {
+          if (mounted) setState(() => _showDoubleTapRewind = false);
+        });
         return KeyEventResult.handled;
       case LogicalKeyboardKey.mediaFastForward:
+      case LogicalKeyboardKey.arrowRight:
         if (!_controlsVisible) {
           setState(() => _controlsVisible = true);
         }
         _executeSeekRelative(10);
+        setState(() => _showDoubleTapForward = true);
+        Future.delayed(const Duration(milliseconds: 600), () {
+          if (mounted) setState(() => _showDoubleTapForward = false);
+        });
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.arrowUp:
+      case LogicalKeyboardKey.arrowDown:
+        setState(() => _controlsVisible = !_controlsVisible);
+        if (_controlsVisible) _startHideControlsTimer();
         return KeyEventResult.handled;
       default:
         return KeyEventResult.ignored;
@@ -1388,6 +1506,22 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _videoPlayerController?.dispose();
     _videoPlayerController = null;
     _webViewController = null;
+    _disposeTvSniffer();
+  }
+
+  void _disposeTvSniffer({bool notify = false}) {
+    _tvSnifferTimer?.cancel();
+    _tvSnifferTimer = null;
+    if (_tvSnifferCompleter != null && !_tvSnifferCompleter!.isCompleted) {
+      _tvSnifferCompleter!.complete(null);
+    }
+    _tvSnifferCompleter = null;
+    _tvSnifferController = null;
+    _isTvSniffing = false;
+    _tvSnifferStatus = '';
+    if (notify && mounted) {
+      setState(() {});
+    }
   }
 
   @override
@@ -1403,6 +1537,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
     _playerFocusNode.dispose();
     _tvPointerFocusNode.dispose();
+    _disposeTvSniffer();
     _disposeCurrentPlayer(saveProgress: !_allowExit);
     super.dispose();
   }
@@ -2449,6 +2584,85 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   // Conteúdo do Player (WebView / Chewie)
   // ══════════════════════════════════════════════
   Widget _buildPlayerContent() {
+    if (_isTvSniffing && _tvSnifferController != null) {
+      final currentServer =
+          _sources.isNotEmpty && _currentSourceIndex < _sources.length
+          ? _sources[_currentSourceIndex].server
+          : 'Buscando servidor';
+
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          // WebView headless em background para processamento de JavaScript e mídia
+          Offstage(
+            offstage: true,
+            child: SizedBox(
+              width: 1,
+              height: 1,
+              child: WebViewWidget(controller: _tvSnifferController!),
+            ),
+          ),
+          // Interface nativa limpa, sem botões de site ou barras web
+          Container(
+            color: Colors.black,
+            alignment: Alignment.center,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(
+                  width: 50,
+                  height: 50,
+                  child: CircularProgressIndicator(
+                    color: AppColors.primary,
+                    strokeWidth: 3.5,
+                  ),
+                ),
+                const SizedBox(height: 22),
+                Text(
+                  _tvSnifferStatus.isNotEmpty
+                      ? _tvSnifferStatus
+                      : 'Conectando ao player nativo...',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: AppColors.primary.withOpacity(0.4),
+                    ),
+                  ),
+                  child: Text(
+                    'Servidor: $currentServer • Reprodução Direta',
+                    style: const TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Otimizando fluxo em alta definição para sua Smart TV',
+                  style: TextStyle(color: Colors.white54, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
     if (_isLoading && _webViewController == null) {
       final currentServer =
           _sources.isNotEmpty && _currentSourceIndex < _sources.length

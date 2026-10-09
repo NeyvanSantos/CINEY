@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_android/webview_flutter_android.dart';
 
 import '../../../core/services/app_logger.dart';
 
@@ -66,9 +67,13 @@ class MediaStreamSniffer {
            clean.endsWith('.webm') || 
            clean.endsWith('.mkv') || 
            clean.endsWith('.ts') ||
+           clean.includes('.m3u8') ||
            clean.includes('/hls/') ||
            clean.includes('playlist.m3u8') ||
-           clean.includes('manifest.mpd');
+           clean.includes('manifest.mpd') ||
+           clean.includes('/manifest') ||
+           clean.includes('/stream/') ||
+           clean.includes('/video/');
   }
 
   function isCaptionUrl(url) {
@@ -102,13 +107,19 @@ class MediaStreamSniffer {
     };
   } catch(e) {}
 
-  // 3. Monitor de tags <video>, <source> e <track>
+  // 3. Monitor de tags <video>, <source> e <track> e simulação de clique de play
   function scanMediaElements() {
     try {
       const videos = document.querySelectorAll('video');
       videos.forEach(v => {
         if (v.src && isMediaUrl(v.src)) reportMedia(v.src, 'video_tag');
         if (v.currentSrc && isMediaUrl(v.currentSrc)) reportMedia(v.currentSrc, 'video_currentSrc');
+        if (v.paused) {
+          try {
+            const p = v.play();
+            if (p && p.catch) p.catch(function(){});
+          } catch(e) {}
+        }
       });
       const sources = document.querySelectorAll('source');
       sources.forEach(s => {
@@ -117,6 +128,26 @@ class MediaStreamSniffer {
       const tracks = document.querySelectorAll('track');
       tracks.forEach(t => {
         if (t.src && isCaptionUrl(t.src)) reportMedia(t.src, 'track_tag');
+      });
+
+      // Clica em botões de play conhecidos do provedor para forçar carregamento
+      const playSelectors = [
+        '.jw-display-icon-container',
+        '.vjs-big-play-button',
+        '.play-button',
+        '.vjs-play-control',
+        '[class*="play-button"]',
+        '[class*="playButton"]',
+        '[aria-label*="Play"]',
+        '[aria-label*="Reproduzir"]',
+        '#play',
+        '.btn-play'
+      ];
+      playSelectors.forEach(sel => {
+        const btns = document.querySelectorAll(sel);
+        btns.forEach(b => {
+          try { b.click(); } catch(e) {}
+        });
       });
     } catch(e) {}
   }
@@ -130,7 +161,7 @@ class MediaStreamSniffer {
   } catch(e) {}
 
   // 5. Polling de verificação periódica
-  setInterval(scanMediaElements, 800);
+  setInterval(scanMediaElements, 600);
   scanMediaElements();
 })();
 ''';
@@ -203,6 +234,11 @@ class MediaStreamSniffer {
       )
       ..setNavigationDelegate(
         NavigationDelegate(
+          onProgress: (progress) {
+            if (progress > 50) {
+              controller.runJavaScript(_snifferJsHook).catchError((_) {});
+            }
+          },
           onNavigationRequest: (request) {
             final url = request.url;
             if (isDirectMediaUrl(url)) {
@@ -219,6 +255,11 @@ class MediaStreamSniffer {
           },
         ),
       );
+
+    if (controller.platform is AndroidWebViewController) {
+      (controller.platform as AndroidWebViewController)
+          .setMediaPlaybackRequiresUserGesture(false);
+    }
 
     return controller;
   }
