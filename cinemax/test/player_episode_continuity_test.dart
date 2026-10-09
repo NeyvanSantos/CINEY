@@ -158,6 +158,7 @@ void main() {
     bool movie = false,
     int resumePositionMs = 60000,
     int? initialSourceIndex,
+    String? initialServer,
   }) async {
     await tester.binding.setSurfaceSize(const Size(1280, 720));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -176,6 +177,7 @@ void main() {
             resumePositionMs: resumePositionMs,
             isTv: isTv,
             initialSourceIndex: initialSourceIndex,
+            initialServer: initialServer,
           ),
         ),
       ),
@@ -376,6 +378,32 @@ void main() {
       await tester.pump();
     });
   }
+
+  testWidgets('servidor explícito de continuação vence seleção automática', (
+    tester,
+  ) async {
+    catalog.sources = [
+      const StreamSource(
+        url: 'https://myembed.biz/filme/1',
+        quality: 'HD',
+        server: 'EmbedMovies',
+        isEmbed: true,
+        priority: 0,
+      ),
+      superFlix,
+    ];
+    await pumpPlayer(
+      tester,
+      movie: true,
+      resumePositionMs: 0,
+      initialServer: 'SuperFlix',
+    );
+    expect(platform.openedUrls, [superFlix.url]);
+    final saved = await WatchHistoryRepository().findProgress(film);
+    expect(saved?.server, 'SuperFlix');
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
 
   testWidgets('servidor salvo continua correto após mudar ordem das fontes', (
     tester,

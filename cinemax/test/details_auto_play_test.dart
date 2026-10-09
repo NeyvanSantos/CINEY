@@ -83,7 +83,7 @@ void main() {
   }
 
   for (final isTv in [false, true]) {
-    testWidgets('Assistir Agora abre EmbedMovies diretamente (TV: $isTv)', (
+    testWidgets('Assistir Agora seleciona a fonte correta (TV: $isTv)', (
       tester,
     ) async {
       final openedPlayers = await pumpDetails(
@@ -99,15 +99,26 @@ void main() {
       );
       await tester.tap(find.text('Assistir Agora'));
       await tester.pumpAndSettle();
+
+      if (isTv) {
+        expect(find.text('Escolha o Servidor'), findsNothing);
+        expect(find.text('Player aberto'), findsOneWidget);
+        expect(openedPlayers.last.queryParameters['serverIndex'], '1');
+        return;
+      }
+
+      expect(find.text('Escolha o Servidor'), findsOneWidget);
+      expect(find.text('Player aberto'), findsNothing);
+      await tester.tap(find.text('SuperFlix'));
+      await tester.pumpAndSettle();
       expect(find.text('Player aberto'), findsOneWidget);
-      expect(find.text('Escolha o Servidor'), findsNothing);
-      final uri = openedPlayers.last;
+      final uri = openedPlayers.single;
       expect(uri.path, '/player/tmdb_969681_movie/test');
-      expect(uri.queryParameters['serverIndex'], '1');
+      expect(uri.queryParameters['serverIndex'], '0');
     });
   }
 
-  testWidgets('episódio escolhido mantém temporada e número ao abrir Embed', (
+  testWidgets('episódio escolhido mantém dados ao selecionar servidor', (
     tester,
   ) async {
     final openedPlayers = await pumpDetails(
@@ -130,9 +141,12 @@ void main() {
     await tester.ensureVisible(episode);
     await tester.tap(episode);
     await tester.pumpAndSettle();
+    expect(find.text('Escolha o Servidor'), findsOneWidget);
+    await tester.tap(find.text('SuperFlix'));
+    await tester.pumpAndSettle();
     expect(find.text('Player aberto'), findsOneWidget);
     final params = openedPlayers.last.queryParameters;
-    expect(params['serverIndex'], '1');
+    expect(params['serverIndex'], '0');
     expect(params['season'], '2');
     expect(params['episode'], '3');
     expect(find.text('Escolha o Servidor'), findsNothing);

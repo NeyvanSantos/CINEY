@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "providers": [{
+    "id": "sintel-test",
+    "name": "TESTE - Trailer Sintel",
+    "enabled": true,
+    "kind": "native",
+    "priority": 1,
+    "idTypes": ["tmdb", "imdb"],
+    "authorizedDirect": true,
+    "mimeType": "video/mp4",
+    "movie": "https://download.blender.org/durian/trailer/sintel_trailer-480p.mp4",
+    "documentation": "https://durian.blender.org/"
+  }]
+}

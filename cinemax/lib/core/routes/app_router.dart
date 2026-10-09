@@ -230,6 +230,7 @@ GoRouter createAppRouter({
           final initialSourceIndex = int.tryParse(
             state.uri.queryParameters['serverIndex'] ?? '',
           );
+          final initialServer = state.uri.queryParameters['server'];
           return PlayerScreen(
             contentId: contentId,
             pluginId: pluginId,
@@ -241,6 +242,7 @@ GoRouter createAppRouter({
             episode: episode,
             resumePositionMs: resumePositionMs,
             initialSourceIndex: initialSourceIndex,
+            initialServer: initialServer,
             isTv: isTv,
           );
         },

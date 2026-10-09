@@ -1,5 +1,11 @@
 # Plano de Execução: Reprodução Nativa Direta e Clean na Android TV (ExoPlayer)
 
+> **Plano histórico, substituído em 09/10/2026:** a implementação atual está em
+> [CINEY Player Engine TV](docs/tv-player-engine.md). Ela usa iframe documentado
+> para embeds e player nativo somente para mídia direta declarada. Os números de
+> memória e as afirmações de causa raiz abaixo não foram medidos/confirmados na
+> TCL nesta implementação; a extração em segundo plano não é o caminho TV atual.
+
 **Slug da Tarefa:** `tv-native-playback`  
 **Dispositivo Alvo:** Smart TV TCL 43s615 (Android TV / 1.5 GB RAM / SoC RTD2841)  
 **Objetivo:** Eliminar a WebView pesada e poluída da tela da TV (que exibe botão de play gigante borrado e elementos HTML com controles quebrados), substituindo-a por **extração em segundo plano (Headless Media Sniffer)** e reprodução 100% direta no **Player Nativo (ExoPlayer / Chewie)** com interface limpa e foco de controle remoto (D-Pad).

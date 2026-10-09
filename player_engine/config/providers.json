@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "providers": [
+    {
+      "id": "superflix", "name": "SuperFlix", "enabled": true,
+      "kind": "embed", "priority": 1, "idTypes": ["tmdb", "imdb"],
+      "movie": "https://superflixapi.quest/filme/{id}",
+      "episode": "https://superflixapi.quest/serie/{id}/{season}/{episode}",
+      "documentation": "https://superflixapi.quest/doc"
+    },
+    {
+      "id": "embedmovies", "name": "EmbedMovies", "enabled": true,
+      "kind": "embed", "priority": 2, "idTypes": ["tmdb", "imdb"],
+      "movie": "https://myembed.biz/filme/{id}",
+      "episode": "https://myembed.biz/serie/{id}/{season}/{episode}",
+      "documentation": "https://embedmovies.org/"
+    }
+  ]
+}

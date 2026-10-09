@@ -17,6 +17,7 @@ import java.util.Map;
 public final class EmbedMediaObserverPlugin implements FlutterPlugin, MethodChannel.MethodCallHandler {
     private FlutterEngine engine;
     private MethodChannel channel;
+    private TvWebViewHandler tvHandler;
     private final Map<Long, ScriptHandler> scripts = new HashMap<>();
 
     @Override
@@ -25,6 +26,7 @@ public final class EmbedMediaObserverPlugin implements FlutterPlugin, MethodChan
         engine = binding.getFlutterEngine();
         channel = new MethodChannel(binding.getBinaryMessenger(), "com.ciney/embed_media_observer");
         channel.setMethodCallHandler(this);
+        tvHandler = new TvWebViewHandler(engine, binding.getBinaryMessenger());
     }
 
     @Override
@@ -73,6 +75,7 @@ public final class EmbedMediaObserverPlugin implements FlutterPlugin, MethodChan
     @Override
     public void onDetachedFromEngine(FlutterPluginBinding binding) {
         channel.setMethodCallHandler(null);
+        tvHandler.dispose();
         for (ScriptHandler script : scripts.values()) script.remove();
         scripts.clear();
         engine = null;

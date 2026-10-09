@@ -19,9 +19,11 @@ import '../../../plugin_engine/models/stream_source.dart';
 import '../../../plugin_engine/runtime/stream_resolver.dart';
 import '../../../plugin_engine/runtime/tmdb_service.dart';
 import '../../cast/presentation/cast_dialog.dart';
-import '../../cast/services/media_stream_sniffer.dart';
 import '../../cast/services/native_cast_bridge.dart';
 import '../../cast/services/web_cast_server.dart';
+import '../tv/tv_embed_player.dart';
+import '../tv/tv_engine_client.dart';
+import '../tv/tv_source_policy.dart';
 import '../services/embed_playback_session.dart';
 import '../services/embed_navigation.dart';
 import '../services/embed_document.dart';
@@ -104,6 +106,7 @@ class PlayerScreen extends ConsumerStatefulWidget {
     this.posterUrl = '',
     this.mediaType = 'movie',
     this.resumePositionMs = 0,
+    this.initialServer,
     this.season,
     this.episode,
     this.isTv = false,
@@ -112,6 +115,7 @@ class PlayerScreen extends ConsumerStatefulWidget {
 
   /// Null restores the saved provider; an explicit selection overrides it.
   final int? initialSourceIndex;
+  final String? initialServer;
 
   @override
   ConsumerState<PlayerScreen> createState() => _PlayerScreenState();
@@ -131,11 +135,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   WebViewController? _webViewController;
   EmbedPlaybackSession? _embedSession;
 
-  // TV Direct Stream Sniffer (Headless Extraction)
-  WebViewController? _tvSnifferController;
-  Completer<SniffedStreamResult?>? _tvSnifferCompleter;
-  Timer? _tvSnifferTimer;
-  bool _isTvSniffing = false;
+  // TV embeds keep the provider's original iframe and controls.
+  StreamSource? _tvEmbedSource;
+  int _tvEmbedGeneration = 0;
 
   final FocusNode _playerFocusNode = FocusNode(
     debugLabel: 'Native player media controls',
@@ -300,15 +302,30 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     pluginId: widget.pluginId,
   );
 
-  Future<void> _markWatchHistoryStarted() async {
+  Future<void> _markWatchHistoryStarted({String? server}) async {
     final repository = _historyRepository;
     await repository.markStarted(
       _watchHistoryItem,
       season: _season,
       episode: _episode,
-      server: _playbackServer,
+      server: server ?? _playbackServer,
     );
     if (mounted) ref.invalidate(watchHistoryProvider);
+  }
+
+  Future<void> _recordSelectedServer(String server) async {
+    final started = _watchHistoryStarted;
+    final write = _historyWrites.then((_) async {
+      await started;
+      await _markWatchHistoryStarted(server: server);
+    });
+    _historyWrites = write.catchError((Object error) {
+      AppLogger.warn(
+        'Falha ao salvar o servidor selecionado: $error',
+        tag: 'PLAYER',
+      );
+    });
+    await _historyWrites;
   }
 
   Future<void> _prepareWatchHistory() async {
@@ -654,7 +671,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final request = ++_streamRequest;
     final preferredServer = _sources.isNotEmpty
         ? _sources[_currentSourceIndex].server
-        : (widget.initialSourceIndex == null ? _savedServer : null);
+        : (widget.initialServer ??
+              (widget.initialSourceIndex == null ? _savedServer : null));
     AppLogger.info(
       'Abrindo "$_title" (${widget.contentId}), plugin ${widget.pluginId}.',
       tag: 'PLAYER',
@@ -666,7 +684,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     });
 
     try {
-      final sources = await ref
+      var sources = await ref
           .read(pluginManagerProvider.notifier)
           .getStreams(
             widget.contentId,
@@ -675,6 +693,20 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             episode: _episode,
           );
 
+      if (widget.isTv) {
+        final engine = TvEngineClient();
+        try {
+          sources =
+              await engine.resolve(
+                widget.contentId,
+                season: _season,
+                episode: _episode,
+              ) ??
+              sources;
+        } finally {
+          engine.close();
+        }
+      }
       if (!mounted || request != _streamRequest) return;
       if (sources.isEmpty) {
         AppLogger.warn(
@@ -771,102 +803,36 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
     _disposeCurrentPlayer();
     _playbackServer = source.server;
+    await _recordSelectedServer(source.server);
+    if (!mounted || _currentSourceIndex != index) return;
     _resumePending = _resumePlayback && _resumePositionMs > 0;
 
-    if (source.isEmbed) {
-      if (widget.isTv) {
-        await _initTvNativeSnifferPlayer(source, index);
-      } else {
-        await _initWebViewPlayer(source);
+    if (widget.isTv) {
+      switch (TvSourcePolicy.classify(source)) {
+        case TvSourceKind.embed:
+          _playerFocusNode.unfocus();
+          setState(() {
+            _tvEmbedSource = source;
+            _tvEmbedGeneration++;
+            _isLoading = false;
+          });
+          return;
+        case TvSourceKind.native:
+          await _initNativePlayer(source, index);
+          return;
+        case TvSourceKind.unsupported:
+          setState(() {
+            _isLoading = false;
+            _errorMessage = 'Fonte incompatível. Escolha outro servidor.';
+          });
+          return;
       }
+    }
+    if (source.isEmbed) {
+      await _initWebViewPlayer(source);
     } else {
       await _initNativePlayer(source, index);
     }
-  }
-
-  Future<void> _initTvNativeSnifferPlayer(
-    StreamSource source,
-    int index,
-  ) async {
-    _disposeTvSniffer();
-    _playerFocusNode.unfocus();
-    _tvPointerFocusNode.unfocus();
-
-    setState(() {
-      _isTvSniffing = true;
-      _isLoading = true;
-      _errorMessage = null;
-      _tvPointerEnabled = false;
-      _tvPointerPosition = null;
-    });
-
-    final completer = Completer<SniffedStreamResult?>();
-    _tvSnifferCompleter = completer;
-
-    try {
-      final controller = MediaStreamSniffer.createSnifferController(
-        onMediaFound: (result) {
-          if (!mounted || _tvSnifferCompleter != completer) return;
-          if (!completer.isCompleted) {
-            completer.complete(result);
-          }
-        },
-      );
-      _tvSnifferController = controller;
-
-      AppLogger.info(
-        'Iniciando sniffer em segundo plano para TV (${source.server}): ${source.url}',
-        tag: 'PLAYER',
-      );
-
-      await controller.loadRequest(Uri.parse(source.url));
-
-      // Aguarda até 8 segundos pela captura do fluxo direto (.m3u8 / .mp4)
-      final sniffedResult = await completer.future.timeout(
-        const Duration(seconds: 8),
-        onTimeout: () => null,
-      );
-
-      if (!mounted || _tvSnifferCompleter != completer) return;
-
-      if (sniffedResult != null && sniffedResult.url.isNotEmpty) {
-        AppLogger.success(
-          'Fluxo direto capturado para TV (${source.server}): ${sniffedResult.url}',
-          tag: 'PLAYER',
-        );
-
-        // Desaloca o sniffer imediatamente para economizar a memória RAM da TV
-        _disposeTvSniffer();
-
-        // Converte em StreamSource nativo com cabeçalhos capturados
-        final directSource = StreamSource(
-          url: sniffedResult.url,
-          quality: source.quality,
-          server: source.server,
-          headers: sniffedResult.headers,
-          isEmbed: false,
-          isDirect: true,
-          priority: source.priority,
-          audioType: source.audioType,
-        );
-
-        // Inicia a reprodução direta no ExoPlayer nativo com aceleração de hardware
-        await _initNativePlayer(directSource, index);
-        return;
-      }
-    } catch (e) {
-      AppLogger.warn('Sniffer TV encontrou erro: $e', tag: 'PLAYER');
-    }
-
-    if (!mounted || _tvSnifferCompleter != completer) return;
-
-    // Fallback: se o sniffer não capturou fluxo direto, abre na WebView
-    AppLogger.warn(
-      'Sniffer não capturou fluxo direto em 8s. Usando WebView como fallback seguro.',
-      tag: 'PLAYER',
-    );
-    _disposeTvSniffer();
-    await _initWebViewPlayer(source);
   }
 
   Future<void> _initWebViewPlayer(StreamSource source) async {
@@ -1345,6 +1311,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       final controller = VideoPlayerController.networkUrl(
         Uri.parse(source.url),
         httpHeaders: headers,
+        formatHint: widget.isTv ? TvSourcePolicy.nativeFormat(source) : null,
       );
       pendingController = controller;
 
@@ -1381,6 +1348,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         if (controller.value.hasError &&
             controller.value.errorDescription != lastPlaybackError) {
           lastPlaybackError = controller.value.errorDescription;
+          if (widget.isTv) {
+            setState(() {
+              _isLoading = false;
+              _errorMessage =
+                  'Falha na reprodução. Recarregue ou escolha outro servidor.';
+            });
+          }
           AppLogger.error(
             'Erro durante reprodução em ${source.server}: ${controller.value.errorDescription}',
             tag: 'PLAYER',
@@ -1505,21 +1479,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _videoPlayerController?.dispose();
     _videoPlayerController = null;
     _webViewController = null;
-    _disposeTvSniffer();
-  }
-
-  void _disposeTvSniffer({bool notify = false}) {
-    _tvSnifferTimer?.cancel();
-    _tvSnifferTimer = null;
-    if (_tvSnifferCompleter != null && !_tvSnifferCompleter!.isCompleted) {
-      _tvSnifferCompleter!.complete(null);
-    }
-    _tvSnifferCompleter = null;
-    _tvSnifferController = null;
-    _isTvSniffing = false;
-    if (notify && mounted) {
-      setState(() {});
-    }
+    _tvEmbedSource = null;
   }
 
   @override
@@ -1535,7 +1495,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
     _playerFocusNode.dispose();
     _tvPointerFocusNode.dispose();
-    _disposeTvSniffer();
+    _tvEmbedSource = null;
     _disposeCurrentPlayer(saveProgress: !_allowExit);
     super.dispose();
   }
@@ -1936,6 +1896,20 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   @override
   Widget build(BuildContext context) {
+    final tvSource = _tvEmbedSource;
+    if (widget.isTv && tvSource != null) {
+      return TvEmbedPlayer(
+        key: ValueKey(_tvEmbedGeneration),
+        source: tvSource,
+        title: _title,
+        allowExit: _allowExit,
+        onExit: () => unawaited(_exitPlayer()),
+        onSources: _showServerSelectorModal,
+        onNext: _nextEpisode != null && !_advancingEpisode
+            ? () => unawaited(_advanceEpisode())
+            : null,
+      );
+    }
     final subtitleText = _hasEpisode
         ? 'Temporada $_season • Episódio $_episode'
         : 'Filme Completo em HD';
@@ -2129,6 +2103,33 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                                     _buildBottomBar(),
                                   ],
                                 ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                if (!widget.isTv &&
+                    _webViewController != null &&
+                    _sources.length > 1 &&
+                    !_isScreenLocked &&
+                    !_isCasting)
+                  Positioned(
+                    top: 12,
+                    right: 12,
+                    child: SafeArea(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.72),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.white24),
+                        ),
+                        child: IconButton(
+                          icon: const Icon(
+                            Icons.dns_rounded,
+                            color: AppColors.primary,
+                          ),
+                          tooltip: 'Trocar Servidor',
+                          onPressed: _showServerSelectorModal,
                         ),
                       ),
                     ),
@@ -2728,25 +2729,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   // Conteúdo do Player (WebView / Chewie)
   // ══════════════════════════════════════════════
   Widget _buildPlayerContent() {
-    if (_isTvSniffing && _tvSnifferController != null) {
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          // WebView headless em background para sniffing de mídia
-          Offstage(
-            offstage: true,
-            child: SizedBox(
-              width: 1,
-              height: 1,
-              child: WebViewWidget(controller: _tvSnifferController!),
-            ),
-          ),
-          // Interface limpa estilo Web Video Caster para Smart TV
-          _buildTvLoadingScreen(),
-        ],
-      );
-    }
-
     if (_isLoading && _webViewController == null) {
       if (widget.isTv) {
         return _buildTvLoadingScreen();

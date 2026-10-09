@@ -167,13 +167,13 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
     }
 
     final automaticIndex = StreamResolverService.automaticSourceIndex(sources);
-    if (automaticIndex != null) {
+    if (widget.isTv && automaticIndex != null) {
       navigateToPlayer(automaticIndex);
       return;
     }
 
     if (widget.isTv || sources.length <= 1) {
-      navigateToPlayer(0);
+      navigateToPlayer(automaticIndex ?? 0);
       return;
     }
 

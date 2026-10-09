@@ -910,6 +910,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     'poster': item.posterUrl,
                     'type': item.type.value,
                     'resumePositionMs': '${entry.position.inMilliseconds}',
+                    if (entry.server != null) 'server': entry.server!,
                     if (entry.season != null) 'season': '${entry.season}',
                     if (entry.episode != null) 'episode': '${entry.episode}',
                   },
