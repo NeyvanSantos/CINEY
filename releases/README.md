@@ -6,13 +6,10 @@ do repositório.
 
 | Variante | Pasta | Último lançamento mantido nesta organização |
 | --- | --- | --- |
-| Mobile | `mobile/` | `CiNey-v1.0.20.apk` |
-| Android TV | `tv/` | `CiNey-v1.0.23-TV.apk` |
+| Mobile | `mobile/` | `CiNey-v1.0.21.apk` |
+| Android TV | `tv/` | `CiNey-v1.0.24-TV.apk` |
 
-As cópias anteriores `mobile/CiNey-v1.0.18.apk` e `tv/CiNey-v1.0.21-TV.apk`
-ainda aguardam limpeza: a revisão automática bloqueou a exclusão local nesta
-publicação anterior. Os APKs 1.0.19 e 1.0.22 foram substituídos pelos novos
-lançamentos. Confira a [verificação da publicação](../docs/publicacao-2026-10-08-v20.md).
+Os APKs das versões anteriores foram substituídos conforme a política de manter apenas o binário mais recente em cada pasta. Confira a verificação da publicação em [docs/publicacao-2026-10-09-v21-tv24.md](../docs/publicacao-2026-10-09-v21-tv24.md).
 
 Ao guardar uma nova versão publicada, substitua apenas o APK anterior da mesma
 variante e atualize a tabela. Mantenha um único APK em cada pasta, com o nome

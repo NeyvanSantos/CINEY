@@ -170,6 +170,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
             ),
           ),
+          _buildSettingTile(
+            icon: Icons.network_check_rounded,
+            title: 'Modo Poucos Megabits (Conexão Lenta)',
+            subtitle: 'Otimiza buffer de vídeo e reduz tráfego de imagens',
+            trailing: Switch(
+              value: preferences.lowBandwidthMode,
+              activeThumbColor: AppColors.primary,
+              onChanged: preferencesState.isLoading
+                  ? null
+                  : (value) => unawaited(
+                      _savePlaybackPreferences(
+                        preferences.copyWith(lowBandwidthMode: value),
+                      ),
+                    ),
+            ),
+          ),
           if (!AppEnvironment.isTv)
             _buildSettingTile(
               icon: Icons.screen_rotation,

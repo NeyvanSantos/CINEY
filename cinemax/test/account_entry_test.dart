@@ -71,6 +71,12 @@ void main() {
     ) async {
       final accounts = FakeAccounts();
       final router = await _mount(tester, accounts, isTv: isTv);
+      if (isTv) {
+        expect(find.text('Entrar via QR Code'), findsOneWidget);
+        expect(find.text('Entrar manualmente'), findsOneWidget);
+        await tester.tap(find.text('Entrar manualmente'));
+        await tester.pumpAndSettle();
+      }
       expect(find.text('Criar sua conta'), findsOneWidget);
       expect(find.text('Já tenho uma conta'), findsOneWidget);
       expect(find.byType(BackButton), findsNothing);

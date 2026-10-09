@@ -88,7 +88,10 @@ class _CastDialogState extends State<CastDialog> {
   void initState() {
     super.initState();
     if (widget.sources.isNotEmpty) {
-      _selectedServerIndex = widget.initialSourceIndex.clamp(0, widget.sources.length - 1);
+      _selectedServerIndex = widget.initialSourceIndex.clamp(
+        0,
+        widget.sources.length - 1,
+      );
     }
     _initSniffer();
   }
@@ -226,7 +229,9 @@ class _CastDialogState extends State<CastDialog> {
       // Se houver cabeçalhos anti-hotlink OU se o vídeo for M3U8/HLS, canalizamos pelo
       // proxy local. O proxy injeta os headers CORS e reescreve os segmentos .ts,
       // permitindo que o receiver padrão do Google Cast toque streams de qualquer fonte!
-      if (effectiveHeaders.isNotEmpty || rawUrl.contains('.m3u8') || rawUrl.contains('/hls/')) {
+      if (effectiveHeaders.isNotEmpty ||
+          rawUrl.contains('.m3u8') ||
+          rawUrl.contains('/hls/')) {
         targetUrl = WebCastServer.instance.getProxiedStreamUrl(
           rawUrl,
           headers: effectiveHeaders,
@@ -250,7 +255,8 @@ class _CastDialogState extends State<CastDialog> {
           'Google Cast iniciado com sucesso para $targetUrl',
           tag: 'CAST',
         );
-        final deviceName = await NativeCastBridge.castDeviceName() ?? 'Chromecast';
+        final deviceName =
+            await NativeCastBridge.castDeviceName() ?? 'Chromecast';
         widget.onCastStarted?.call(deviceName, true);
         if (mounted && Navigator.of(context).canPop()) {
           Navigator.of(context).pop(true);
@@ -261,7 +267,10 @@ class _CastDialogState extends State<CastDialog> {
         });
       }
     } on PlatformException catch (error) {
-      AppLogger.warn('Erro na ponte nativa do Cast: ${error.code}', tag: 'CAST');
+      AppLogger.warn(
+        'Erro na ponte nativa do Cast: ${error.code}',
+        tag: 'CAST',
+      );
       if (!mounted) return;
       _stopCountdown();
       setState(() {
@@ -302,8 +311,13 @@ class _CastDialogState extends State<CastDialog> {
 
       // Se houver headers anti-hotlink ou HLS, roteia pelo proxy local para a TV acessar sem bloqueio
       String effectiveUrl;
-      if (effectiveHeaders.isNotEmpty || rawUrl.contains('.m3u8') || rawUrl.contains('/hls/')) {
-        effectiveUrl = WebCastServer.instance.getProxiedStreamUrl(rawUrl, headers: effectiveHeaders);
+      if (effectiveHeaders.isNotEmpty ||
+          rawUrl.contains('.m3u8') ||
+          rawUrl.contains('/hls/')) {
+        effectiveUrl = WebCastServer.instance.getProxiedStreamUrl(
+          rawUrl,
+          headers: effectiveHeaders,
+        );
       } else {
         effectiveUrl = rawUrl;
       }
@@ -313,7 +327,8 @@ class _CastDialogState extends State<CastDialog> {
         mediaUrl: effectiveUrl,
         posterUrl: widget.posterUrl,
         headers: effectiveHeaders.isNotEmpty ? effectiveHeaders : null,
-        startPositionSeconds: (widget.startPosition?.inMilliseconds ?? 0) / 1000.0,
+        startPositionSeconds:
+            (widget.startPosition?.inMilliseconds ?? 0) / 1000.0,
       );
 
       widget.onCastStarted?.call('Navegador da TV', false);
@@ -337,7 +352,11 @@ class _CastDialogState extends State<CastDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.language_rounded, color: AppColors.primary, size: 40),
+            const Icon(
+              Icons.language_rounded,
+              color: AppColors.primary,
+              size: 40,
+            ),
             const SizedBox(height: 12),
             const Text(
               'Transmissão via Navegador da TV',
@@ -359,7 +378,9 @@ class _CastDialogState extends State<CastDialog> {
               decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: 0.4),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.primary.withValues(alpha: 0.5)),
+                border: Border.all(
+                  color: AppColors.primary.withValues(alpha: 0.5),
+                ),
               ),
               child: SelectableText(
                 tvUrl,
@@ -377,7 +398,9 @@ class _CastDialogState extends State<CastDialog> {
                 Clipboard.setData(ClipboardData(text: tvUrl));
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Endereço copiado para a área de transferência!'),
+                    content: Text(
+                      'Endereço copiado para a área de transferência!',
+                    ),
                     duration: Duration(seconds: 2),
                   ),
                 );
@@ -396,7 +419,9 @@ class _CastDialogState extends State<CastDialog> {
               width: double.infinity,
               child: FilledButton(
                 onPressed: () => Navigator.of(ctx).pop(),
-                style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                ),
                 child: const Text('Entendido'),
               ),
             ),
@@ -451,7 +476,10 @@ class _CastDialogState extends State<CastDialog> {
                 const Text(
                   'Chromecast / Google TV • WebCast (Link Direto)',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 13,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Text(
@@ -475,11 +503,16 @@ class _CastDialogState extends State<CastDialog> {
                 if (_isSniffing) ...[
                   const SizedBox(height: 14),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.primary.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                      border: Border.all(
+                        color: AppColors.primary.withValues(alpha: 0.3),
+                      ),
                     ),
                     child: Row(
                       children: [
@@ -520,7 +553,9 @@ class _CastDialogState extends State<CastDialog> {
                     decoration: BoxDecoration(
                       color: Colors.red.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+                      border: Border.all(
+                        color: Colors.red.withValues(alpha: 0.3),
+                      ),
                     ),
                     child: Row(
                       children: [
@@ -562,9 +597,7 @@ class _CastDialogState extends State<CastDialog> {
                         )
                       : const Icon(Icons.cast_rounded),
                   label: Text(
-                    _opening
-                        ? 'Conectando...'
-                        : 'Chromecast / Google TV',
+                    _opening ? 'Conectando...' : 'Chromecast / Google TV',
                   ),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.primary,
@@ -594,7 +627,9 @@ class _CastDialogState extends State<CastDialog> {
                           openPlayer?.call();
                         },
                   child: Text(
-                    widget.onOpenPlayer == null ? 'Voltar ao filme' : 'Assistir no celular',
+                    widget.onOpenPlayer == null
+                        ? 'Voltar ao filme'
+                        : 'Assistir no celular',
                   ),
                 ),
               ],

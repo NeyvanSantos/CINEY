@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../../core/config/app_environment.dart';
 
 final playbackPreferencesRepositoryProvider =
     Provider<PlaybackPreferencesRepository>(
@@ -17,6 +18,7 @@ class PlaybackPreferences {
     this.autoHideControls = true,
     this.landscapeOnMobile = true,
     this.autoPlayNextEpisode = true,
+    this.lowBandwidthMode = false,
   });
 
   static const defaults = PlaybackPreferences();
@@ -25,18 +27,21 @@ class PlaybackPreferences {
   final bool autoHideControls;
   final bool landscapeOnMobile;
   final bool autoPlayNextEpisode;
+  final bool lowBandwidthMode;
 
   PlaybackPreferences copyWith({
     bool? resumePlayback,
     bool? autoHideControls,
     bool? landscapeOnMobile,
     bool? autoPlayNextEpisode,
+    bool? lowBandwidthMode,
   }) {
     return PlaybackPreferences(
       resumePlayback: resumePlayback ?? this.resumePlayback,
       autoHideControls: autoHideControls ?? this.autoHideControls,
       landscapeOnMobile: landscapeOnMobile ?? this.landscapeOnMobile,
       autoPlayNextEpisode: autoPlayNextEpisode ?? this.autoPlayNextEpisode,
+      lowBandwidthMode: lowBandwidthMode ?? this.lowBandwidthMode,
     );
   }
 }
@@ -50,6 +55,7 @@ class PlaybackPreferencesRepository {
   static const _autoHideControlsKey = 'playback-auto-hide-controls';
   static const _landscapeOnMobileKey = 'playback-landscape-on-mobile';
   static const _autoPlayNextEpisodeKey = 'playback-auto-next-episode';
+  static const _lowBandwidthModeKey = 'playback-low-bandwidth-mode';
 
   final Future<SharedPreferences> Function() _preferencesLoader;
 
@@ -60,6 +66,8 @@ class PlaybackPreferencesRepository {
       autoHideControls: preferences.getBool(_autoHideControlsKey) ?? true,
       landscapeOnMobile: preferences.getBool(_landscapeOnMobileKey) ?? true,
       autoPlayNextEpisode: preferences.getBool(_autoPlayNextEpisodeKey) ?? true,
+      lowBandwidthMode:
+          preferences.getBool(_lowBandwidthModeKey) ?? AppEnvironment.isTv,
     );
   }
 
@@ -71,6 +79,10 @@ class PlaybackPreferencesRepository {
     await preferences.setBool(
       _autoPlayNextEpisodeKey,
       value.autoPlayNextEpisode,
+    );
+    await preferences.setBool(
+      _lowBandwidthModeKey,
+      value.lowBandwidthMode,
     );
   }
 }

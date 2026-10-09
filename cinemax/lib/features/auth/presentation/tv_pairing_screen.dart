@@ -10,6 +10,7 @@ import '../../../core/widgets/glass_card.dart';
 import '../models/tv_pairing_request.dart';
 import '../services/account_messages.dart';
 import '../services/account_repository.dart';
+import 'tv_auth_widgets.dart';
 
 class TvPairingScreen extends ConsumerStatefulWidget {
   const TvPairingScreen({super.key, this.isEntry = false});
@@ -21,6 +22,10 @@ class TvPairingScreen extends ConsumerStatefulWidget {
 }
 
 class _TvPairingScreenState extends ConsumerState<TvPairingScreen> {
+  final _manualEntryFocus = FocusNode(debugLabel: 'tv_pairing_manual');
+  final _refreshQrFocus = FocusNode(debugLabel: 'tv_pairing_refresh');
+  final _backButtonFocus = FocusNode(debugLabel: 'tv_pairing_back');
+
   TvPairingRequest? _request;
   Timer? _pollTimer;
   bool _starting = false;
@@ -36,6 +41,9 @@ class _TvPairingScreenState extends ConsumerState<TvPairingScreen> {
   @override
   void dispose() {
     _pollTimer?.cancel();
+    _manualEntryFocus.dispose();
+    _refreshQrFocus.dispose();
+    _backButtonFocus.dispose();
     super.dispose();
   }
 
@@ -114,11 +122,31 @@ class _TvPairingScreenState extends ConsumerState<TvPairingScreen> {
     return '$minutes:${remainder.toString().padLeft(2, '0')}';
   }
 
+  void _goToManualEntry() {
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go('/auth?mode=login');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final request = _request;
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          focusNode: _backButtonFocus,
+          tooltip: 'Voltar',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/auth');
+            }
+          },
+        ),
         title: Text('Conectar esta TV', style: AppTypography.headlineMedium),
       ),
       body: SafeArea(
@@ -134,17 +162,17 @@ class _TvPairingScreenState extends ConsumerState<TvPairingScreen> {
                     const Icon(
                       Icons.qr_code_2_rounded,
                       color: AppColors.primary,
-                      size: 42,
+                      size: 48,
                     ),
                     const SizedBox(height: 14),
                     Text(
-                      'Entre com sua conta do Android',
+                      'Entre com sua conta do celular',
                       style: AppTypography.headlineMedium,
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'No Android, abra Perfil e toque em “Conectar TV”. Escaneie este código para autorizar esta tela.',
+                      'No app CiNey no celular, vá em Perfil e toque em “Conectar TV”. Escaneie este código para autorizar o acesso na TV.',
                       style: AppTypography.bodyMedium,
                       textAlign: TextAlign.center,
                     ),
@@ -165,10 +193,16 @@ class _TvPairingScreenState extends ConsumerState<TvPairingScreen> {
                             ),
                           ),
                           const SizedBox(height: 16),
-                          FilledButton.icon(
+                          TvFocusableButton(
+                            focusNode: _refreshQrFocus,
+                            autofocus: true,
                             onPressed: _createPairing,
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('Gerar novo QR'),
+                            onDownPressed: () => _manualEntryFocus.requestFocus(),
+                            child: FilledButton.icon(
+                              onPressed: _createPairing,
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Gerar novo QR'),
+                            ),
                           ),
                         ],
                       )
@@ -218,6 +252,20 @@ class _TvPairingScreenState extends ConsumerState<TvPairingScreen> {
                         style: AppTypography.bodySmall,
                       ),
                     ],
+                    const SizedBox(height: 24),
+                    TvFocusableButton(
+                      focusNode: _manualEntryFocus,
+                      autofocus: _error == null && !_starting,
+                      onPressed: _goToManualEntry,
+                      onUpPressed: _error != null
+                          ? () => _refreshQrFocus.requestFocus()
+                          : () => _backButtonFocus.requestFocus(),
+                      child: OutlinedButton.icon(
+                        onPressed: _goToManualEntry,
+                        icon: const Icon(Icons.keyboard_alt_outlined),
+                        label: const Text('Prefiro entrar manualmente'),
+                      ),
+                    ),
                   ],
                 ),
               ),

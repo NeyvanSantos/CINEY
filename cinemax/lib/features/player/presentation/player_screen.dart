@@ -1220,6 +1220,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         'User-Agent':
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Accept': '*/*',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive',
         ...?source.headers,
       };
 
@@ -1232,7 +1234,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _videoPlayerController = controller;
 
       await controller.initialize().timeout(
-        const Duration(seconds: 12),
+        Duration(seconds: widget.isTv ? 25 : 12),
         onTimeout: () {
           throw Exception('Tempo limite ao conectar com o servidor.');
         },

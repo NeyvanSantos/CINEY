@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import '../../../core/config/app_environment.dart';
 import '../models/content_item.dart';
 
 /// Serviço que busca filmes, séries, animes e doramas do TMDB em tempo real
@@ -6,8 +7,14 @@ import '../models/content_item.dart';
 class TmdbService {
   static const String _apiKey = '844dba0bfd8f3a4f3799f6130ef9e335';
   static const String _baseUrl = 'https://api.themoviedb.org/3';
-  static const String _imageBaseUrl = 'https://image.tmdb.org/t/p/w500';
-  static const String _backdropBaseUrl = 'https://image.tmdb.org/t/p/w1280';
+  static String get _imageBaseUrl =>
+      AppEnvironment.isTv
+          ? 'https://image.tmdb.org/t/p/w342'
+          : 'https://image.tmdb.org/t/p/w500';
+  static String get _backdropBaseUrl =>
+      AppEnvironment.isTv
+          ? 'https://image.tmdb.org/t/p/w780'
+          : 'https://image.tmdb.org/t/p/w1280';
 
   static final Dio _dio = Dio(
     BaseOptions(
