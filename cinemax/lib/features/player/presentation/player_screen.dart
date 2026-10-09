@@ -136,7 +136,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   Completer<SniffedStreamResult?>? _tvSnifferCompleter;
   Timer? _tvSnifferTimer;
   bool _isTvSniffing = false;
-  String _tvSnifferStatus = '';
 
   final FocusNode _playerFocusNode = FocusNode(
     debugLabel: 'Native player media controls',
@@ -799,7 +798,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _errorMessage = null;
       _tvPointerEnabled = false;
       _tvPointerPosition = null;
-      _tvSnifferStatus = 'Otimizando reprodução direta na Smart TV...';
     });
 
     final completer = Completer<SniffedStreamResult?>();
@@ -971,6 +969,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         resumePlayback: _resumePlayback,
         resumePositionMs: _resumePositionMs,
         durationMs: _resumeDurationMs,
+        isTv: widget.isTv,
       );
       final helpers = '$resumeConfiguration$resumeHelper\n$startupHelper';
       bridge = '$helpers\n$bridge';
@@ -1518,7 +1517,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _tvSnifferCompleter = null;
     _tvSnifferController = null;
     _isTvSniffing = false;
-    _tvSnifferStatus = '';
     if (notify && mounted) {
       setState(() {});
     }
@@ -2059,7 +2057,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                   ),
 
                 // ── Overlay de Controles (Fade In/Out) ──
-                if (!_isScreenLocked && _webViewController == null)
+                if (!_isScreenLocked &&
+                    _webViewController == null &&
+                    !(widget.isTv && _isLoading))
                   AnimatedOpacity(
                     opacity: _controlsVisible ? 1.0 : 0.0,
                     duration: const Duration(milliseconds: 250),
@@ -2067,32 +2067,68 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                       ignoring: !_controlsVisible,
                       child: Container(
                         decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.black.withOpacity(0.85),
-                              Colors.transparent,
-                              Colors.transparent,
-                              Colors.black.withOpacity(0.90),
-                            ],
-                            stops: const [0.0, 0.25, 0.70, 1.0],
-                          ),
+                          gradient: widget.isTv
+                              ? LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.black.withValues(alpha: 0.4),
+                                    Colors.transparent,
+                                    Colors.transparent,
+                                    Colors.black.withValues(alpha: 0.85),
+                                  ],
+                                  stops: const [0.0, 0.20, 0.65, 1.0],
+                                )
+                              : LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.black.withValues(alpha: 0.85),
+                                    Colors.transparent,
+                                    Colors.transparent,
+                                    Colors.black.withValues(alpha: 0.90),
+                                  ],
+                                  stops: const [0.0, 0.25, 0.70, 1.0],
+                                ),
                         ),
                         child: SafeArea(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              // ── Barra Superior (Top Bar) ──
-                              _buildTopBar(subtitleText),
+                          child: widget.isTv
+                              ? Column(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 28,
+                                        vertical: 16,
+                                      ),
+                                      child: Text(
+                                        _title,
+                                        style: const TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                    _buildTvBottomBar(),
+                                  ],
+                                )
+                              : Column(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    // ── Barra Superior (Top Bar) ──
+                                    _buildTopBar(subtitleText),
 
-                              // ── Centro (Botão Play/Pause Grande e Navegação 10s) ──
-                              _buildCenterControls(),
+                                    // ── Centro (Botão Play/Pause Grande e Navegação 10s) ──
+                                    _buildCenterControls(),
 
-                              // ── Barra Inferior com Barra de Progresso e Ajustes ──
-                              _buildBottomBar(),
-                            ],
-                          ),
+                                    // ── Barra Inferior com Barra de Progresso e Ajustes ──
+                                    _buildBottomBar(),
+                                  ],
+                                ),
                         ),
                       ),
                     ),
@@ -2222,7 +2258,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           // Botão Voltar
           Container(
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.12),
+              color: Colors.white.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(12),
             ),
             child: IconButton(
@@ -2261,10 +2297,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: AppColors.primary.withOpacity(0.25),
+                        color: AppColors.primary.withValues(alpha: 0.25),
                         borderRadius: BorderRadius.circular(4),
                         border: Border.all(
-                          color: AppColors.primary.withOpacity(0.4),
+                          color: AppColors.primary.withValues(alpha: 0.4),
                           width: 0.8,
                         ),
                       ),
@@ -2317,8 +2353,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             margin: const EdgeInsets.symmetric(horizontal: 4),
             decoration: BoxDecoration(
               color: _isCasting
-                  ? AppColors.primary.withOpacity(0.3)
-                  : Colors.white.withOpacity(0.1),
+                  ? AppColors.primary.withValues(alpha: 0.3)
+                  : Colors.white.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(10),
             ),
             child: IconButton(
@@ -2339,7 +2375,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 4),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.1),
+                color: Colors.white.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: IconButton(
@@ -2359,7 +2395,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           // Botão Menu de Configurações do Player
           Container(
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
+              color: Colors.white.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(10),
             ),
             child: IconButton(
@@ -2399,7 +2435,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(
-                color: AppColors.primary.withOpacity(0.4),
+                color: AppColors.primary.withValues(alpha: 0.4),
                 blurRadius: 16,
                 spreadRadius: 2,
               ),
@@ -2555,9 +2591,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.12),
+          color: Colors.white.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white.withOpacity(0.15)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -2580,20 +2616,123 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
   }
 
+  Widget _buildTvLoadingScreen() {
+    return Container(
+      color: Colors.black,
+      alignment: Alignment.center,
+      child: const Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            'CiNey',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 34,
+              fontWeight: FontWeight.w400,
+              letterSpacing: 1.2,
+            ),
+          ),
+          SizedBox(height: 28),
+          SizedBox(
+            width: 32,
+            height: 32,
+            child: CircularProgressIndicator(
+              color: Colors.white,
+              strokeWidth: 2.8,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTvBottomBar() {
+    final maxSeconds = _totalDuration.inSeconds > 0
+        ? _totalDuration.inSeconds.toDouble()
+        : 1.0;
+    final currentSeconds = _isDraggingSlider
+        ? _dragSliderValue
+        : _currentPosition.inSeconds.toDouble().clamp(0.0, maxSeconds);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          IconButton(
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            iconSize: 32,
+            icon: Icon(
+              _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+              color: Colors.white,
+            ),
+            onPressed: _executePlayPause,
+          ),
+          const SizedBox(width: 14),
+          Text(
+            _formatDuration(_currentPosition),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                thumbColor: const Color(0xFF29B6F6),
+                activeTrackColor: const Color(0xFF29B6F6),
+                inactiveTrackColor: Colors.white24,
+                trackHeight: 3.5,
+                thumbShape: const RoundSliderThumbShape(
+                  enabledThumbRadius: 4.5,
+                ),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 8),
+              ),
+              child: Slider(
+                value: currentSeconds,
+                min: 0.0,
+                max: maxSeconds,
+                onChangeStart: (_) {
+                  setState(() => _isDraggingSlider = true);
+                },
+                onChanged: (val) {
+                  setState(() => _dragSliderValue = val);
+                },
+                onChangeEnd: (val) {
+                  setState(() => _isDraggingSlider = false);
+                  _executeSeekTo(Duration(seconds: val.toInt()));
+                },
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Text(
+            _formatDuration(_totalDuration),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ══════════════════════════════════════════════
   // Conteúdo do Player (WebView / Chewie)
   // ══════════════════════════════════════════════
   Widget _buildPlayerContent() {
     if (_isTvSniffing && _tvSnifferController != null) {
-      final currentServer =
-          _sources.isNotEmpty && _currentSourceIndex < _sources.length
-          ? _sources[_currentSourceIndex].server
-          : 'Buscando servidor';
-
       return Stack(
         fit: StackFit.expand,
         children: [
-          // WebView headless em background para processamento de JavaScript e mídia
+          // WebView headless em background para sniffing de mídia
           Offstage(
             offstage: true,
             child: SizedBox(
@@ -2602,68 +2741,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               child: WebViewWidget(controller: _tvSnifferController!),
             ),
           ),
-          // Interface nativa limpa, sem botões de site ou barras web
-          Container(
-            color: Colors.black,
-            alignment: Alignment.center,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const SizedBox(
-                  width: 50,
-                  height: 50,
-                  child: CircularProgressIndicator(
-                    color: AppColors.primary,
-                    strokeWidth: 3.5,
-                  ),
-                ),
-                const SizedBox(height: 22),
-                Text(
-                  _tvSnifferStatus.isNotEmpty
-                      ? _tvSnifferStatus
-                      : 'Conectando ao player nativo...',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.3,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.18),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: AppColors.primary.withOpacity(0.4),
-                    ),
-                  ),
-                  child: Text(
-                    'Servidor: $currentServer • Reprodução Direta',
-                    style: const TextStyle(
-                      color: AppColors.primary,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                const Text(
-                  'Otimizando fluxo em alta definição para sua Smart TV',
-                  style: TextStyle(color: Colors.white54, fontSize: 13),
-                ),
-              ],
-            ),
-          ),
+          // Interface limpa estilo Web Video Caster para Smart TV
+          _buildTvLoadingScreen(),
         ],
       );
     }
 
     if (_isLoading && _webViewController == null) {
+      if (widget.isTv) {
+        return _buildTvLoadingScreen();
+      }
+
       final currentServer =
           _sources.isNotEmpty && _currentSourceIndex < _sources.length
           ? _sources[_currentSourceIndex].server
@@ -2690,9 +2778,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.2),
+                color: AppColors.primary.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+                border: Border.all(
+                  color: AppColors.primary.withValues(alpha: 0.3),
+                ),
               ),
               child: Text(
                 '$serverPos • Fallback automático ativado',
@@ -2779,6 +2869,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     // The provider owns playback controls for embedded sources.
     if (_webViewController != null) {
       final controller = _webViewController!;
+      Widget webView;
       if (widget.isTv && controller.platform is AndroidWebViewController) {
         final params =
             AndroidWebViewWidgetCreationParams.fromPlatformWebViewWidgetCreationParams(
@@ -2787,9 +2878,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               ),
               displayWithHybridComposition: true,
             );
-        return WebViewWidget.fromPlatformCreationParams(params: params);
+        webView = WebViewWidget.fromPlatformCreationParams(params: params);
+      } else {
+        webView = WebViewWidget(controller: controller);
       }
-      return WebViewWidget(controller: controller);
+
+      if (widget.isTv && _isLoading) {
+        return Stack(
+          fit: StackFit.expand,
+          children: [webView, _buildTvLoadingScreen()],
+        );
+      }
+      return webView;
     }
     // ── Player Nativo (Chewie) ──
     if (_chewieController != null &&
@@ -3120,7 +3220,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.08),
+          color: Colors.white.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Icon(icon, color: AppColors.primary, size: 20),
@@ -3161,13 +3261,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: isSelected
-            ? AppColors.primary.withOpacity(0.12)
-            : Colors.white.withOpacity(0.04),
+            ? AppColors.primary.withValues(alpha: 0.12)
+            : Colors.white.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: isSelected
-              ? AppColors.primary.withOpacity(0.5)
-              : Colors.white.withOpacity(0.06),
+              ? AppColors.primary.withValues(alpha: 0.5)
+              : Colors.white.withValues(alpha: 0.06),
         ),
       ),
       child: ListTile(
@@ -3197,7 +3297,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: effectiveBadgeColor.withOpacity(0.2),
+                  color: effectiveBadgeColor.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(

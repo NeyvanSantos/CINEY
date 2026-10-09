@@ -56,6 +56,32 @@ class AppUpdater {
     ),
   );
 
+  /// Selects the newest published release in the requested update channel.
+  static Map<String, dynamic>? selectLatestRelease(
+    List<dynamic> releases, {
+    required bool isTvApp,
+  }) {
+    final prefix = isTvApp ? kTvReleaseTagPrefix : 'v';
+    final matchingReleases =
+        releases.whereType<Map<String, dynamic>>().where((release) {
+          final tag = release['tag_name'] as String? ?? '';
+          return tag.startsWith(prefix) &&
+              release['draft'] != true &&
+              (isTvApp
+                  ? release['prerelease'] == true
+                  : release['prerelease'] != true);
+        }).toList()..sort((first, second) {
+          final firstVersion = (first['tag_name'] as String).substring(
+            prefix.length,
+          );
+          final secondVersion = (second['tag_name'] as String).substring(
+            prefix.length,
+          );
+          return _compareVersions(secondVersion, firstVersion);
+        });
+    return matchingReleases.isEmpty ? null : matchingReleases.first;
+  }
+
   /// Verifica se existe uma atualização no GitHub Releases
   static Future<AppUpdateInfo?> checkForUpdates() async {
     try {
@@ -81,29 +107,9 @@ class AppUpdater {
       final Map<String, dynamic> data;
       if (isTvApp) {
         final releases = response.data as List<dynamic>? ?? const <dynamic>[];
-        final tvReleases =
-            releases
-                .cast<Map<String, dynamic>>()
-                .where(
-                  (release) =>
-                      (release['tag_name'] as String? ?? '').startsWith(
-                        kTvReleaseTagPrefix,
-                      ) &&
-                      release['draft'] != true &&
-                      release['prerelease'] == true,
-                )
-                .toList()
-              ..sort((first, second) {
-                final firstVersion = (first['tag_name'] as String).replaceFirst(
-                  kTvReleaseTagPrefix,
-                  '',
-                );
-                final secondVersion = (second['tag_name'] as String)
-                    .replaceFirst(kTvReleaseTagPrefix, '');
-                return _compareVersions(secondVersion, firstVersion);
-              });
-        if (tvReleases.isEmpty) return null;
-        data = tvReleases.first;
+        final latest = selectLatestRelease(releases, isTvApp: true);
+        if (latest == null) return null;
+        data = latest;
       } else {
         data = response.data as Map<String, dynamic>;
       }

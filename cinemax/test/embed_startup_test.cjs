@@ -17,8 +17,10 @@ function row(text, audio = 'pt-br', hidden = false) {
 }
 
 function setup({ rows = [], controls = [], labels = [], enabled = true, host = 'playerflix.ink',
-  pathname = '/serie/1/1/1', saved = null, selector = null, resume = 300.123 } = {}) {
+  pathname = '/serie/1/1/1', saved = null, selector = null, resume = 300.123,
+  isTv = false, playControl = null } = {}) {
   const events = {}, windowEvents = {}, messages = [], timers = [], videos = [];
+  const styles = [];
   const stored = new Map(saved ? [['ciney-player-selection-v1', JSON.stringify(saved)]] : []);
   let now = 0;
   const document = {
@@ -30,12 +32,15 @@ function setup({ rows = [], controls = [], labels = [], enabled = true, host = '
       if (query === 'div, span') return labels;
       return controls;
     },
-    querySelector: () => selector,
+    querySelector: query => query === '#selectorOpt' ? selector :
+      query === '.vjs-big-play-button' ? playControl : null,
+    createElement: tagName => ({ tagName, textContent: '' }),
+    head: { appendChild: element => styles.push(element) },
     addEventListener: (name, handler) => { events[name] = handler; },
     removeEventListener: name => { delete events[name]; },
   };
   const context = vm.createContext({ document, Date: { now: () => now },
-    __cineyAutoStart: enabled, __cineyProviderHost: 'myembed.biz',
+    __cineyAutoStart: enabled, __cineyIsTv: isTv, __cineyProviderHost: 'myembed.biz',
     __cineyProviderPath: '/serie/1/1/1', __cineyResumePositionSeconds: resume,
     getComputedStyle: element => ({ display: element.hidden ? 'none' : 'block', visibility: 'visible' }),
     localStorage: { getItem: key => stored.get(key) || null, setItem: (key, value) => stored.set(key, value) },
@@ -52,7 +57,7 @@ function setup({ rows = [], controls = [], labels = [], enabled = true, host = '
   vm.runInContext(read('playback_resume.js'), context);
   vm.runInContext(startup, context);
   const start = () => context.__cineyStartPlayback(document);
-  return { context, document, events, windowEvents, stored, messages, timers, videos,
+  return { context, document, events, windowEvents, stored, messages, timers, videos, styles,
     start, advance: milliseconds => { now += milliseconds; } };
 }
 
@@ -64,6 +69,46 @@ test('retomada escolhe opção visível uma vez, sem trocar a aba de áudio atua
   fixture.start();
   assert.equal(dubbed.clicks, 0);
   assert.equal(subtitled.clicks, 1);
+});
+
+test('TV inicia com metadados, limpa interface e não alterna play após pausa', () => {
+  const control = row('Play');
+  const fixture = setup({ isTv: true, playControl: control });
+  const video = { ownerDocument: fixture.document, readyState: 1, duration: 1200,
+    paused: true, plays: 0, play() { this.plays++; this.paused = false; } };
+  fixture.context.__cineyAutoPlay(video, false);
+  assert.equal(video.plays, 1);
+  assert.equal(control.clicks, 1);
+  assert.equal(fixture.styles.length, 1);
+  video.paused = true;
+  fixture.context.__cineyAutoPlay(video, false);
+  assert.equal(video.plays, 1);
+  assert.equal(control.clicks, 1);
+  assert.equal(fixture.styles.length, 1);
+});
+
+test('mobile mantém controles do fornecedor e aguarda dados para autoplay', () => {
+  const control = row('Play');
+  const fixture = setup({ playControl: control });
+  const video = { ownerDocument: fixture.document, readyState: 1, duration: 1200,
+    paused: true, plays: 0, play() { this.plays++; this.paused = false; } };
+  fixture.context.__cineyAutoPlay(video, false);
+  assert.equal(video.plays, 0);
+  video.readyState = 2;
+  fixture.context.__cineyAutoPlay(video, false);
+  assert.equal(video.plays, 1);
+  assert.equal(control.clicks, 0);
+  assert.equal(fixture.styles.length, 0);
+});
+
+test('TV respeita cancelamento e não clica nem oculta controles depois dele', () => {
+  const control = row('Play');
+  const fixture = setup({ isTv: true, playControl: control });
+  fixture.context.__cineyCancelStartup();
+  fixture.context.__cineyAutoPlay({ readyState: 4, duration: 1200, paused: true,
+    play() { throw new Error('não deve reproduzir'); } }, false);
+  assert.equal(control.clicks, 0);
+  assert.equal(fixture.styles.length, 0);
 });
 
 test('início automático desativado mantém escolha manual', () => {

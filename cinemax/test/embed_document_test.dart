@@ -3,6 +3,21 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:html/parser.dart';
 
 void main() {
+  test('TV inicia todos os fornecedores sem depender de retomada', () {
+    for (final host in ['myembed.biz', 'superflixapi.quest']) {
+      final config = buildEmbedPlaybackConfiguration(
+        playerUrl: 'https://$host/filme/969681',
+        resumePlayback: false,
+        resumePositionMs: 0,
+        durationMs: 0,
+        isTv: true,
+      );
+      expect(config, contains('__cineyAutoStart = true'));
+      expect(config, contains('__cineyIsTv = true'));
+      expect(config, contains('__cineyResumePositionSeconds = 0;'));
+    }
+  });
+
   test('EmbedMovies inicia na primeira abertura sem ponto salvo', () {
     final config = buildEmbedPlaybackConfiguration(
       playerUrl: 'https://myembed.biz/filme/969681',

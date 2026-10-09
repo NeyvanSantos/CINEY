@@ -2,6 +2,7 @@
   'use strict';
   if (window.__cineyStartPlayback) return;
   const enabled = window.__cineyAutoStart === true;
+  const isTv = window.__cineyIsTv === true;
   const providerHost = window.__cineyProviderHost;
   const providerPath = window.__cineyProviderPath;
   const states = new WeakMap();
@@ -104,17 +105,63 @@
     chosen.click();
   };
 
+  function clickPlayControls(doc) {
+    const selectors = [
+      '.jw-display-icon-container',
+      '.vjs-big-play-button',
+      '.play-button',
+      '.vjs-play-control',
+      '[class*="play-button"]',
+      '[class*="playButton"]',
+      '[aria-label*="Play"]',
+      '[aria-label*="Reproduzir"]',
+      '#play',
+      '.btn-play'
+    ];
+    for (const sel of selectors) {
+      const el = doc.querySelector(sel);
+      if (el) {
+        try { el.click(); } catch (_) {}
+        return;
+      }
+    }
+  }
+
+  function hideUnwantedUi(doc) {
+    if (doc.__cineyUiHidden) return;
+    try {
+      const style = doc.createElement('style');
+      style.textContent = `
+        #header, .header, .top-bar, .report-button,
+        [class*="report"], .voltar-button, .back-button,
+        a.back, button.back,
+        a[href*="report"], button[title*="Reportar"],
+        .jw-title, .vjs-title-bar, .jw-display-icon-container,
+        .vjs-big-play-button {
+          display: none !important;
+          visibility: hidden !important;
+          opacity: 0 !important;
+        }
+      `;
+      (doc.head || doc.documentElement).appendChild(style);
+      doc.__cineyUiHidden = true;
+    } catch (_) {}
+  }
+
   window.__cineyAutoPlay = function (video, restoring) {
-    const state = attach(video.ownerDocument || document);
-    // Some providers only populate seekable ranges after play. Bootstrap once
-    // in that case; restoring remains true so the saved checkpoint is protected.
+    const doc = video.ownerDocument || document;
+    const state = attach(doc);
     const needsStart = restoring && video.seekable && video.seekable.length === 0;
     if (!enabled || cancelled || state.cancelled || (restoring && !needsStart) || !video.paused ||
-        video.ended || video.error || video.readyState < 2 ||
+        video.ended || video.error || video.readyState < (isTv ? 1 : 2) ||
         !Number.isFinite(video.duration) || video.duration < 180 ||
         attemptedVideos.has(video) ||
         (window.__cineyIsContentMedia && !window.__cineyIsContentMedia(video))) return;
     attemptedVideos.add(video);
+    if (isTv) {
+      hideUnwantedUi(doc);
+      clickPlayControls(doc);
+    }
     function interaction() {
       try { PlayerBridge.postMessage(JSON.stringify({ event: 'interaction' })); } catch (_) {}
     }
