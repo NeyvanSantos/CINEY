@@ -1,7 +1,7 @@
 name: cinemax
 description: "CineMax - Filmes e Séries com Sistema de Plugins"
 publish_to: 'none'
-version: 1.0.29+26
+version: 1.0.30+27
 
 environment:
   sdk: ^3.11.4
