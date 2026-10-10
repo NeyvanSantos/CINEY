@@ -4,6 +4,7 @@ import 'package:cinemax/plugin_engine/manager/plugin_manager.dart';
 import 'package:cinemax/plugin_engine/models/content_item.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
@@ -101,9 +102,29 @@ void main() {
       await tester.pumpAndSettle();
 
       if (isTv) {
-        expect(find.text('Escolha o Servidor'), findsNothing);
+        expect(find.text('Escolha o Servidor'), findsOneWidget);
+        expect(find.text('Player aberto'), findsNothing);
+
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+        await tester.pump();
+        await tester.pump();
+        expect(
+          find.byKey(const ValueKey('server-option-0-selected')),
+          findsOneWidget,
+        );
+        expect(find.byIcon(Icons.mouse_rounded), findsOneWidget);
+
+        await tester.pump(const Duration(seconds: 3));
+        final cursorOpacity = find.ancestor(
+          of: find.byIcon(Icons.mouse_rounded),
+          matching: find.byType(AnimatedOpacity),
+        );
+        expect(tester.widget<AnimatedOpacity>(cursorOpacity).opacity, 0);
+
+        await tester.sendKeyEvent(LogicalKeyboardKey.select);
+        await tester.pumpAndSettle();
         expect(find.text('Player aberto'), findsOneWidget);
-        expect(openedPlayers.last.queryParameters['serverIndex'], '1');
+        expect(openedPlayers.last.queryParameters['serverIndex'], '0');
         return;
       }
 

@@ -89,6 +89,8 @@ class ContentDetail {
   final String? trailerUrl;
   final int? totalSeasons;
   final List<Season>? seasons;
+  final String? collectionId;
+  final String? collectionName;
 
   const ContentDetail({
     required this.id,
@@ -106,6 +108,8 @@ class ContentDetail {
     this.trailerUrl,
     this.totalSeasons,
     this.seasons,
+    this.collectionId,
+    this.collectionName,
   });
 
   factory ContentDetail.fromJson(Map<String, dynamic> json, String pluginId) {
@@ -137,6 +141,8 @@ class ContentDetail {
       seasons: (json['seasons'] as List<dynamic>?)
           ?.map((e) => Season.fromJson(e as Map<String, dynamic>))
           .toList(),
+      collectionId: json['collectionId']?.toString(),
+      collectionName: json['collectionName']?.toString(),
     );
   }
 }

@@ -97,6 +97,29 @@ restrições de destinatários e limites de envio; confira as configurações an
 de distribuir o aplicativo. Credenciais SMTP ficam somente no painel.
 [Documentação do SMTP](https://supabase.com/docs/guides/auth/auth-smtp).
 
+### 5. Relatórios de diagnóstico
+
+No **Console de Logs**, a pessoa pode escolher **Reportar agora**, revisar o
+aviso de privacidade, adicionar uma descrição opcional e confirmar. O envio é
+manual; abrir o Console ou usar o app não transmite logs automaticamente. O
+relatório inclui até 500 eventos da sessão, versão e plataforma. E-mails,
+credenciais conhecidas e parâmetros de URLs são mascarados no app e novamente
+no servidor. Termos digitados ou outros dados em mensagens ainda podem aparecer;
+por isso o app pede confirmação antes do envio.
+
+A função `submit-diagnostic-report` exige sessão válida, aceita no máximo cinco
+relatórios por conta a cada hora e rejeita corpos acima de 220 KiB. A tabela
+`diagnostic_reports` não dá acesso de leitura ou escrita aos clientes: consulte
+os dados somente pelo Table Editor do projeto usando uma conta administrativa.
+O `user_id` é removido em cascata quando a conta é excluída. Relatórios com mais
+de 30 dias são apagados na próxima submissão recebida.
+
+Para publicar novas versões da função, execute a partir da raiz:
+
+```powershell
+supabase functions deploy submit-diagnostic-report
+```
+
 ## Executar e verificar
 
 Depois da configuração do servidor, os comandos normais continuam funcionando:

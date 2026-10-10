@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../features/details/presentation/details_screen.dart';
+import '../../features/collections/presentation/movie_collection_screen.dart';
+import '../../features/collections/presentation/movie_collections_screen.dart';
 import '../../features/downloads/presentation/downloads_screen.dart';
 import '../../features/extensions/presentation/extensions_screen.dart';
 import '../../features/home/presentation/home_screen.dart';
@@ -163,6 +165,22 @@ GoRouter createAppRouter({
           initialItems: state.extra is List<ContentItem>
               ? state.extra as List<ContentItem>
               : null,
+        ),
+      ),
+
+      GoRoute(
+        parentNavigatorKey: rootNavigatorKey,
+        path: '/collections',
+        builder: (context, state) => const MovieCollectionsScreen(),
+      ),
+
+      GoRoute(
+        parentNavigatorKey: rootNavigatorKey,
+        path: '/collection/:collectionId/:pluginId',
+        builder: (context, state) => MovieCollectionScreen(
+          collectionId: state.pathParameters['collectionId'] ?? '',
+          pluginId: state.pathParameters['pluginId'] ?? 'com.megaflix',
+          collectionName: state.uri.queryParameters['name'] ?? 'Coleção',
         ),
       ),
 

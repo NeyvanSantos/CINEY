@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../../../core/config/theme/app_colors.dart';
 import '../../../core/config/theme/app_typography.dart';
 import '../../../core/services/app_logger.dart';
 import '../../../core/widgets/focusable_surface.dart';
+import '../../auth/services/account_repository.dart';
+import '../services/diagnostic_report_service.dart';
 
 class LogViewerScreen extends ConsumerStatefulWidget {
   const LogViewerScreen({super.key});
@@ -17,7 +20,10 @@ class _LogViewerScreenState extends ConsumerState<LogViewerScreen>
     with SingleTickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _reportDescriptionController =
+      TextEditingController();
   bool _autoScroll = true;
+  bool _isSendingReport = false;
   LogLevel? _filterLevel;
   String _searchQuery = '';
   late AnimationController _pulseController;
@@ -39,6 +45,7 @@ class _LogViewerScreenState extends ConsumerState<LogViewerScreen>
   void dispose() {
     _scrollController.dispose();
     _searchController.dispose();
+    _reportDescriptionController.dispose();
     _pulseController.dispose();
     super.dispose();
   }
@@ -83,6 +90,84 @@ class _LogViewerScreenState extends ConsumerState<LogViewerScreen>
         duration: const Duration(seconds: 2),
       ),
     );
+  }
+
+  Future<void> _reportNow(List<LogEntry> entries) async {
+    if (entries.isEmpty || _isSendingReport) return;
+    _reportDescriptionController.clear();
+    final description = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Enviar relatório de diagnóstico?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${entries.length} logs desta sessão serão enviados, incluindo erros e stack traces. O app mascara e-mails, credenciais e parâmetros de URLs, mas mensagens podem conter termos digitados ou outros dados. Revise o Console antes de autorizar.',
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _reportDescriptionController,
+              maxLength: 1000,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'O que aconteceu? (opcional)',
+                alignLabelWithHint: true,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton.icon(
+            onPressed: () =>
+                Navigator.pop(dialogContext, _reportDescriptionController.text),
+            icon: const Icon(Icons.send_rounded),
+            label: const Text('Enviar'),
+          ),
+        ],
+      ),
+    );
+    if (description == null || !mounted) return;
+
+    final platform = Theme.of(context).platform.name.toLowerCase();
+    setState(() => _isSendingReport = true);
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      final reportId =
+          await DiagnosticReportService(
+            ref.read(supabaseClientProvider),
+          ).submit(
+            entries: AppLogger.entries,
+            description: description,
+            appVersion: '${packageInfo.version}+${packageInfo.buildNumber}',
+            platform: platform,
+          );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Relatório enviado. Protocolo: $reportId')),
+      );
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Falha ao enviar relatório de diagnóstico: $error',
+        tag: 'DIAGNOSTICS',
+        stackTrace: stackTrace,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Não foi possível enviar o relatório: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _isSendingReport = false);
+    }
   }
 
   void _scrollToBottom() {
@@ -248,7 +333,7 @@ class _LogViewerScreenState extends ConsumerState<LogViewerScreen>
               ),
 
               // Bottom bar: COPIAR TUDO
-              _buildBottomBar(filtered),
+              _buildBottomBar(allLogs, filtered),
             ],
           );
         },
@@ -516,91 +601,64 @@ class _LogViewerScreenState extends ConsumerState<LogViewerScreen>
     );
   }
 
-  Widget _buildBottomBar(List<LogEntry> filtered) {
+  Widget _buildBottomBar(List<LogEntry> allLogs, List<LogEntry> filtered) {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       decoration: const BoxDecoration(
         color: Color(0xFF0D1120),
         border: Border(top: BorderSide(color: Color(0xFF1E2235), width: 1)),
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // Info de sessão
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'CINEMAX LOG CONSOLE',
-                  style: TextStyle(
-                    fontSize: 9,
-                    color: AppColors.textTertiary,
-                    letterSpacing: 1.5,
-                    fontFamily: 'monospace',
-                  ),
-                ),
-                Text(
-                  '${filtered.length} entrada(s) visível(eis)',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textSecondary,
-                    fontFamily: 'monospace',
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Botão COPIAR TUDO
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: filtered.isEmpty ? null : () => _copyAll(filtered),
-              borderRadius: BorderRadius.circular(10),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  gradient: filtered.isEmpty ? null : AppColors.primaryGradient,
-                  color: filtered.isEmpty ? const Color(0xFF1E2235) : null,
-                  borderRadius: BorderRadius.circular(10),
-                  boxShadow: filtered.isEmpty
-                      ? null
-                      : [
-                          BoxShadow(
-                            color: AppColors.primary.withValues(alpha: 0.35),
-                            blurRadius: 10,
-                            offset: const Offset(0, 3),
-                          ),
-                        ],
-                ),
-                child: Row(
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      Icons.copy_all_rounded,
-                      size: 16,
-                      color: filtered.isEmpty
-                          ? AppColors.textTertiary
-                          : Colors.white,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Copiar Tudo',
+                    const Text(
+                      'CINEMAX LOG CONSOLE',
                       style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.bold,
-                        color: filtered.isEmpty
-                            ? AppColors.textTertiary
-                            : Colors.white,
+                        fontSize: 9,
+                        color: AppColors.textTertiary,
+                        letterSpacing: 1.5,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                    Text(
+                      '${allLogs.length} entrada(s) na sessão',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                        fontFamily: 'monospace',
                       ),
                     ),
                   ],
                 ),
               ),
+              OutlinedButton.icon(
+                onPressed: allLogs.isEmpty || _isSendingReport
+                    ? null
+                    : () => _reportNow(allLogs),
+                icon: _isSendingReport
+                    ? const SizedBox.square(
+                        dimension: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.outgoing_mail, size: 17),
+                label: Text(_isSendingReport ? 'Enviando' : 'Reportar agora'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: filtered.isEmpty ? null : () => _copyAll(filtered),
+              icon: const Icon(Icons.copy_all_rounded, size: 17),
+              label: const Text('Copiar Tudo'),
             ),
           ),
         ],

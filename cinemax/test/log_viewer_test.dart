@@ -71,4 +71,33 @@ void main() {
     await tester.pump();
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('explica o envio de diagnóstico e permite cancelar', (
+    tester,
+  ) async {
+    AppLogger.error('Falha de pesquisa', tag: 'SEARCH');
+    await tester.pumpWidget(
+      const ProviderScope(child: MaterialApp(home: LogViewerScreen())),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('Reportar agora'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(find.text('Enviar relatório de diagnóstico?'), findsOneWidget);
+    expect(find.text('Cancelar'), findsOneWidget);
+    expect(find.text('Enviar'), findsOneWidget);
+    expect(find.byType(TextField), findsNWidgets(2));
+
+    await tester.tap(find.text('Cancelar'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(find.text('Enviar relatório de diagnóstico?'), findsNothing);
+    expect(AppLogger.entries, hasLength(1));
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+  });
 }

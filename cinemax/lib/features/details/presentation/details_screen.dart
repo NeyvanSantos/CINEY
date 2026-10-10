@@ -5,13 +5,13 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/config/theme/app_colors.dart';
 import '../../../core/config/theme/app_typography.dart';
 import '../../../core/widgets/glass_card.dart';
-import '../../../core/widgets/focusable_surface.dart';
 import '../../../plugin_engine/manager/plugin_manager.dart';
 import '../../../plugin_engine/models/content_item.dart';
 import '../../../plugin_engine/models/stream_source.dart';
 import '../../../plugin_engine/runtime/stream_resolver.dart';
 import '../../cast/presentation/cast_dialog.dart';
 import '../../favorites/presentation/favorite_button.dart';
+import 'widgets/server_selection_sheet.dart';
 
 class DetailsScreen extends ConsumerStatefulWidget {
   final String contentId;
@@ -126,6 +126,18 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
     );
   }
 
+  void _openCollection(ContentDetail item) {
+    final collectionId = item.collectionId;
+    final collectionName = item.collectionName;
+    if (collectionId == null || collectionName == null) return;
+    context.push(
+      Uri(
+        pathSegments: ['', 'collection', collectionId, item.pluginId],
+        queryParameters: {'name': collectionName},
+      ).toString(),
+    );
+  }
+
   void _playContent({
     required ContentDetail item,
     int? season,
@@ -166,20 +178,16 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
       );
     }
 
+    if (sources.length <= 1) {
+      navigateToPlayer(0);
+      return;
+    }
+
     final automaticIndex = StreamResolverService.automaticSourceIndex(sources);
-    if (widget.isTv && automaticIndex != null) {
-      navigateToPlayer(automaticIndex);
-      return;
-    }
-
-    if (widget.isTv || sources.length <= 1) {
-      navigateToPlayer(automaticIndex ?? 0);
-      return;
-    }
-
     _showServerSelectionSheet(
       item: item,
       sources: sources,
+      initialIndex: widget.isTv ? (automaticIndex ?? 0) : 0,
       episodeText: effectiveSeason != null && effectiveEpisode != null
           ? 'T$effectiveSeason:E$effectiveEpisode'
           : null,
@@ -190,6 +198,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
   void _showServerSelectionSheet({
     required ContentDetail item,
     required List<StreamSource> sources,
+    required int initialIndex,
     String? episodeText,
     required void Function(int serverIndex) onSelect,
   }) {
@@ -197,202 +206,14 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (ctx) {
-        return Container(
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            border: Border.all(color: AppColors.surfaceVariant),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          child: SafeArea(
-            top: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 44,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.white24,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: AppColors.primarySurface,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(
-                        Icons.dns_rounded,
-                        color: AppColors.primary,
-                        size: 22,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Escolha o Servidor',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          Text(
-                            episodeText != null
-                                ? '${item.title} • $episodeText'
-                                : item.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: Colors.white60,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                ...sources.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final source = entry.value;
-                  final isEmbedMovies = source.server.contains('EmbedMovies');
-                  final isSuperFlix = source.server.contains('SuperFlix');
-                  final badgeText = isEmbedMovies
-                      ? 'Recomendado PT-BR'
-                      : (isSuperFlix ? 'Dublado 1080p' : source.quality);
-                  final badgeColor = isEmbedMovies || isSuperFlix
-                      ? const Color(0xFF10B981)
-                      : AppColors.primary;
-
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceLight.withValues(alpha: 0.6),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: AppColors.surfaceVariant.withValues(alpha: 0.8),
-                      ),
-                    ),
-                    child: FocusableSurface(
-                      autofocus: index == 0,
-                      borderRadius: BorderRadius.circular(16),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        onSelect(index);
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.all(14),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 44,
-                              height: 44,
-                              decoration: BoxDecoration(
-                                color: badgeColor.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Icon(
-                                isEmbedMovies
-                                    ? Icons.star_rounded
-                                    : (isSuperFlix
-                                          ? Icons.record_voice_over_rounded
-                                          : Icons.dns_rounded),
-                                color: badgeColor,
-                                size: 24,
-                              ),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Text(
-                                        source.server,
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 7,
-                                          vertical: 2,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: badgeColor.withValues(
-                                            alpha: 0.2,
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                            6,
-                                          ),
-                                          border: Border.all(
-                                            color: badgeColor.withValues(
-                                              alpha: 0.5,
-                                            ),
-                                            width: 0.8,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          badgeText,
-                                          style: TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.bold,
-                                            color: badgeColor,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    isEmbedMovies
-                                        ? 'Dublado e Legendado • Player Adaptativo'
-                                        : (isSuperFlix
-                                              ? 'Dublado PT-BR • Full HD 1080p'
-                                              : '${source.quality} • ${source.isEmbed ? "Embed" : "Direto"}'),
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.white60,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const Icon(
-                              Icons.play_circle_fill_rounded,
-                              color: AppColors.primary,
-                              size: 28,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                }),
-                const SizedBox(height: 6),
-              ],
-            ),
-          ),
-        );
-      },
+      builder: (_) => ServerSelectionSheet(
+        item: item,
+        sources: sources,
+        episodeText: episodeText,
+        isTv: widget.isTv,
+        initialIndex: initialIndex,
+        onSelect: onSelect,
+      ),
     );
   }
 
@@ -670,6 +491,53 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                       style: AppTypography.bodyMedium.copyWith(
                         color: Colors.white70,
                         height: 1.6,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+
+                  if (item.type == ContentType.movie &&
+                      item.collectionId != null &&
+                      item.collectionName?.isNotEmpty == true) ...[
+                    GlassCard(
+                      onTap: () => _openCollection(item),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.movie_filter_rounded,
+                            color: AppColors.primary,
+                            size: 24,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Coleção',
+                                  style: AppTypography.bodySmall.copyWith(
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  item.collectionName!,
+                                  style: AppTypography.labelLarge,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(
+                            Icons.chevron_right_rounded,
+                            color: AppColors.textSecondary,
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 24),

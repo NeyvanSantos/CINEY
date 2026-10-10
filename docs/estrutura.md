@@ -27,6 +27,7 @@ serviços, componentes e testes compartilhados devem ficar em `cinemax/`.
 ├── supabase/                   # Migrações, modelos de e-mail e testes das contas
 ├── docs/
 │   ├── estrutura.md            # Este mapa
+│   ├── colecoes-de-filmes.md
 │   ├── performance-optimization.md
 │   └── images/                 # Imagens da documentação
 ├── releases/
@@ -59,6 +60,7 @@ serviços usados por vários módulos pertencem a `core/`.
 - [Regras de desenvolvimento](../cinemax/regras/README.md)
 - [Política de builds e releases](../cinemax/regras/04-politica-build-e-releases.md)
 - [Notas de otimização](performance-optimization.md)
+- [Coleções de filmes](colecoes-de-filmes.md)
 - [Continuidade dos episódios](continuidade-episodios.md)
 - [Retomada do filme no ponto de parada](retomada-reproducao.md)
 - [Configuração do receptor Google Cast](../receiver/README.md)

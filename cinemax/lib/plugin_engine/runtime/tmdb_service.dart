@@ -1,20 +1,20 @@
 import 'package:dio/dio.dart';
-import '../../../core/config/app_environment.dart';
+import 'package:cinemax/core/config/app_environment.dart';
+import 'package:cinemax/core/services/app_logger.dart';
 import '../models/content_item.dart';
+import '../models/movie_collection.dart';
 
 /// Serviço que busca filmes, séries, animes e doramas do TMDB em tempo real
 /// com fallback para o catálogo interno
 class TmdbService {
   static const String _apiKey = '844dba0bfd8f3a4f3799f6130ef9e335';
   static const String _baseUrl = 'https://api.themoviedb.org/3';
-  static String get _imageBaseUrl =>
-      AppEnvironment.isTv
-          ? 'https://image.tmdb.org/t/p/w342'
-          : 'https://image.tmdb.org/t/p/w500';
-  static String get _backdropBaseUrl =>
-      AppEnvironment.isTv
-          ? 'https://image.tmdb.org/t/p/w780'
-          : 'https://image.tmdb.org/t/p/w1280';
+  static String get _imageBaseUrl => AppEnvironment.isTv
+      ? 'https://image.tmdb.org/t/p/w342'
+      : 'https://image.tmdb.org/t/p/w500';
+  static String get _backdropBaseUrl => AppEnvironment.isTv
+      ? 'https://image.tmdb.org/t/p/w780'
+      : 'https://image.tmdb.org/t/p/w1280';
 
   static final Dio _dio = Dio(
     BaseOptions(
@@ -24,6 +24,23 @@ class TmdbService {
       queryParameters: {'api_key': _apiKey, 'language': 'pt-BR'},
     ),
   );
+  static const List<String> _availableCollectionIds = [
+    '9485',
+    '1241',
+    '2150',
+    '10194',
+    '328',
+    '295',
+    '119',
+    '2344',
+    '8354',
+    '131635',
+    '263',
+    '556',
+    '748',
+  ];
+  static final Map<String, MovieCollection> _collectionCache = {};
+  static final Map<String, Future<MovieCollection>> _collectionRequests = {};
 
   /// Converte JSON do TMDB para ContentItem
   static ContentItem? _mapJsonToItem(
@@ -329,7 +346,8 @@ class TmdbService {
             (j) => _mapJsonToItem(
               j as Map<String, dynamic>,
               pluginId,
-              defaultType: defaultType ??
+              defaultType:
+                  defaultType ??
                   (mediaType == 'tv' ? ContentType.series : ContentType.movie),
             ),
           )
@@ -491,8 +509,9 @@ class TmdbService {
   /// Busca detalhes completos e elenco de um título pelo ID do TMDB
   static Future<ContentDetail?> getDetail(
     String contentId,
-    String pluginId,
-  ) async {
+    String pluginId, {
+    Dio? client,
+  }) async {
     if (!contentId.startsWith('tmdb_')) return null;
 
     try {
@@ -509,7 +528,7 @@ class TmdbService {
           typeStr == 'tv';
 
       final endpoint = isTv ? '/tv/$tmdbId' : '/movie/$tmdbId';
-      final response = await _dio.get(
+      final response = await (client ?? _dio).get(
         endpoint,
         queryParameters: {'append_to_response': 'credits,videos'},
       );
@@ -568,6 +587,13 @@ class TmdbService {
                 .where((s) => s.number > 0)
                 .toList()
           : null;
+      final collection = data['belongs_to_collection'];
+      final collectionId = !isTv && collection is Map<String, dynamic>
+          ? collection['id']?.toString()
+          : null;
+      final collectionName = !isTv && collection is Map<String, dynamic>
+          ? collection['name']?.toString()
+          : null;
 
       return ContentDetail(
         id: contentId,
@@ -590,9 +616,128 @@ class TmdbService {
         cast: castList,
         totalSeasons: isTv ? (data['number_of_seasons'] as int? ?? 1) : null,
         seasons: seasonsList,
+        collectionId: collectionId,
+        collectionName: collectionName,
       );
     } catch (_) {
       return null;
+    }
+  }
+
+  static Future<List<MovieCollection>> getAvailableCollections({
+    String pluginId = 'com.megaflix',
+    int? limit,
+  }) async {
+    final collectionIds = limit == null
+        ? _availableCollectionIds
+        : _availableCollectionIds.take(limit);
+    final results = await Future.wait(
+      collectionIds.map((id) async {
+        try {
+          return await getCollection(id, pluginId);
+        } catch (_) {
+          return null;
+        }
+      }),
+    );
+    final collections = results.whereType<MovieCollection>().toList();
+    if (collections.isEmpty) {
+      throw StateError('Não foi possível carregar as coleções.');
+    }
+    return collections;
+  }
+
+  static Future<MovieCollection> getCollection(
+    String collectionId,
+    String pluginId, {
+    Dio? client,
+  }) {
+    final parsedId = int.tryParse(collectionId);
+    if (parsedId == null || parsedId <= 0) {
+      throw FormatException('ID de coleção TMDB inválido: $collectionId');
+    }
+
+    final cacheKey = '$pluginId:$parsedId';
+    if (client != null) {
+      return _loadCollection(parsedId, pluginId, client);
+    }
+
+    final cached = _collectionCache[cacheKey];
+    if (cached != null) return Future.value(cached);
+    final pending = _collectionRequests[cacheKey];
+    if (pending != null) return pending;
+
+    final request = _loadCollection(parsedId, pluginId, _dio)
+        .then((collection) {
+          _collectionCache[cacheKey] = collection;
+          return collection;
+        })
+        .whenComplete(() => _collectionRequests.remove(cacheKey));
+    _collectionRequests[cacheKey] = request;
+    return request;
+  }
+
+  static Future<MovieCollection> _loadCollection(
+    int collectionId,
+    String pluginId,
+    Dio client,
+  ) async {
+    try {
+      final response = await client.get('/collection/$collectionId');
+      final data = response.data as Map<String, dynamic>;
+      final parts = (data['parts'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .where((part) => part['id'] != null)
+          .toList();
+      parts.sort((first, second) {
+        final firstDate = DateTime.tryParse(
+          first['release_date']?.toString() ?? '',
+        );
+        final secondDate = DateTime.tryParse(
+          second['release_date']?.toString() ?? '',
+        );
+        if (firstDate == null && secondDate != null) return 1;
+        if (firstDate != null && secondDate == null) return -1;
+        if (firstDate != null && secondDate != null) {
+          final dateOrder = firstDate.compareTo(secondDate);
+          if (dateOrder != 0) return dateOrder;
+        }
+        return first['id'].toString().compareTo(second['id'].toString());
+      });
+
+      final seenIds = <String>{};
+      final movies = <ContentItem>[];
+      for (final part in parts) {
+        final mediaType = part['media_type']?.toString();
+        if (mediaType != null && mediaType != 'movie') continue;
+        final item = _mapJsonToItem(
+          part,
+          pluginId,
+          defaultType: ContentType.movie,
+        );
+        if (item != null && seenIds.add(item.id)) movies.add(item);
+      }
+
+      final posterPath = data['poster_path']?.toString();
+      final backdropPath = data['backdrop_path']?.toString();
+      return MovieCollection(
+        id: collectionId.toString(),
+        name: data['name']?.toString() ?? 'Coleção de filmes',
+        pluginId: pluginId,
+        overview: data['overview']?.toString(),
+        posterUrl: posterPath == null ? '' : '$_imageBaseUrl$posterPath',
+        backdropUrl: backdropPath == null
+            ? null
+            : '$_backdropBaseUrl$backdropPath',
+        movies: movies,
+      );
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Falha ao carregar coleção TMDB $collectionId: $error',
+        tag: 'TMDB',
+        stackTrace: stackTrace,
+      );
+      rethrow;
     }
   }
 }

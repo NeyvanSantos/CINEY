@@ -12,6 +12,7 @@ import '../../player/models/watch_progress.dart';
 import '../../player/services/watch_history_repository.dart';
 import '../../../plugin_engine/manager/plugin_manager.dart';
 import '../../../plugin_engine/models/content_item.dart';
+import '../../../plugin_engine/models/movie_collection.dart';
 import '../../../plugin_engine/runtime/tmdb_service.dart';
 
 class _ProceduralTheme {
@@ -48,6 +49,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _isLoading = true;
   String _selectedCategoryFilter = 'Todos';
   Future<void>? _homeLoadRequest;
+  Future<List<MovieCollection>>? _availableCollectionsFuture;
   final PageController _heroController = PageController();
   final ScrollController _scrollController = ScrollController();
 
@@ -645,6 +647,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final continueWatching = watchHistory
         .where((entry) => _matchesSelectedCategory(entry.item.type))
         .toList(growable: false);
+    final showCollections =
+        _selectedCategoryFilter == 'Todos' ||
+        _selectedCategoryFilter == 'Filmes';
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -794,39 +799,53 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               )
             else if (sections.isEmpty)
               SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: Center(
-                    child: Column(
-                      children: [
-                        const Icon(
-                          Icons.movie_filter_rounded,
-                          size: 48,
-                          color: AppColors.textTertiary,
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Center(
+                        child: Column(
+                          children: [
+                            const Icon(
+                              Icons.movie_filter_rounded,
+                              size: 48,
+                              color: AppColors.textTertiary,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Nenhum conteúdo disponível nesta categoria',
+                              style: AppTypography.bodyMedium.copyWith(
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            ElevatedButton(
+                              onPressed: _loadHomeData,
+                              child: const Text('Recarregar Catálogo'),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Nenhum conteúdo disponível nesta categoria',
-                          style: AppTypography.bodyMedium.copyWith(
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        ElevatedButton(
-                          onPressed: _loadHomeData,
-                          child: const Text('Recarregar Catálogo'),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
+                    if (showCollections) _buildCollectionsSection(),
+                  ],
                 ),
               )
             else
               SliverList(
                 delegate: SliverChildBuilderDelegate((context, index) {
-                  final section = sections[index];
-                  return _buildCarouselSection(section);
-                }, childCount: sections.length),
+                  final collectionIndex = sections.length < 3
+                      ? sections.length
+                      : 3;
+                  if (showCollections && index == collectionIndex) {
+                    return _buildCollectionsSection();
+                  }
+                  final sectionIndex =
+                      showCollections && index > collectionIndex
+                      ? index - 1
+                      : index;
+                  return _buildCarouselSection(sections[sectionIndex]);
+                }, childCount: sections.length + (showCollections ? 1 : 0)),
               ),
 
             // Indicador sutil de carregamento procedural sob demanda
@@ -1140,6 +1159,98 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Future<List<MovieCollection>> _loadAvailableCollections() {
+    return _availableCollectionsFuture ??= TmdbService.getAvailableCollections(
+      limit: 5,
+    );
+  }
+
+  Widget _buildCollectionsSection() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 24),
+      child: FutureBuilder<List<MovieCollection>>(
+        future: _loadAvailableCollections(),
+        builder: (context, snapshot) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Coleções',
+                        style: AppTypography.headlineMedium,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => context.push('/collections'),
+                      child: const Text('Ver todas'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              if (snapshot.connectionState == ConnectionState.waiting)
+                const SizedBox(
+                  height: 200,
+                  child: Center(
+                    child: CircularProgressIndicator(color: AppColors.primary),
+                  ),
+                )
+              else if (snapshot.hasError || snapshot.data?.isEmpty != false)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: TextButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _availableCollectionsFuture =
+                            TmdbService.getAvailableCollections();
+                      });
+                    },
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text(
+                      'Coleções indisponíveis. Tentar novamente',
+                    ),
+                  ),
+                )
+              else
+                SizedBox(
+                  height: 200,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: snapshot.data!.length,
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(width: 12),
+                    itemBuilder: (context, index) {
+                      final collection = snapshot.data![index];
+                      return GradientPoster(
+                        title: collection.name,
+                        posterUrl: collection.posterUrl,
+                        onTap: () => context.push(
+                          Uri(
+                            pathSegments: [
+                              '',
+                              'collection',
+                              collection.id,
+                              collection.pluginId,
+                            ],
+                            queryParameters: {'name': collection.name},
+                          ).toString(),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
   }
