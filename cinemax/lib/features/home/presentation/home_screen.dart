@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/config/app_environment.dart';
 import '../../../core/config/theme/app_colors.dart';
 import '../../../core/config/theme/app_typography.dart';
+import '../../../core/localization/app_localization.dart';
 import '../../../core/widgets/gradient_poster.dart';
 import '../../../core/widgets/shimmer_loading.dart';
 import '../../favorites/services/favorites_repository.dart';
@@ -52,6 +55,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Future<List<MovieCollection>>? _availableCollectionsFuture;
   final PageController _heroController = PageController();
   final ScrollController _scrollController = ScrollController();
+  final Map<String, ScrollController> _autoScrollControllers = {};
+  final Map<String, Timer> _autoScrollTimers = {};
 
   final List<String> _categoryFilters = [
     'Todos',
@@ -632,7 +637,57 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _heroController.dispose();
+    for (final controller in _autoScrollControllers.values) {
+      controller.dispose();
+    }
+    for (final timer in _autoScrollTimers.values) {
+      timer.cancel();
+    }
+    _autoScrollControllers.clear();
+    _autoScrollTimers.clear();
     super.dispose();
+  }
+
+  bool _isAutoCarouselSection(String sectionName) {
+    final normalized = sectionName.toLowerCase();
+    return normalized.contains('lançamento') ||
+        normalized.contains('lancamento');
+  }
+
+  ScrollController _controllerForAutoCarousel(String sectionName) {
+    final existing = _autoScrollControllers[sectionName];
+    if (existing != null) return existing;
+
+    final controller = ScrollController();
+    _autoScrollControllers[sectionName] = controller;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !controller.hasClients) return;
+      if (_autoScrollTimers.containsKey(sectionName)) return;
+
+      final step = 0.65;
+      var direction = 1.0;
+      final timer = Timer.periodic(const Duration(milliseconds: 24), (_) {
+        if (!mounted || !controller.hasClients) return;
+        final maxScroll = controller.position.maxScrollExtent;
+        if (maxScroll <= 0) return;
+
+        final nextOffset = controller.offset + (direction * step);
+        if (nextOffset >= maxScroll) {
+          direction = -1.0;
+          controller.jumpTo(maxScroll);
+          return;
+        }
+        if (nextOffset <= 0) {
+          direction = 1.0;
+          controller.jumpTo(0);
+          return;
+        }
+        controller.jumpTo(nextOffset);
+      });
+      _autoScrollTimers[sectionName] = timer;
+    });
+
+    return controller;
   }
 
   @override
@@ -736,7 +791,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
                     return ChoiceChip(
                       label: Text(
-                        category,
+                        context.categoryLabel(category),
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: isSelected
@@ -813,7 +868,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             ),
                             const SizedBox(height: 12),
                             Text(
-                              'Nenhum conteúdo disponível nesta categoria',
+                              context.tr('home.empty'),
                               style: AppTypography.bodyMedium.copyWith(
                                 color: AppColors.textSecondary,
                               ),
@@ -821,7 +876,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             const SizedBox(height: 16),
                             ElevatedButton(
                               onPressed: _loadHomeData,
-                              child: const Text('Recarregar Catálogo'),
+                              child: Text(context.tr('home.reload')),
                             ),
                           ],
                         ),
@@ -850,7 +905,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
             // Indicador sutil de carregamento procedural sob demanda
             if (_isLoadingProcedural)
-              const SliverToBoxAdapter(
+              SliverToBoxAdapter(
                 child: Padding(
                   padding: EdgeInsets.symmetric(vertical: 24),
                   child: Center(
@@ -867,7 +922,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         ),
                         SizedBox(width: 12),
                         Text(
-                          'Descobrindo novos títulos...',
+                          context.tr('home.discovering'),
                           style: TextStyle(
                             color: AppColors.textSecondary,
                             fontSize: 13,
@@ -906,7 +961,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(
-              'Continuar Assistindo',
+              context.tr('home.continue_watching'),
               style: AppTypography.headlineMedium,
             ),
           ),
@@ -964,7 +1019,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       Text(
                         entry.season != null && entry.episode != null
                             ? 'T${entry.season} • Ep. ${entry.episode}'
-                            : 'Em andamento',
+                            : context.tr('home.in_progress'),
                         style: AppTypography.labelSmall.copyWith(
                           color: AppColors.textSecondary,
                         ),
@@ -1085,12 +1140,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           ).toString(),
                         ),
                         icon: const Icon(Icons.play_arrow_rounded),
-                        label: const Text('Assistir'),
+                        label: Text(context.tr('home.watch')),
                       ),
                       const SizedBox(width: 8),
                       OutlinedButton(
                         onPressed: () => context.push(_detailsRoute(item)),
-                        child: const Text('Detalhes'),
+                        child: Text(context.tr('home.details')),
                       ),
                     ],
                   ),
@@ -1104,6 +1159,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildCarouselSection(ContentCategory category) {
+    final autoScroll = _isAutoCarouselSection(category.name)
+        ? _controllerForAutoCarousel(category.name)
+        : null;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 24),
       child: Column(
@@ -1116,7 +1175,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               children: [
                 Expanded(
                   child: Text(
-                    category.name,
+                    context.catalogTitle(category.name),
                     style: AppTypography.headlineMedium,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -1139,6 +1198,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           SizedBox(
             height: 200,
             child: ListView.separated(
+              controller: autoScroll,
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
               itemCount: category.items.length,

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/config/theme/app_colors.dart';
 import '../../../core/config/theme/app_typography.dart';
+import '../../../core/localization/app_localization.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../plugin_engine/manager/plugin_manager.dart';
 import '../../../plugin_engine/models/content_item.dart';
@@ -242,11 +243,11 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                 color: Colors.redAccent,
               ),
               const SizedBox(height: 12),
-              const Text('Não foi possível carregar os detalhes do título.'),
+              Text(context.tr('detail.failed')),
               const SizedBox(height: 16),
               ElevatedButton(
                 onPressed: _loadDetails,
-                child: const Text('Tentar novamente'),
+                child: Text(context.tr('detail.retry')),
               ),
             ],
           ),
@@ -421,28 +422,6 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                         tooltip: 'Transmitir para Smart TV',
                       ),
                       const SizedBox(width: 8),
-                      IconButton.filledTonal(
-                        onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                'Iniciando download de "${item.title}"',
-                              ),
-                              backgroundColor: AppColors.primary,
-                            ),
-                          );
-                        },
-                        style: IconButton.styleFrom(
-                          backgroundColor: AppColors.surfaceLight,
-                          padding: const EdgeInsets.all(14),
-                        ),
-                        icon: const Icon(
-                          Icons.arrow_circle_down_rounded,
-                          color: Colors.white,
-                        ),
-                        tooltip: 'Download Offline',
-                      ),
-                      const SizedBox(width: 8),
                       FavoriteButton.fromDetail(detail: item),
                     ],
                   ),
@@ -484,7 +463,10 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
 
                   // Sinopse
                   if (item.overview != null && item.overview!.isNotEmpty) ...[
-                    Text('Sinopse', style: AppTypography.headlineMedium),
+                    Text(
+                      context.tr('detail.synopsis'),
+                      style: AppTypography.headlineMedium,
+                    ),
                     const SizedBox(height: 8),
                     Text(
                       item.overview!,
@@ -518,7 +500,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Coleção',
+                                  context.tr('detail.collection'),
                                   style: AppTypography.bodySmall.copyWith(
                                     color: AppColors.textSecondary,
                                   ),
@@ -548,7 +530,10 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('Episódios', style: AppTypography.headlineMedium),
+                        Text(
+                          context.tr('detail.episodes'),
+                          style: AppTypography.headlineMedium,
+                        ),
                         if (item.seasons != null && item.seasons!.isNotEmpty)
                           DropdownButton<int>(
                             value: _selectedSeason,
@@ -557,7 +542,14 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                                 .map(
                                   (s) => DropdownMenuItem(
                                     value: s.number,
-                                    child: Text('Temporada ${s.number}'),
+                                    child: Text(
+                                      context
+                                          .tr('detail.season')
+                                          .replaceAll(
+                                            '{number}',
+                                            '${s.number}',
+                                          ),
+                                    ),
                                   ),
                                 )
                                 .toList(),
@@ -589,8 +581,8 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                                 size: 32,
                               ),
                               const SizedBox(height: 8),
-                              const Text(
-                                'Nenhum episódio disponível nesta temporada.',
+                              Text(
+                                context.tr('detail.no_episodes'),
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   color: AppColors.textTertiary,
@@ -600,7 +592,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                               TextButton.icon(
                                 onPressed: () => _loadEpisodes(_selectedSeason),
                                 icon: const Icon(Icons.refresh_rounded),
-                                label: const Text('Tentar novamente'),
+                                label: Text(context.tr('detail.retry')),
                               ),
                             ],
                           ),

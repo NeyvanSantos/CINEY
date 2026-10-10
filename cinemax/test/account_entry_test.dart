@@ -157,6 +157,27 @@ void main() {
     expect(_path(router), '/onboarding');
   });
 
+  testWidgets('idioma escolhido no onboarding atualiza e fica salvo', (
+    tester,
+  ) async {
+    final accounts = FakeAccounts()..currentUser = _user;
+    await _mount(tester, accounts, initial: '/onboarding');
+
+    expect(find.text('Bem-vindo ao CiNey! 👋'), findsOneWidget);
+    await _tap(tester, 'English (US)');
+    expect(find.text('Welcome to CiNey! 👋'), findsOneWidget);
+    await _tap(tester, 'Español (Latam)');
+    expect(find.text('¡Te damos la bienvenida a CiNey! 👋'), findsOneWidget);
+
+    final preferences = await SharedPreferences.getInstance();
+    expect(preferences.getString('app_language'), 'es-ES');
+
+    accounts.emit(null);
+    await tester.pumpAndSettle();
+    expect(find.text('Iniciar sesión en CiNey'), findsOneWidget);
+    expect(find.text('Iniciar sesión'), findsOneWidget);
+  });
+
   testWidgets('sair da conta bloqueia novamente as rotas e o retorno', (
     tester,
   ) async {

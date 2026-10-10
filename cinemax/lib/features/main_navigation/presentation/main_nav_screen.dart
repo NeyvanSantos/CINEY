@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:iconsax/iconsax.dart';
 import '../../../core/config/theme/app_colors.dart';
+import '../../../core/localization/app_localization.dart';
 import '../../../core/widgets/focusable_surface.dart';
 
 class MainNavScreen extends StatefulWidget {
@@ -21,7 +22,7 @@ class MainNavScreen extends StatefulWidget {
 
 class _MainNavScreenState extends State<MainNavScreen> {
   final List<FocusNode> _tvNavigationFocusNodes = List.generate(
-    4,
+    3,
     (index) => FocusNode(debugLabel: 'TV navigation destination $index'),
   );
 
@@ -51,8 +52,8 @@ class _MainNavScreenState extends State<MainNavScreen> {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
 
     final nextIndex = switch (event.logicalKey) {
-      LogicalKeyboardKey.arrowDown => (index + 1).clamp(0, 3),
-      LogicalKeyboardKey.arrowUp => (index - 1).clamp(0, 3),
+      LogicalKeyboardKey.arrowDown => (index + 1).clamp(0, 2),
+      LogicalKeyboardKey.arrowUp => (index - 1).clamp(0, 2),
       _ => null,
     };
     if (nextIndex != null) {
@@ -118,7 +119,7 @@ class _MainNavScreenState extends State<MainNavScreen> {
                             destinationIndex: 0,
                             icon: Iconsax.home_2,
                             activeIcon: Iconsax.home_21,
-                            label: 'Início',
+                            label: context.tr('nav.home'),
                             isSelected: currentIndex == 0,
                             autofocus: currentIndex == 0,
                             extended: isExtended,
@@ -128,7 +129,7 @@ class _MainNavScreenState extends State<MainNavScreen> {
                             destinationIndex: 1,
                             icon: Iconsax.search_normal_1,
                             activeIcon: Iconsax.search_normal_11,
-                            label: 'Buscar',
+                            label: context.tr('nav.search'),
                             isSelected: currentIndex == 1,
                             autofocus: currentIndex == 1,
                             extended: isExtended,
@@ -136,23 +137,13 @@ class _MainNavScreenState extends State<MainNavScreen> {
                           ),
                           _buildTvNavItem(
                             destinationIndex: 2,
-                            icon: Iconsax.receive_square_2,
-                            activeIcon: Iconsax.receive_square_21,
-                            label: 'Downloads',
+                            icon: Iconsax.setting_2,
+                            activeIcon: Iconsax.setting_21,
+                            label: context.tr('nav.profile'),
                             isSelected: currentIndex == 2,
                             autofocus: currentIndex == 2,
                             extended: isExtended,
                             onTap: () => _onTap(2),
-                          ),
-                          _buildTvNavItem(
-                            destinationIndex: 3,
-                            icon: Iconsax.setting_2,
-                            activeIcon: Iconsax.setting_21,
-                            label: 'Perfil',
-                            isSelected: currentIndex == 3,
-                            autofocus: currentIndex == 3,
-                            extended: isExtended,
-                            onTap: () => _onTap(3),
                           ),
                         ],
                       ),
@@ -206,30 +197,23 @@ class _MainNavScreenState extends State<MainNavScreen> {
                 _buildNavItem(
                   icon: Iconsax.home_2,
                   activeIcon: Iconsax.home_21,
-                  label: 'Início',
+                  label: context.tr('nav.home'),
                   isSelected: currentIndex == 0,
                   onTap: () => _onTap(0),
                 ),
                 _buildNavItem(
                   icon: Iconsax.search_normal_1,
                   activeIcon: Iconsax.search_normal_11,
-                  label: 'Buscar',
+                  label: context.tr('nav.search'),
                   isSelected: currentIndex == 1,
                   onTap: () => _onTap(1),
                 ),
                 _buildNavItem(
-                  icon: Iconsax.receive_square_2,
-                  activeIcon: Iconsax.receive_square_21,
-                  label: 'Downloads',
-                  isSelected: currentIndex == 2,
-                  onTap: () => _onTap(2),
-                ),
-                _buildNavItem(
                   icon: Iconsax.setting_2,
                   activeIcon: Iconsax.setting_21,
-                  label: 'Perfil',
-                  isSelected: currentIndex == 3,
-                  onTap: () => _onTap(3),
+                  label: context.tr('nav.profile'),
+                  isSelected: currentIndex == 2,
+                  onTap: () => _onTap(2),
                 ),
               ],
             ),

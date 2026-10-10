@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import '../../features/details/presentation/details_screen.dart';
 import '../../features/collections/presentation/movie_collection_screen.dart';
 import '../../features/collections/presentation/movie_collections_screen.dart';
-import '../../features/downloads/presentation/downloads_screen.dart';
 import '../../features/extensions/presentation/extensions_screen.dart';
 import '../../features/home/presentation/home_screen.dart';
 import '../../features/home/presentation/catalog_section_screen.dart';
@@ -128,17 +127,7 @@ GoRouter createAppRouter({
             ],
           ),
 
-          // Aba 2: Downloads
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: '/downloads',
-                builder: (context, state) => const DownloadsScreen(),
-              ),
-            ],
-          ),
-
-          // Aba 3: Perfil / Ajustes / Sobre
+          // Aba 2: Perfil / Ajustes / Sobre
           StatefulShellBranch(
             routes: [
               GoRoute(

@@ -12,6 +12,7 @@ import 'package:webview_flutter_android/webview_flutter_android.dart';
 import '../../../core/config/app_environment.dart';
 import '../../../core/config/theme/app_colors.dart';
 import '../../../core/config/theme/app_typography.dart';
+import '../../../core/localization/app_localization.dart';
 import '../../../core/services/app_logger.dart';
 import '../../../plugin_engine/models/content_item.dart';
 import '../../../plugin_engine/manager/plugin_manager.dart';
@@ -237,6 +238,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   @override
   void initState() {
     super.initState();
+    _selectedSubtitle = switch (ref.read(appLocaleProvider).languageCode) {
+      'en' => SubtitleOption.english,
+      'es' => SubtitleOption.spanish,
+      _ => SubtitleOption.ptBr,
+    };
     _season = widget.season;
     _episode = widget.episode;
     _title = widget.title;
@@ -1701,7 +1707,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                   FilledButton.icon(
                     onPressed: _stopCasting,
                     icon: const Icon(Icons.phone_android_rounded, size: 16),
-                    label: const Text('Assistir no Celular'),
+                    label: Text(context.tr('player.watch_mobile')),
                     style: FilledButton.styleFrom(
                       backgroundColor: Colors.white.withValues(alpha: 0.15),
                       foregroundColor: Colors.white,
@@ -2528,21 +2534,33 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 children: [
                   _buildPillBadge(
                     icon: _selectedQuality.icon,
-                    label: _selectedQuality.label,
+                    label: context.tr(
+                      'player.quality.${_selectedQuality.name}',
+                    ),
                     onTap: _showQualityModal,
                   ),
                   const SizedBox(width: 8),
                   _buildPillBadge(
                     label:
-                        '${_selectedAudio.flag} ${_selectedAudio.label.split(' ').first}',
+                        '${_selectedAudio.flag} ${context.tr('player.audio.${_selectedAudio.name}').split(' ').first}',
                     onTap: _showAudioModal,
                   ),
                   const SizedBox(width: 8),
                   _buildPillBadge(
                     icon: _selectedSubtitle.icon,
                     label: _selectedSubtitle == SubtitleOption.off
-                        ? 'Sem Legenda'
-                        : 'Legenda ${_selectedSubtitle.label.split(' ').first}',
+                        ? context.tr('player.subtitle.badge_off')
+                        : context
+                              .tr('player.subtitle.badge')
+                              .replaceAll(
+                                '{value}',
+                                context
+                                    .tr(
+                                      'player.subtitle.${_selectedSubtitle.name}',
+                                    )
+                                    .split(' ')
+                                    .first,
+                              ),
                     onTap: _showSubtitleModal,
                   ),
                 ],
@@ -2557,7 +2575,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                       Icons.refresh_rounded,
                       color: Colors.white70,
                     ),
-                    tooltip: 'Recarregar Player',
+                    tooltip: context.tr('player.reload'),
                     onPressed: () => _initPlayerWithIndex(_currentSourceIndex),
                   ),
                   // Proporção de Tela
@@ -2896,13 +2914,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   void _showSettingsModal() {
     _showAppModal(
-      title: 'Configurações de Reprodução',
-      subtitle: 'Ajuste qualidade, áudio, legendas e exibição',
+      title: context.tr('player.settings'),
+      subtitle: context.tr('player.settings_help'),
       children: [
         _buildSettingsItem(
           icon: Icons.hd_rounded,
-          title: 'Qualidade de Vídeo',
-          subtitle: _selectedQuality.label,
+          title: context.tr('player.quality.title'),
+          subtitle: context.tr('player.quality.${_selectedQuality.name}'),
           onTap: () {
             Navigator.pop(context);
             _showQualityModal();
@@ -2910,8 +2928,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         ),
         _buildSettingsItem(
           icon: Icons.audiotrack_rounded,
-          title: 'Áudio & Idioma',
-          subtitle: '${_selectedAudio.flag} ${_selectedAudio.label}',
+          title: context.tr('player.audio.title'),
+          subtitle:
+              '${_selectedAudio.flag} ${context.tr('player.audio.${_selectedAudio.name}')}',
           onTap: () {
             Navigator.pop(context);
             _showAudioModal();
@@ -2919,8 +2938,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         ),
         _buildSettingsItem(
           icon: Icons.subtitles_rounded,
-          title: 'Legendas',
-          subtitle: _selectedSubtitle.label,
+          title: context.tr('player.subtitle.title'),
+          subtitle: context.tr('player.subtitle.${_selectedSubtitle.name}'),
           onTap: () {
             Navigator.pop(context);
             _showSubtitleModal();
@@ -2928,10 +2947,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         ),
         _buildSettingsItem(
           icon: Icons.dns_rounded,
-          title: 'Servidores & Fontes',
+          title: context.tr('player.server.title'),
           subtitle: _sources.isNotEmpty
               ? '${_sources[_currentSourceIndex].server} • ${_sources[_currentSourceIndex].audioType.label}'
-              : 'Padrão',
+              : context.tr('player.server.default'),
           onTap: () {
             Navigator.pop(context);
             _showServerSelectorModal();
@@ -2939,10 +2958,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         ),
         _buildSettingsItem(
           icon: _isCasting ? Icons.cast_connected_rounded : Icons.cast_rounded,
-          title: 'Transmitir para Smart TV',
+          title: context.tr('player.cast.title'),
           subtitle: _isCasting
-              ? 'Conectado a $_castingDeviceName'
-              : 'Espelhar com Chromecast / Navegador',
+              ? context
+                    .tr('player.cast.connected')
+                    .replaceAll('{device}', _castingDeviceName)
+              : context.tr('player.cast.mirror'),
           onTap: () {
             Navigator.pop(context);
             _showCastDialog();
@@ -2950,8 +2971,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         ),
         _buildSettingsItem(
           icon: Icons.aspect_ratio_rounded,
-          title: 'Proporção da Tela',
-          subtitle: _selectedAspectRatio.label,
+          title: context.tr('player.aspect.title'),
+          subtitle: context.tr('player.aspect.${_selectedAspectRatio.name}'),
           onTap: () {
             Navigator.pop(context);
             _showAspectRatioModal();
@@ -2963,21 +2984,28 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   void _showQualityModal() {
     _showAppModal(
-      title: 'Qualidade de Reprodução',
-      subtitle: 'Escolha a resolução desejada para transmissão',
+      title: context.tr('player.quality.modal'),
+      subtitle: context.tr('player.quality.help'),
       children: VideoQuality.values.map((q) {
         final isSelected = _selectedQuality == q;
         return _buildSelectableTile(
           icon: q.icon,
-          title: q.label,
-          subtitle: q.description,
+          title: context.tr('player.quality.${q.name}'),
+          subtitle: context.tr('player.quality.${q.name}_help'),
           isSelected: isSelected,
           onTap: () {
             setState(() => _selectedQuality = q);
             Navigator.pop(context);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Qualidade definida para: ${q.label}'),
+                content: Text(
+                  context
+                      .tr('player.quality.set')
+                      .replaceAll(
+                        '{value}',
+                        context.tr('player.quality.${q.name}'),
+                      ),
+                ),
                 duration: const Duration(seconds: 2),
                 backgroundColor: AppColors.surface,
               ),
@@ -2990,21 +3018,28 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   void _showAudioModal() {
     _showAppModal(
-      title: 'Áudio e Dublagem',
-      subtitle: 'Selecione a trilha sonora e idioma de áudio',
+      title: context.tr('player.audio.modal'),
+      subtitle: context.tr('player.audio.help'),
       children: AudioTrack.values.map((a) {
         final isSelected = _selectedAudio == a;
         return _buildSelectableTile(
           customLeading: Text(a.flag, style: const TextStyle(fontSize: 22)),
-          title: a.label,
-          subtitle: a.description,
+          title: context.tr('player.audio.${a.name}'),
+          subtitle: context.tr('player.audio.${a.name}_help'),
           isSelected: isSelected,
           onTap: () {
             setState(() => _selectedAudio = a);
             Navigator.pop(context);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Áudio definido para: ${a.label}'),
+                content: Text(
+                  context
+                      .tr('player.audio.set')
+                      .replaceAll(
+                        '{value}',
+                        context.tr('player.audio.${a.name}'),
+                      ),
+                ),
                 duration: const Duration(seconds: 2),
                 backgroundColor: AppColors.surface,
               ),
@@ -3017,21 +3052,28 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   void _showSubtitleModal() {
     _showAppModal(
-      title: 'Legendas',
-      subtitle: 'Ative ou desative legendas sincronizadas',
+      title: context.tr('player.subtitle.title'),
+      subtitle: context.tr('player.subtitle.help'),
       children: SubtitleOption.values.map((s) {
         final isSelected = _selectedSubtitle == s;
         return _buildSelectableTile(
           icon: s.icon,
-          title: s.label,
-          subtitle: s.description,
+          title: context.tr('player.subtitle.${s.name}'),
+          subtitle: context.tr('player.subtitle.${s.name}_help'),
           isSelected: isSelected,
           onTap: () {
             setState(() => _selectedSubtitle = s);
             Navigator.pop(context);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Legendas: ${s.label}'),
+                content: Text(
+                  context
+                      .tr('player.subtitle.set')
+                      .replaceAll(
+                        '{value}',
+                        context.tr('player.subtitle.${s.name}'),
+                      ),
+                ),
                 duration: const Duration(seconds: 2),
                 backgroundColor: AppColors.surface,
               ),
@@ -3044,16 +3086,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   void _showAspectRatioModal() {
     _showAppModal(
-      title: 'Formato e Proporção',
-      subtitle: 'Ajuste como o vídeo se adapta à tela do seu aparelho',
+      title: context.tr('player.aspect.modal'),
+      subtitle: context.tr('player.aspect.help'),
       children: AspectRatioMode.values.map((mode) {
         final isSelected = _selectedAspectRatio == mode;
         return _buildSelectableTile(
           icon: Icons.fit_screen_rounded,
-          title: mode.label,
-          subtitle: mode == AspectRatioMode.standard
-              ? 'Proporção original de cinema'
-              : 'Preenchimento sem bordas pretas',
+          title: context.tr('player.aspect.${mode.name}'),
+          subtitle: context.tr(
+            mode == AspectRatioMode.standard
+                ? 'player.aspect.standard_help'
+                : 'player.aspect.fill_help',
+          ),
           isSelected: isSelected,
           onTap: () {
             setState(() => _selectedAspectRatio = mode);
@@ -3092,17 +3136,23 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     String subtitleFor(StreamSource source) {
       switch (source.audioType) {
         case AudioType.dubbed:
-          return 'Áudio Dublado PT-BR • ${source.quality}';
+          return context
+              .tr('player.server.dubbed')
+              .replaceAll('{quality}', source.quality);
         case AudioType.subtitled:
-          return 'Áudio Original + Legendas • ${source.quality}';
+          return context
+              .tr('player.server.subtitled')
+              .replaceAll('{quality}', source.quality);
         case AudioType.mixed:
-          return 'Múltiplas opções de áudio • ${source.quality}';
+          return context
+              .tr('player.server.mixed')
+              .replaceAll('{quality}', source.quality);
       }
     }
 
     _showAppModal(
-      title: 'Servidores de Transmissão',
-      subtitle: '🇧🇷 Servidores dublados são priorizados automaticamente',
+      title: context.tr('player.server.modal'),
+      subtitle: '🇧🇷 ${context.tr('player.server.help')}',
       children: _sources.asMap().entries.map((entry) {
         final index = entry.key;
         final source = entry.value;

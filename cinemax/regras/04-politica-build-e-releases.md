@@ -46,12 +46,16 @@
   ```powershell
   .\scripts\publish_release.ps1 -Version "1.0.1" -Notes "Notas da atualização"
   ```
+- **Por duplo clique no Windows:** execute `scripts/publicar-mobile.bat` na
+  raiz do repositório. O script exige uma branch diferente de `main`, árvore
+  limpa e autenticação GitHub CLI; não envia commits para `main`.
 - **O que acontece automaticamente:**
   1. O arquivo `pubspec.yaml` é atualizado com a nova versão.
-  2. Uma tag Git (ex.: `v1.0.1`) é criada e enviada ao GitHub.
-  3. O workflow [`.github/workflows/release.yml`](../../.github/workflows/release.yml) é acionado na nuvem.
+  2. Commit e tag Git (ex.: `v1.0.1`) são criados na branch atual e a tag é enviada.
+  3. O workflow [`.github/workflows/release.yml`](../../.github/workflows/release.yml) é acionado por dispatch na própria tag.
   4. O APK é compilado nos servidores do GitHub e anexado diretamente na nova Release como `CiNey-v1.0.1.apk`.
-  5. Todos os aplicativos instalados recebem o aviso de atualização automaticamente!
+  5. O APK é baixado e validado pelo SHA-256 antes de atualizar a cópia em `releases/mobile/`.
+  6. Todos os aplicativos instalados recebem o aviso de atualização automaticamente!
 
 ---
 

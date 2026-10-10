@@ -16,14 +16,25 @@ class TmdbService {
       ? 'https://image.tmdb.org/t/p/w780'
       : 'https://image.tmdb.org/t/p/w1280';
 
+  static String _preferredLanguage = 'pt-BR';
   static final Dio _dio = Dio(
     BaseOptions(
       baseUrl: _baseUrl,
       connectTimeout: const Duration(seconds: 8),
       receiveTimeout: const Duration(seconds: 8),
-      queryParameters: {'api_key': _apiKey, 'language': 'pt-BR'},
+      queryParameters: {'api_key': _apiKey, 'language': _preferredLanguage},
     ),
   );
+
+  static void setPreferredLanguage(String languageCode) {
+    _preferredLanguage = switch (languageCode) {
+      'en-US' => 'en-US',
+      'es-ES' => 'es-ES',
+      _ => 'pt-BR',
+    };
+    _dio.options.queryParameters['language'] = _preferredLanguage;
+  }
+
   static const List<String> _availableCollectionIds = [
     '9485',
     '1241',
@@ -317,7 +328,7 @@ class TmdbService {
         'page': page,
         'sort_by': sortBy ?? 'popularity.desc',
         'include_adult': 'false',
-        'language': 'pt-BR',
+        'language': _preferredLanguage,
       };
       if (withGenres != null && withGenres.isNotEmpty) {
         queryParams['with_genres'] = withGenres;
@@ -367,13 +378,13 @@ class TmdbService {
     if (cleanQuery.isEmpty) return [];
 
     try {
-      // 1. Busca Multi no TMDB com idioma pt-BR
+      // 1. Busca Multi no TMDB com o idioma escolhido no app
       final response = await _dio.get(
         '/search/multi',
         queryParameters: {
           'query': cleanQuery,
           'include_adult': 'false',
-          'language': 'pt-BR',
+          'language': _preferredLanguage,
         },
       );
       final rawResults = response.data['results'] as List<dynamic>? ?? [];
@@ -627,6 +638,7 @@ class TmdbService {
   static Future<List<MovieCollection>> getAvailableCollections({
     String pluginId = 'com.megaflix',
     int? limit,
+    Dio? client,
   }) async {
     final collectionIds = limit == null
         ? _availableCollectionIds
@@ -634,17 +646,75 @@ class TmdbService {
     final results = await Future.wait(
       collectionIds.map((id) async {
         try {
-          return await getCollection(id, pluginId);
+          return await getCollection(id, pluginId, client: client ?? _dio);
         } catch (_) {
           return null;
         }
       }),
     );
     final collections = results.whereType<MovieCollection>().toList();
-    if (collections.isEmpty) {
-      throw StateError('Não foi possível carregar as coleções.');
+    if (collections.isNotEmpty) {
+      return collections;
     }
-    return collections;
+
+    final fallbackCollections = await _buildFallbackCollections(
+      pluginId: pluginId,
+      client: client ?? _dio,
+    );
+    if (fallbackCollections.isNotEmpty) {
+      return fallbackCollections;
+    }
+
+    throw StateError('Não foi possível carregar as coleções.');
+  }
+
+  static Future<List<MovieCollection>> _buildFallbackCollections({
+    required String pluginId,
+    required Dio client,
+  }) async {
+    const candidates = [
+      ('/movie/popular', 'Populares'),
+      ('/trending/movie/week', 'Em alta'),
+      ('/movie/top_rated', 'Mais bem avaliados'),
+    ];
+
+    for (final (path, name) in candidates) {
+      try {
+        final response = await client.get(path, queryParameters: {'page': 1});
+        final results = (response.data['results'] as List<dynamic>? ?? [])
+            .whereType<Map<String, dynamic>>()
+            .toList();
+        if (results.isEmpty) continue;
+
+        final movies = results
+            .map(
+              (movie) => _mapJsonToItem(
+                movie,
+                pluginId,
+                defaultType: ContentType.movie,
+              ),
+            )
+            .whereType<ContentItem>()
+            .take(6)
+            .toList();
+
+        if (movies.isNotEmpty) {
+          return [
+            MovieCollection(
+              id: 'fallback-${path.replaceAll('/', '_')}',
+              name: name,
+              pluginId: pluginId,
+              posterUrl: movies.first.posterUrl,
+              movies: movies,
+            ),
+          ];
+        }
+      } catch (_) {
+        // Continua para o próximo fallback se a fonte principal falhar.
+      }
+    }
+
+    return const [];
   }
 
   static Future<MovieCollection> getCollection(

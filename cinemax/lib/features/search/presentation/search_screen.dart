@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:iconsax/iconsax.dart';
 import '../../../core/config/theme/app_colors.dart';
 import '../../../core/config/theme/app_typography.dart';
+import '../../../core/localization/app_localization.dart';
 import '../../../core/widgets/gradient_poster.dart';
 import '../../../plugin_engine/manager/plugin_manager.dart';
 import '../../../plugin_engine/models/content_item.dart';
@@ -112,7 +113,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Text('Buscar', style: AppTypography.headlineLarge),
+        title: Text(
+          context.tr('search.title'),
+          style: AppTypography.headlineLarge,
+        ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(100),
           child: Column(
@@ -130,7 +134,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   autofocus: false,
                   textInputAction: TextInputAction.search,
                   decoration: InputDecoration(
-                    hintText: 'Buscar filmes, séries, animes...',
+                    hintText: context.tr('search.hint'),
                     prefixIcon: const Icon(
                       Iconsax.search_normal,
                       color: AppColors.textTertiary,
@@ -168,7 +172,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
                     return FilterChip(
                       label: Text(
-                        filter,
+                        context.categoryLabel(filter),
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: isSelected
@@ -200,14 +204,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   Widget _buildBody(List<ContentItem> items) {
     if (_isSearching) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             CircularProgressIndicator(color: AppColors.primary),
             SizedBox(height: 16),
             Text(
-              'Buscando em todo o catálogo...',
+              context.tr('search.searching'),
               style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
             ),
           ],
@@ -231,14 +235,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'Explore o Catálogo CiNey',
+                    context.tr('search.explore'),
                     style: AppTypography.headlineSmall.copyWith(
                       color: Colors.white,
                     ),
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Milhões de filmes, séries e animes do TMDB e extensões',
+                    context.tr('search.description'),
                     style: AppTypography.bodySmall.copyWith(
                       color: AppColors.textTertiary,
                     ),
@@ -257,7 +261,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  'Sugestões em Alta',
+                  context.tr('search.trending'),
                   style: AppTypography.headlineSmall.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
@@ -304,7 +308,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               ),
               const SizedBox(height: 16),
               Text(
-                'Nenhum resultado para "${_searchController.text}"',
+                context
+                    .tr('search.no_results')
+                    .replaceAll('{query}', _searchController.text),
                 style: AppTypography.headlineSmall.copyWith(
                   color: Colors.white,
                 ),
@@ -312,7 +318,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Tente buscar pelo nome original, simplificar os termos ou verificar a ortografia.',
+                context.tr('search.no_results_help'),
                 style: AppTypography.bodySmall.copyWith(
                   color: AppColors.textTertiary,
                 ),
@@ -325,7 +331,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   _performSearch('');
                 },
                 icon: const Icon(Icons.refresh_rounded, size: 18),
-                label: const Text('Limpar Pesquisa'),
+                label: Text(context.tr('search.clear')),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.surfaceLight,
                   foregroundColor: Colors.white,
@@ -348,7 +354,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             bottom: 4,
           ),
           child: Text(
-            '${items.length} título(s) encontrado(s)',
+            context
+                .tr('search.results_count')
+                .replaceAll('{count}', '${items.length}'),
             style: AppTypography.labelMedium.copyWith(
               color: AppColors.textSecondary,
             ),

@@ -8,6 +8,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../../core/config/app_environment.dart';
 import '../../../core/config/theme/app_colors.dart';
 import '../../../core/config/theme/app_typography.dart';
+import '../../../core/localization/app_localization.dart';
 import '../../../core/services/app_logger.dart';
 import '../../../core/services/app_updater.dart';
 import '../../../core/widgets/glass_card.dart';
@@ -52,8 +53,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
       if (updateInfo == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Não foi possível verificar. Tente novamente.'),
+          SnackBar(
+            content: Text(context.tr('profile.update_failed')),
             backgroundColor: AppColors.warning,
           ),
         );
@@ -63,7 +64,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Você já está na versão mais recente! (v${updateInfo.currentVersion})',
+              context
+                  .tr('profile.up_to_date')
+                  .replaceAll('{version}', updateInfo.currentVersion),
             ),
             backgroundColor: AppColors.success,
           ),
@@ -92,8 +95,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Não foi possível salvar a preferência.'),
+        SnackBar(
+          content: Text(context.tr('profile.save_failed')),
           backgroundColor: AppColors.error,
         ),
       );
@@ -108,7 +111,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Text('Ajustes & Perfil', style: AppTypography.headlineLarge),
+        title: Text(
+          context.tr('profile.title'),
+          style: AppTypography.headlineLarge,
+        ),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -117,15 +123,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
           const SizedBox(height: 24),
           Text(
-            'Preferências de Reprodução',
+            context.tr('profile.playback'),
             style: AppTypography.headlineMedium,
           ),
           const SizedBox(height: 12),
 
           _buildSettingTile(
             icon: Iconsax.play_circle,
-            title: 'Retomar reprodução',
-            subtitle: 'Continuar do último ponto salvo',
+            title: context.tr('profile.resume'),
+            subtitle: context.tr('profile.resume_description'),
             trailing: Switch(
               value: preferences.resumePlayback,
               activeThumbColor: AppColors.primary,
@@ -140,8 +146,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
           _buildSettingTile(
             icon: Icons.skip_next_rounded,
-            title: 'Próximo episódio automaticamente',
-            subtitle: 'Continuar a série quando o episódio terminar',
+            title: context.tr('profile.autoplay'),
+            subtitle: context.tr('profile.autoplay_description'),
             trailing: Switch(
               value: preferences.autoPlayNextEpisode,
               activeThumbColor: AppColors.primary,
@@ -156,8 +162,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
           _buildSettingTile(
             icon: Icons.visibility_off_outlined,
-            title: 'Ocultar controles automaticamente',
-            subtitle: 'Esconder após alguns segundos sem interação',
+            title: context.tr('profile.hide_controls'),
+            subtitle: context.tr('profile.hide_controls_description'),
             trailing: Switch(
               value: preferences.autoHideControls,
               activeThumbColor: AppColors.primary,
@@ -172,8 +178,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
           _buildSettingTile(
             icon: Icons.network_check_rounded,
-            title: 'Modo Poucos Megabits (Conexão Lenta)',
-            subtitle: 'Otimiza buffer de vídeo e reduz tráfego de imagens',
+            title: context.tr('profile.low_bandwidth'),
+            subtitle: context.tr('profile.low_bandwidth_description'),
             trailing: Switch(
               value: preferences.lowBandwidthMode,
               activeThumbColor: AppColors.primary,
@@ -189,8 +195,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           if (!AppEnvironment.isTv)
             _buildSettingTile(
               icon: Icons.screen_rotation,
-              title: 'Player em paisagem',
-              subtitle: 'Girar o celular durante a reprodução',
+              title: context.tr('profile.landscape'),
+              subtitle: context.tr('profile.landscape_description'),
               trailing: Switch(
                 value: preferences.landscapeOnMobile,
                 activeThumbColor: AppColors.primary,
@@ -205,33 +211,36 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
 
           const SizedBox(height: 24),
-          Text('Fontes & Armazenamento', style: AppTypography.headlineMedium),
+          Text(
+            context.tr('profile.sources_storage'),
+            style: AppTypography.headlineMedium,
+          ),
           const SizedBox(height: 12),
 
           _buildSettingTile(
             icon: Iconsax.category_2,
-            title: 'Gerenciar Extensões & Repositórios',
-            subtitle: 'Adicionar ou remover fontes de streaming',
+            title: context.tr('profile.extensions'),
+            subtitle: context.tr('profile.extensions_description'),
             onTap: () => context.push('/extensions'),
           ),
           _buildSettingTile(
             icon: Iconsax.global,
-            title: 'Configurar Idioma & Setup',
-            subtitle: 'Reabrir assistente de boas-vindas',
+            title: context.tr('profile.language_setup'),
+            subtitle: context.tr('profile.language_setup_description'),
             onTap: () => context.push('/onboarding'),
           ),
           _buildSettingTile(
             icon: Iconsax.trash,
-            title: 'Limpar Cache de Imagens',
-            subtitle: 'Libera espaço temporário do dispositivo',
+            title: context.tr('profile.clear_cache'),
+            subtitle: context.tr('profile.clear_cache_description'),
             onTap: () {
               AppLogger.info(
                 'Cache de imagens limpo pelo usuário.',
                 tag: 'CACHE',
               );
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Cache limpo com sucesso!'),
+                SnackBar(
+                  content: Text(context.tr('profile.cache_cleared')),
                   backgroundColor: AppColors.primary,
                 ),
               );
@@ -239,7 +248,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
 
           const SizedBox(height: 24),
-          Text('Diagnóstico & Developer', style: AppTypography.headlineMedium),
+          Text(
+            context.tr('profile.diagnostics'),
+            style: AppTypography.headlineMedium,
+          ),
           const SizedBox(height: 12),
 
           // Tile de Verificar Atualizações
@@ -249,7 +261,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           _buildLogTile(context),
 
           const SizedBox(height: 24),
-          Text('Sobre o Aplicativo', style: AppTypography.headlineMedium),
+          Text(
+            context.tr('profile.about'),
+            style: AppTypography.headlineMedium,
+          ),
           const SizedBox(height: 12),
 
           GlassCard(
@@ -347,9 +362,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         size: 18,
                       ),
                       const SizedBox(width: 8),
-                      const Expanded(
+                      Expanded(
                         child: Text(
-                          'Desenvolvido por Neyvan Santos',
+                          context.tr('profile.developer'),
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.bold,
@@ -361,8 +376,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                const Text(
-                  'Aplicativo agregador de filmes, séries, animes e doramas com catálogo unificado, reprodução fluida e sistema modular de extensões.',
+                Text(
+                  context.tr('profile.description'),
                   style: TextStyle(
                     fontSize: 12,
                     color: AppColors.textTertiary,
@@ -418,14 +433,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Verificar Atualizações',
+                    context.tr('profile.check_updates'),
                     style: AppTypography.labelLarge,
                   ),
                   const SizedBox(height: 2),
                   Text(
                     _checkingUpdate
-                        ? 'Consultando GitHub Releases...'
-                        : 'Verificar se há nova versão do CiNey',
+                        ? context.tr('profile.checking_updates')
+                        : context.tr('profile.update_description'),
                     style: const TextStyle(
                       fontSize: 11,
                       color: AppColors.textTertiary,
@@ -477,12 +492,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Console de Logs em Tempo Real',
+                    context.tr('profile.logs'),
                     style: AppTypography.labelLarge,
                   ),
                   const SizedBox(height: 2),
-                  const Text(
-                    'Ver eventos de stream, busca, plugins e erros ao vivo',
+                  Text(
+                    context.tr('profile.logs_description'),
                     style: TextStyle(
                       fontSize: 11,
                       color: AppColors.textTertiary,

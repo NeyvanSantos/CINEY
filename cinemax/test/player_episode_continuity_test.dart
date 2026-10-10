@@ -6,6 +6,7 @@ import 'package:cinemax/plugin_engine/manager/plugin_manager.dart';
 import 'package:cinemax/plugin_engine/models/content_item.dart';
 import 'package:cinemax/plugin_engine/models/stream_source.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -166,6 +167,13 @@ void main() {
       ProviderScope(
         overrides: [pluginManagerProvider.overrideWith((ref) => catalog)],
         child: MaterialApp(
+          locale: const Locale('pt', 'BR'),
+          supportedLocales: const [
+            Locale('pt', 'BR'),
+            Locale('en', 'US'),
+            Locale('es', 'ES'),
+          ],
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
           home: PlayerScreen(
             contentId: movie ? 'test-film' : 'test-series',
             pluginId: 'test',

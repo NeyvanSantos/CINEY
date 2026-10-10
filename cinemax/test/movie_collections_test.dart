@@ -159,6 +159,47 @@ void main() {
     },
   );
 
+  test('usa fallback quando todas as coleções TMDB falham', () async {
+    final client = Dio(BaseOptions(baseUrl: 'https://tmdb.test/3'));
+    client.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          if (options.path == '/movie/popular') {
+            handler.resolve(
+              Response<Map<String, dynamic>>(
+                requestOptions: options,
+                statusCode: 200,
+                data: {
+                  'results': [
+                    {
+                      'id': 10,
+                      'title': 'Filme fallback',
+                      'poster_path': '/fallback.jpg',
+                      'backdrop_path': '/fallback_backdrop.jpg',
+                    },
+                  ],
+                },
+              ),
+            );
+            return;
+          }
+
+          handler.reject(DioException(requestOptions: options));
+        },
+      ),
+    );
+
+    final collections = await TmdbService.getAvailableCollections(
+      pluginId: 'com.megaflix',
+      limit: 1,
+      client: client,
+    );
+
+    expect(collections, isNotEmpty);
+    expect(collections.first.name, 'Populares');
+    expect(collections.first.movies.first.title, 'Filme fallback');
+  });
+
   testWidgets('abre a ficha do filme selecionado na coleção', (tester) async {
     final movie = ContentItem(
       id: 'tmdb_1_movie',

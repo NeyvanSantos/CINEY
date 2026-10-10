@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/config/theme/app_colors.dart';
 import '../../../core/config/theme/app_typography.dart';
+import '../../../core/localization/app_localization.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../services/account_messages.dart';
 import '../services/account_repository.dart';
@@ -182,7 +183,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           } else {
             _changeStep(
               _Step.confirm,
-              notice: 'Confira seu e-mail e digite o código de confirmação.',
+              notice: context.tr('auth.notice_confirm'),
             );
           }
         case _Step.confirm:
@@ -193,8 +194,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           if (mounted) {
             _changeStep(
               _Step.recoveryCode,
-              notice:
-                  'Se houver uma conta com esse e-mail, você receberá um código.',
+              notice: context.tr('auth.notice_recovery'),
             );
           }
         case _Step.recoveryCode:
@@ -203,9 +203,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         case _Step.newPassword:
           await repository.updatePassword(_password.text);
           if (mounted) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(const SnackBar(content: Text('Senha atualizada.')));
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(context.tr('auth.password_updated'))),
+            );
             await _finish();
           }
       }
@@ -215,8 +215,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         if (error is AuthException && error.code == 'email_not_confirmed') {
           _changeStep(
             _Step.confirm,
-            notice:
-                'Confirme seu e-mail. Se precisar, solicite um novo código.',
+            notice: context.tr('auth.notice_email_confirm'),
           );
         } else {
           setState(() => _error = message);
@@ -242,10 +241,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         await repository.requestPasswordReset(_email.text);
       }
       if (mounted) {
-        setState(
-          () => _notice =
-              'Se o e-mail estiver correto e elegível, um novo código será enviado.',
-        );
+        setState(() => _notice = context.tr('auth.notice_resend'));
       }
     } catch (error) {
       final message = accountErrorMessage(error);
@@ -261,13 +257,14 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     final isTvChoice = widget.isTv && _showTvChoice;
 
     final title = isTvChoice
-        ? 'Entrar no CiNey'
+        ? context.tr('auth.title_login')
         : switch (_step) {
-            _Step.login => 'Entrar no CiNey',
-            _Step.signup => 'Criar sua conta',
-            _Step.confirm => 'Confirmar e-mail',
-            _Step.forgot || _Step.recoveryCode => 'Recuperar senha',
-            _Step.newPassword => 'Escolher nova senha',
+            _Step.login => context.tr('auth.title_login'),
+            _Step.signup => context.tr('auth.title_signup'),
+            _Step.confirm => context.tr('auth.title_confirm'),
+            _Step.forgot ||
+            _Step.recoveryCode => context.tr('auth.title_recover'),
+            _Step.newPassword => context.tr('auth.title_new_password'),
           };
     final codeStep = _step == _Step.confirm || _step == _Step.recoveryCode;
     final newPassword = _step == _Step.signup || _step == _Step.newPassword;
@@ -286,7 +283,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           leading: widget.isTv && !isTvChoice
               ? IconButton(
                   focusNode: _backToChoiceFocus,
-                  tooltip: 'Voltar para opções',
+                  tooltip: context.tr('auth.back_options'),
                   icon: const Icon(Icons.arrow_back),
                   onPressed: _busy ? null : _backToTvChoice,
                 )
@@ -298,9 +295,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
               child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: isTvChoice ? 740 : 480,
-                ),
+                constraints: BoxConstraints(maxWidth: isTvChoice ? 740 : 480),
                 child: GlassCard(
                   child: !configured
                       ? Column(
@@ -313,19 +308,19 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                             ),
                             const SizedBox(height: 16),
                             Text(
-                              'Contas ainda indisponíveis',
+                              context.tr('auth.unavailable'),
                               style: AppTypography.headlineMedium,
                             ),
                             const SizedBox(height: 12),
-                            const Text(
-                              'Você precisa entrar na sua conta para usar o CiNey. Reabra o app para tentar novamente.',
+                            Text(
+                              context.tr('auth.unavailable_description'),
                               textAlign: TextAlign.center,
                             ),
                           ],
                         )
                       : isTvChoice
-                          ? _buildTvChoiceView(context)
-                          : _buildFormView(context, codeStep, newPassword),
+                      ? _buildTvChoiceView(context)
+                      : _buildFormView(context, codeStep, newPassword),
                 ).animate().fadeIn(duration: 180.ms),
               ),
             ),
@@ -348,13 +343,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
         ),
         const SizedBox(height: 16),
         Text(
-          'Bem-vindo ao CiNey na TV',
+          context.tr('auth.tv_welcome'),
           style: AppTypography.headlineMedium,
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 8),
         Text(
-          'Escolha como deseja se conectar para acessar seus filmes e séries:',
+          context.tr('auth.tv_choose'),
           style: AppTypography.bodyMedium.copyWith(
             color: AppColors.textSecondary,
           ),
@@ -367,12 +362,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             final cardQr = TvChoiceCard(
               focusNode: _qrChoiceFocus,
               autofocus: true,
-              badge: 'RECOMENDADO',
+              badge: context.tr('auth.recommended'),
               icon: Icons.qr_code_2_rounded,
-              title: 'Entrar via QR Code',
-              subtitle:
-                  'Abra o CiNey no celular (Perfil > Conectar TV) e escaneie a tela para entrar instantaneamente sem digitar.',
-              buttonLabel: 'Conectar com Android',
+              title: context.tr('auth.qr_title'),
+              subtitle: context.tr('auth.qr_description'),
+              buttonLabel: context.tr('auth.connect_android'),
               onTap: () => context.push('/tv-pair'),
               onKey: (event) {
                 if (event is KeyDownEvent) {
@@ -389,10 +383,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             final cardManual = TvChoiceCard(
               focusNode: _manualChoiceFocus,
               icon: Icons.keyboard_alt_outlined,
-              title: 'Entrar manualmente',
-              subtitle:
-                  'Digite seu e-mail e senha diretamente na TV usando as teclas do controle remoto.',
-              buttonLabel: 'Digitar dados de acesso',
+              title: context.tr('auth.manual_title'),
+              subtitle: context.tr('auth.manual_description'),
+              buttonLabel: context.tr('auth.enter_credentials'),
               onTap: _openManualEntry,
               onKey: (event) {
                 if (event is KeyDownEvent) {
@@ -418,11 +411,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             }
 
             return Column(
-              children: [
-                cardQr,
-                const SizedBox(height: 18),
-                cardManual,
-              ],
+              children: [cardQr, const SizedBox(height: 18), cardManual],
             );
           },
         ),
@@ -456,7 +445,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 child: OutlinedButton.icon(
                   onPressed: _busy ? null : _backToTvChoice,
                   icon: const Icon(Icons.arrow_back),
-                  label: const Text('Voltar para opções (QR Code)'),
+                  label: Text(context.tr('auth.back_qr')),
                 ),
               ),
               const SizedBox(height: 16),
@@ -470,8 +459,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             ],
             Text(
               widget.requireAccount
-                  ? 'Crie sua conta ou entre para usar o CiNey.'
-                  : 'Seus favoritos no celular e na TV.',
+                  ? context.tr('auth.intro_account')
+                  : context.tr('auth.intro_favorites'),
               style: AppTypography.bodyMedium,
               textAlign: TextAlign.center,
             ),
@@ -486,7 +475,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   controller: _name,
                   focusNode: _nameFocus,
                   enabled: !_busy,
-                  decoration: const InputDecoration(labelText: 'Nome'),
+                  decoration: InputDecoration(
+                    labelText: context.tr('auth.name'),
+                  ),
                   textInputAction: TextInputAction.next,
                   maxLength: 60,
                   autofillHints: const [AutofillHints.name],
@@ -520,7 +511,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   controller: _email,
                   focusNode: _emailFocus,
                   enabled: !_busy && !codeStep,
-                  decoration: const InputDecoration(labelText: 'E-mail'),
+                  decoration: InputDecoration(
+                    labelText: context.tr('auth.email'),
+                  ),
                   keyboardType: TextInputType.emailAddress,
                   autocorrect: false,
                   textInputAction: TextInputAction.next,
@@ -563,16 +556,17 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   enableSuggestions: false,
                   autocorrect: false,
                   decoration: InputDecoration(
-                    labelText: newPassword ? 'Nova senha' : 'Senha',
+                    labelText: context.tr(
+                      newPassword ? 'auth.new_password' : 'auth.password',
+                    ),
                     suffixIcon: IconButton(
                       tooltip: _hidePassword
-                          ? 'Mostrar senha'
-                          : 'Ocultar senha',
+                          ? context.tr('auth.show_password')
+                          : context.tr('auth.hide_password'),
                       onPressed: _busy
                           ? null
-                          : () => setState(
-                                () => _hidePassword = !_hidePassword,
-                              ),
+                          : () =>
+                                setState(() => _hidePassword = !_hidePassword),
                       icon: Icon(
                         _hidePassword
                             ? Icons.visibility_outlined
@@ -594,8 +588,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   validator: newPassword
                       ? validateNewPassword
                       : (value) => value == null || value.isEmpty
-                          ? 'Informe sua senha.'
-                          : null,
+                            ? context.tr('auth.password_required')
+                            : null,
                 ),
               ),
               const SizedBox(height: 16),
@@ -613,14 +607,14 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   obscureText: _hidePassword,
                   enableSuggestions: false,
                   autocorrect: false,
-                  decoration: const InputDecoration(
-                    labelText: 'Confirmar senha',
+                  decoration: InputDecoration(
+                    labelText: context.tr('auth.confirm_password'),
                   ),
                   textInputAction: TextInputAction.done,
                   onFieldSubmitted: (_) => _submit(),
                   validator: (value) => value == _password.text
                       ? null
-                      : 'As senhas precisam ser iguais.',
+                      : context.tr('auth.passwords_mismatch'),
                 ),
               ),
               const SizedBox(height: 16),
@@ -635,21 +629,17 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   controller: _code,
                   focusNode: _codeFocus,
                   enabled: !_busy,
-                  decoration: const InputDecoration(
-                    labelText: 'Código recebido por e-mail',
+                  decoration: InputDecoration(
+                    labelText: context.tr('auth.email_code'),
                   ),
                   keyboardType: TextInputType.number,
                   textInputAction: TextInputAction.done,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                  ],
-                  autofillHints: const [
-                    AutofillHints.oneTimeCode,
-                  ],
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  autofillHints: const [AutofillHints.oneTimeCode],
                   validator: (value) =>
                       RegExp(r'^\d{6,10}$').hasMatch(value ?? '')
-                          ? null
-                          : 'Digite o código recebido.',
+                      ? null
+                      : context.tr('auth.enter_code'),
                   onFieldSubmitted: (_) => _submit(),
                 ),
               ),
@@ -658,10 +648,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             if (_notice != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 16),
-                child: Text(
-                  _notice!,
-                  style: AppTypography.bodySmall,
-                ),
+                child: Text(_notice!, style: AppTypography.bodySmall),
               ),
             if (_error != null)
               Padding(
@@ -704,17 +691,15 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     ? const SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                        ),
+                        child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : Text(switch (_step) {
-                        _Step.login => 'Entrar',
-                        _Step.signup => 'Criar conta',
-                        _Step.confirm || _Step.recoveryCode =>
-                          'Confirmar código',
-                        _Step.forgot => 'Enviar código',
-                        _Step.newPassword => 'Salvar nova senha',
+                        _Step.login => context.tr('auth.login'),
+                        _Step.signup => context.tr('auth.create_account'),
+                        _Step.confirm ||
+                        _Step.recoveryCode => context.tr('auth.confirm_code'),
+                        _Step.forgot => context.tr('auth.send_code'),
+                        _Step.newPassword => context.tr('auth.save_password'),
                       }),
               ),
             ),
@@ -727,7 +712,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 child: TextButton(
                   focusNode: isTv ? null : _forgotFocus,
                   onPressed: _busy ? null : () => _changeStep(_Step.forgot),
-                  child: const Text('Esqueci minha senha'),
+                  child: Text(context.tr('auth.forgot_password')),
                 ),
               ),
               _wrapButton(
@@ -738,7 +723,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 child: OutlinedButton(
                   focusNode: isTv ? null : _toggleFocus,
                   onPressed: _busy ? null : () => _changeStep(_Step.signup),
-                  child: const Text('Criar conta'),
+                  child: Text(context.tr('auth.create_account')),
                 ),
               ),
             ],
@@ -751,7 +736,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 child: TextButton(
                   focusNode: isTv ? null : _toggleFocus,
                   onPressed: _busy ? null : _resend,
-                  child: const Text('Reenviar código'),
+                  child: Text(context.tr('auth.resend_code')),
                 ),
               ),
             if (_step != _Step.login)
@@ -765,13 +750,12 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   onPressed: _busy ? null : () => _changeStep(_Step.login),
                   child: Text(
                     _step == _Step.signup
-                        ? 'Já tenho uma conta'
-                        : 'Voltar para entrar',
+                        ? context.tr('auth.have_account')
+                        : context.tr('auth.back_login'),
                   ),
                 ),
               ),
-            if (isTv &&
-                (_step == _Step.login || _step == _Step.signup))
+            if (isTv && (_step == _Step.login || _step == _Step.signup))
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: TvFocusableButton(
@@ -779,7 +763,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   child: OutlinedButton.icon(
                     onPressed: _busy ? null : () => context.push('/tv-pair'),
                     icon: const Icon(Icons.qr_code_2),
-                    label: const Text('Conectar com Android'),
+                    label: Text(context.tr('auth.connect_android')),
                   ),
                 ),
               ),

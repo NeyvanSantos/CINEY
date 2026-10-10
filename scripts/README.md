@@ -15,6 +15,30 @@ Cria um PostgreSQL isolado, valida a migração e as regras de acesso entre cont
 e remove o contêiner de teste. Não acessa o Supabase remoto nem publica APKs.
 Veja o [guia de contas e favoritos](../docs/contas-supabase.md).
 
+## Publicação Mobile em um Clique
+
+Com o repositório em uma branch de trabalho, sem alterações pendentes e com
+`gh auth login` configurado, dê duplo clique em `scripts/publicar-mobile.bat`.
+
+O launcher executa `publish_release.ps1`, valida `flutter analyze` e os testes
+focados do player, incrementa versão/build, cria commit e tag na branch atual,
+dispara o workflow assinado no GitHub Actions, aguarda o resultado e baixa o
+APK para `releases/mobile/`. O SHA-256 do download é comparado ao asset remoto
+antes de substituir o APK local anterior.
+
+O script não envia commits para `main`, não sobrescreve tags e se recusa a
+publicar com uma árvore suja. Se o workflow falhar depois de a tag ser enviada,
+execute novamente na mesma árvore limpa para tentar concluir essa versão.
+
+Para validar ferramentas e autenticação sem publicar:
+
+```powershell
+.\scripts\publish_release.ps1 -PreflightOnly
+```
+
+Para informar manualmente a versão ou as notas, passe `-Version` e `-Notes` ao
+script PowerShell.
+
 ## Publicação pelo GitHub Actions
 
 ```powershell

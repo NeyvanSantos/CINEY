@@ -1,18 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/config/account_config.dart';
 import 'features/auth/services/account_repository.dart';
 import 'features/auth/services/secure_session_storage.dart';
 import 'core/config/app_environment.dart';
 import 'core/config/theme/app_theme.dart';
+import 'core/localization/app_localization.dart';
 import 'core/routes/app_router.dart';
 import 'core/services/app_logger.dart';
+import 'plugin_engine/runtime/tmdb_service.dart';
 
 Future<void> runCinemaxApp({bool isTv = false}) async {
   WidgetsFlutterBinding.ensureInitialized();
   AppEnvironment.isTv = isTv;
+  final prefs = await SharedPreferences.getInstance();
+  final savedLanguage = prefs.getString('app_language') ?? 'pt-BR';
+  TmdbService.setPreferredLanguage(savedLanguage);
   final previousFlutterError = FlutterError.onError;
   FlutterError.onError = (details) {
     AppLogger.error(
@@ -64,7 +71,12 @@ Future<void> runCinemaxApp({bool isTv = false}) async {
   }
   runApp(
     ProviderScope(
-      overrides: [supabaseClientProvider.overrideWithValue(accountClient)],
+      overrides: [
+        supabaseClientProvider.overrideWithValue(accountClient),
+        appLocaleProvider.overrideWith(
+          (ref) => localeFromLanguageCode(savedLanguage),
+        ),
+      ],
       child: CinemaxApp(isTv: isTv),
     ),
   );
@@ -81,6 +93,13 @@ class CinemaxApp extends ConsumerWidget {
       title: 'CiNey',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
+      locale: ref.watch(appLocaleProvider),
+      supportedLocales: const [
+        Locale('pt', 'BR'),
+        Locale('en', 'US'),
+        Locale('es', 'ES'),
+      ],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
       routerConfig: ref.watch(appRouterProvider(isTv)),
     );
   }
