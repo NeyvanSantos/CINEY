@@ -4,6 +4,8 @@
 
 <h1 align="center">CiNey</h1>
 
+[![Licença: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 <p align="center">Descubra seu próximo filme ou série com busca simples, catálogo organizado e uma experiência feita para celular e TV.</p>
 
 <p align="center">
@@ -104,4 +106,20 @@ Veja o [mapa detalhado do código-fonte](docs/estrutura.md) e as [notas de otimi
 Consulte as [releases oficiais do CiNey](https://github.com/NeyvanSantos/CINEY/releases). Os canais mobile e TV são separados; as releases TV usam tags `tv-vX.Y.Z` e são publicadas como pré-lançamentos.
 
 Os APKs locais ficam em `releases/mobile/` e `releases/tv/`, com **somente o último lançamento publicado de cada variante**. Os binários são ignorados pelo Git; o histórico completo permanece nas releases do GitHub. Consulte a [política de armazenamento local](releases/README.md).
+
+## Aviso legal
+
+O CiNey não hospeda nem distribui vídeos. A disponibilidade e a legalidade do conteúdo externo são responsabilidade dos provedores e do usuário, que deve respeitar os direitos autorais e as leis do seu país.
+
+## Contribuindo
+
+Consulte [CONTRIBUTING.md](CONTRIBUTING.md) para instruções de execução, testes e convenções do projeto.
+
+## Segurança
+
+Para reportar uma vulnerabilidade, use o processo privado descrito em [SECURITY.md](SECURITY.md), sem abrir uma issue pública.
+
+## Licença
+
+O CiNey é distribuído sob a licença [MIT](LICENSE).
 
