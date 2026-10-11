@@ -1,4 +1,7 @@
 # Root gitignore
+/.agent/
+/opencode.json
+/.github/agents/
 .dart_tool/
 .idea/
 *.iml

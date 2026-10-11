@@ -34,7 +34,6 @@ serviços, componentes e testes compartilhados devem ficar em `cinemax/`.
 │   ├── mobile/                 # Último APK mobile publicado, ignorado pelo Git
 │   └── tv/                     # Último APK TV publicado, ignorado pelo Git
 ├── .github/workflows/           # Automação do GitHub
-└── .agent/                     # Ferramentas e instruções de desenvolvimento
 ```
 
 ## Organização da base Flutter
