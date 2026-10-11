@@ -66,9 +66,8 @@ serviços usados por vários módulos pertencem a `core/`.
 - [Configuração de contas e favoritos no Supabase](contas-supabase.md)
 - [Organização dos APKs locais](../releases/README.md)
 
-Os scripts de publicação estão em [`scripts/`](../scripts/). A imagem de apoio
-à documentação fica em [`docs/images/captura-readme.png`](images/captura-readme.png).
-Os assets carregados pelo app continuam em `cinemax/assets/`.
+Os scripts de publicação estão em [`scripts/`](../scripts/). Os assets carregados
+pelo app continuam em `cinemax/assets/`.
 
 As pastas `build/`, `.dart_tool/` e os caches do Gradle são gerados pelas
 ferramentas. As saídas de compilação não fazem parte do código-fonte nem devem
