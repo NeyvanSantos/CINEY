@@ -4,7 +4,7 @@ Branch: `feat/tv-player-engine`. Escopo: Android TV através do `cinemax` compar
 
 ## Investigação e diagnóstico
 
-Foram examinados `cinemax/lib/features/player`, o resolver de plugins, o host `cinemax_tv`, o plugin local `embed_media_observer`, `receiver/` e o plano `tv-native-playback.md`. O receiver é destinado a Cast e não é necessário para a reprodução no app instalado na TV.
+Foram examinados `cinemax/lib/features/player`, o resolver de plugins, o host `cinemax_tv`, o plugin local `embed_media_observer`, `receiver/` e o [plano histórico de reprodução nativa](historico/reproducao-nativa-tv-plano-substituido.md). O receiver é destinado a Cast e não é necessário para a reprodução no app instalado na TV.
 
 A TV anterior abria a URL do provedor como documento principal em uma WebView escondida, tentando obter mídia em 8 segundos. Isso não equivale à integração por iframe documentada. O fallback ligava o carregamento ao sinal `session.ready`; quando o iframe era opaco e não emitia telemetria, a cobertura preta podia continuar sobre a página. São problemas identificados no código; a causa específica na TCL ainda depende de logs e teste do aparelho.
 
@@ -60,7 +60,7 @@ O adaptador `TvEmbedHost` concentra a configuração Android. O contrato HTTP e 
 | Android | `cinemax/packages/embed_media_observer/android/src/main/java/com/ciney/embedmedia/TvWebViewHandler.java`: foco, teclas e liberação. `EmbedMediaObserverPlugin.java` registra o canal adicional. |
 | Serviço | `player_engine/src/{registry,app,server}.ts`, `config/`, `package.json`, lockfile e `tsconfig.json`. |
 | Testes | `cinemax/test/tv_engine_test.dart`, `tv_embed_player_test.dart`; `player_engine/test/`, `integration/`. Interface WebView adicionada apenas às dependências de teste de `cinemax`. |
-| Documentação | Este arquivo, `player_engine/README.md` e aviso no plano antigo `tv-native-playback.md`. |
+| Documentação | Este arquivo, `player_engine/README.md` e aviso no [plano antigo de reprodução nativa](historico/reproducao-nativa-tv-plano-substituido.md). |
 
 Arquivos protegidos de Cast e `MainActivity` não foram alterados.
 

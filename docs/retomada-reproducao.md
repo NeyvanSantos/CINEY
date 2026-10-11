@@ -101,7 +101,7 @@ e a retomada pela tela de detalhes foram confirmados no emulador com build debug
 contendo esta alteração. O episódio T1E1 de A Coroa Perfeita carregou sem opções
 de vídeo; reprodução da série, créditos e avanço de episódios continuam sem
 validação remota. Consulte o
-[relatório do início automático](teste-inicio-automatico-android-2026-10-08.md).
+[relatório do início automático](historico/teste-inicio-automatico-android-2026-10-08.md).
 
 Validação do início automático em 08/10/2026: passaram 46 testes Flutter
 (`details_auto_play`, `embed_document`, `stream_resolver`,

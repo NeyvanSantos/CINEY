@@ -1,7 +1,7 @@
 # Plano de Execução: Reprodução Nativa Direta e Clean na Android TV (ExoPlayer)
 
 > **Plano histórico, substituído em 09/10/2026:** a implementação atual está em
-> [CINEY Player Engine TV](docs/tv-player-engine.md). Ela usa iframe documentado
+> [CINEY Player Engine TV](../tv-player-engine.md). Ela usa iframe documentado
 > para embeds e player nativo somente para mídia direta declarada. Os números de
 > memória e as afirmações de causa raiz abaixo não foram medidos/confirmados na
 > TCL nesta implementação; a extração em segundo plano não é o caminho TV atual.

@@ -26,10 +26,22 @@ serviços, componentes e testes compartilhados devem ficar em `cinemax/`.
 ├── scripts/                    # Publicação mobile
 ├── supabase/                   # Migrações, modelos de e-mail e testes das contas
 ├── docs/
+│   ├── README.md               # Índice desta documentação
 │   ├── estrutura.md            # Este mapa
+│   ├── contas-supabase.md
+│   ├── cast-nativo-standalone.md
 │   ├── colecoes-de-filmes.md
+│   ├── continuidade-episodios.md
 │   ├── performance-optimization.md
-│   └── images/                 # Imagens da documentação
+│   ├── retomada-reproducao.md
+│   ├── tv-player-engine.md
+│   ├── historico/              # Publicações, testes e planos substituídos
+│   │   ├── publicacao-*.md
+│   │   ├── testes-android-2026-10-08.md
+│   │   ├── teste-inicio-automatico-android-2026-10-08.md
+│   │   ├── reproducao-nativa-tv-plano-substituido.md
+│   │   └── images/testes-android-2026-10-08/
+│   └── screenshots/            # Capturas reais do aplicativo, quando adicionadas
 ├── releases/
 │   ├── mobile/                 # Último APK mobile publicado, ignorado pelo Git
 │   └── tv/                     # Último APK TV publicado, ignorado pelo Git
@@ -54,6 +66,7 @@ serviços usados por vários módulos pertencem a `core/`.
 
 ## Documentação e ferramentas
 
+- [Índice da documentação](README.md)
 - [Visão geral e comandos de execução](../README.md)
 - [Host Android TV](../cinemax_tv/README.md)
 - [Regras de desenvolvimento](../cinemax/regras/README.md)
@@ -62,6 +75,9 @@ serviços usados por vários módulos pertencem a `core/`.
 - [Coleções de filmes](colecoes-de-filmes.md)
 - [Continuidade dos episódios](continuidade-episodios.md)
 - [Retomada do filme no ponto de parada](retomada-reproducao.md)
+- [Motor do player Android TV](tv-player-engine.md)
+- [Transmissão nativa autônoma](cast-nativo-standalone.md)
+- [Histórico de publicações, testes e planos substituídos](historico/)
 - [Configuração do receptor Google Cast](../receiver/README.md)
 - [Configuração de contas e favoritos no Supabase](contas-supabase.md)
 - [Organização dos APKs locais](../releases/README.md)
