@@ -471,7 +471,7 @@ void main() {
     );
     serverButton.onPressed!();
     await tester.pumpAndSettle();
-    expect(find.text('Servidores de Transmissão'), findsOneWidget);
+    expect(find.text('Servidores de Reprodução'), findsOneWidget);
     await tester.tap(find.text('EmbedMovies').last);
     for (var n = 0; n < 8; n++) {
       await tester.pump(const Duration(milliseconds: 300));

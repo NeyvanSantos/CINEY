@@ -47,10 +47,6 @@ O atualizador consulta as releases do repositório oficial e compara o SHA-256 q
 
 O console guarda até 500 registros em memória durante a sessão; eles são apagados quando o processo do aplicativo é encerrado. Registros de erro podem incluir detalhes técnicos e pilhas de execução. Revise essas informações antes de compartilhá-las.
 
-## Transmissão
-
-A opção **Transmitir** utiliza o fluxo de espelhamento de tela pelo Google Home para reproduções incorporadas. O endereço HTML de um provedor não é enviado ao receptor como se fosse um arquivo de vídeo. É necessário que celular e TV estejam na mesma rede Wi-Fi; consulte as [instruções do Google Cast](https://support.google.com/googlecast/answer/6059461?hl=pt-BR).
-
 ## Executar localmente
 
 ### Contas e favoritos

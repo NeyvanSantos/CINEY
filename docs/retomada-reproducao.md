@@ -85,8 +85,8 @@ Quando há uma duração salva, clipes com menos da metade dessa duração tamb�
 ignorados para proteger o progresso do filme durante anúncios mais longos.
 Players opacos, WebViews sem observação de frames ou fornecedores que não permitam
 buscar o vídeo podem impedir a retomada automática. A precisão efetiva também
-depende da posição que o player consegue informar e alcançar. A implementação
-não altera as pontes protegidas de Cast nem sincroniza histórico entre aparelhos.
+depende da posição que o player consegue informar e alcançar. O histórico é
+local ao dispositivo e não é sincronizado entre aparelhos.
 
 ## Verificação
 

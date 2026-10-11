@@ -1,0 +1,110 @@
+name: CiNey TV - Publicar Release & APK
+
+on:
+  push:
+    tags:
+      - 'tv-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Compilar APK TV e publicar pré-release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configurar cache Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Configurar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Instalar dependências Flutter
+        working-directory: cinemax_tv
+        run: flutter pub get
+
+      - name: Configurar assinatura do APK
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+        run: |
+          python3 - <<'PY'
+          import base64
+          import json
+          import os
+          from pathlib import Path
+
+          required = (
+              "ANDROID_KEYSTORE_BASE64",
+              "ANDROID_KEY_ALIAS",
+              "ANDROID_KEY_PASSWORD",
+              "ANDROID_STORE_PASSWORD",
+          )
+          missing = [name for name in required if not os.environ.get(name)]
+          if missing:
+              raise SystemExit("Secrets de assinatura ausentes: " + ", ".join(missing))
+
+          keystore = Path(os.environ["RUNNER_TEMP"]) / "ciney-tv-release-key.jks"
+          keystore.write_bytes(
+              base64.b64decode(os.environ["ANDROID_KEYSTORE_BASE64"], validate=True)
+          )
+          keystore.chmod(0o600)
+          properties = {
+              "storeFile": str(keystore),
+              "keyAlias": os.environ["ANDROID_KEY_ALIAS"],
+              "keyPassword": os.environ["ANDROID_KEY_PASSWORD"],
+              "storePassword": os.environ["ANDROID_STORE_PASSWORD"],
+          }
+
+          def escape(value):
+              return json.dumps(value, ensure_ascii=True)[1:-1].replace(" ", "\\ ")
+
+          config = Path("cinemax_tv/android/key.properties")
+          config.write_text(
+              "".join(f"{name}={escape(value)}\n" for name, value in properties.items()),
+              encoding="ascii",
+          )
+          config.chmod(0o600)
+          PY
+
+      - name: Compilar APK Android TV
+        working-directory: cinemax_tv
+        run: flutter build apk --release --no-pub
+
+      - name: Preparar nome e notas
+        id: vars
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#tv-v}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "asset=CiNey-v${VERSION}-TV.apk" >> "$GITHUB_OUTPUT"
+          cp cinemax_tv/build/app/outputs/flutter-apk/app-release.apk "CiNey-v${VERSION}-TV.apk"
+
+      - name: Publicar pré-release Android TV
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: CiNey TV v${{ steps.vars.outputs.version }}
+          body: Atualização do aplicativo CiNey para Android TV.
+          draft: false
+          prerelease: true
+          files: ${{ steps.vars.outputs.asset }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

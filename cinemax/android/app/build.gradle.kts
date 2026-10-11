@@ -37,11 +37,6 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        resValue(
-            "string",
-            "cast_receiver_application_id",
-            providers.gradleProperty("cinemaxCastReceiverAppId").orElse("CC1AD845").get()
-        )
     }
 
     signingConfigs {
@@ -64,9 +59,4 @@ android {
 
 flutter {
     source = "../.."
-}
-
-dependencies {
-    implementation("androidx.appcompat:appcompat:1.7.1")
-    implementation("com.google.android.gms:play-services-cast-framework:22.3.1")
 }

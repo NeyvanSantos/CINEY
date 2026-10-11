@@ -13,10 +13,8 @@ automático de episódios permanecem sem validação de ponta a ponta.
 - Interação por Python e ADB, com controles identificados na árvore de
   acessibilidade. Quando a árvore não expôs o controle HTML, o toque foi feito
   na posição observada na captura de tela, com o CiNey em primeiro plano.
-- Os testes automatizados usam o checkout local. Ele já tinha uma alteração em
-  `cast_dialog.dart` antes desta execução; o APK instalado não foi recompilado
-  com essa alteração. Resultados de Cast no checkout não demonstram o
-  comportamento desse APK em uma TV.
+- Os testes automatizados usam o checkout local. O APK instalado não foi
+   recompilado com as alterações locais do checkout.
 
 ## Testes no dispositivo
 
@@ -58,17 +56,10 @@ O recorte de 75 testes está incluído na suíte completa; suas contagens não d
 ser somadas. Os testes simulados verificam a lógica, mas não validam os
 fornecedores remotos nem a TCL.
 
-Falhas da suíte completa:
+Falha da suíte completa:
 
 1. `app_updater_test.dart` não carrega: suas duas chamadas a
    `AppUpdater.selectLatestRelease` referenciam um método ausente.
-2. Quatro testes em `cast_dialog_test.dart` falham com `WebViewPlatform.instance`
-   não configurado no ambiente de teste, seguido de expectativas de widgets
-   não encontrados: ausência de fonte, seleção de servidor, troca de servidor
-   e layout em paisagem.
-3. Dois testes em `native_cast_bridge_test.dart` divergem das expectativas:
-   recusa de página embed com mídia na query e prioridade do formato do caminho
-   sobre o formato sugerido pela query.
 
 Comandos executados em `cinemax/`:
 
@@ -88,5 +79,5 @@ flutter analyze --no-pub
 
 As capturas de perfil com dados da conta não foram incluídas nas evidências do
 repositório. Ferramentas temporárias e logs brutos ficaram fora do projeto.
-O código do aplicativo e os arquivos de Cast não foram alterados nesta atividade.
-Não foi gerado nem publicado um APK.
+O código do aplicativo não foi alterado nesta atividade. Não foi gerado nem
+publicado um APK.

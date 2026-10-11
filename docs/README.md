@@ -1,7 +1,6 @@
 # Documentação
 
 - [Contas e favoritos no Supabase](contas-supabase.md) — configuração do serviço de contas.
-- [Transmissão nativa autônoma](cast-nativo-standalone.md) — nota técnica do sistema Cast.
 - [Coleções de filmes](colecoes-de-filmes.md) — escopo e organização das coleções.
 - [Continuidade dos episódios](continuidade-episodios.md) — comportamento de episódios e progresso.
 - [Estrutura do projeto](estrutura.md) — mapa do código-fonte e dos documentos.

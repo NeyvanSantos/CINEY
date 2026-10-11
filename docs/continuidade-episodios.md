@@ -45,7 +45,6 @@ WebViews sem suporte a `DOCUMENT_START_SCRIPT` mantêm a observação pela ponte
 do documento pai. Se ela não conseguir observar a posição
 e duração, o botão fica oculto e é necessário escolher o próximo episódio na tela
 de detalhes. Em TV, o cursor consegue acionar o botão quando ele aparece.
-Durante uma transmissão Cast, o avanço fica desativado.
 
 ## Validação
 

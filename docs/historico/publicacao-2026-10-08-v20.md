@@ -5,7 +5,6 @@ As tags `v1.0.20` e `tv-v1.0.23` apontam para o commit
 `84181e88d9ab2f267b6f8063070740ad8e0c99c6`.
 Os builds foram feitos em um worktree limpo com caminho sem acentos,
 Flutter 3.41.6 e Java 17, usando `flutter build apk --release`.
-As alterações locais pendentes de Cast não fazem parte desse commit.
 
 | Variante | Versão / build | Pacote | Tamanho em bytes |
 | --- | --- | --- | --- |

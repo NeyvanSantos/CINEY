@@ -1,10 +1,10 @@
 # CINEY Player Engine — primeira implementação TV
 
-Branch: `feat/tv-player-engine`. Escopo: Android TV através do `cinemax` compartilhado, usado por `cinemax_tv` via dependência local. Não há publicação nem merge em `main`. O player do celular, Cast/DLNA, autenticação, favoritos e catálogo mantêm seus fluxos existentes.
+Branch: `feat/tv-player-engine`. Escopo: Android TV através do `cinemax` compartilhado, usado por `cinemax_tv` via dependência local. Não há publicação nem merge em `main`. O player do celular, autenticação, favoritos e catálogo mantêm seus fluxos existentes.
 
 ## Investigação e diagnóstico
 
-Foram examinados `cinemax/lib/features/player`, o resolver de plugins, o host `cinemax_tv`, o plugin local `embed_media_observer`, `receiver/` e o [plano histórico de reprodução nativa](historico/reproducao-nativa-tv-plano-substituido.md). O receiver é destinado a Cast e não é necessário para a reprodução no app instalado na TV.
+Foram examinados `cinemax/lib/features/player`, o resolver de plugins, o host `cinemax_tv`, o plugin local `embed_media_observer` e o [plano histórico de reprodução nativa](historico/reproducao-nativa-tv-plano-substituido.md).
 
 A TV anterior abria a URL do provedor como documento principal em uma WebView escondida, tentando obter mídia em 8 segundos. Isso não equivale à integração por iframe documentada. O fallback ligava o carregamento ao sinal `session.ready`; quando o iframe era opaco e não emitia telemetria, a cobertura preta podia continuar sobre a página. São problemas identificados no código; a causa específica na TCL ainda depende de logs e teste do aparelho.
 
@@ -62,7 +62,7 @@ O adaptador `TvEmbedHost` concentra a configuração Android. O contrato HTTP e 
 | Testes | `cinemax/test/tv_engine_test.dart`, `tv_embed_player_test.dart`; `player_engine/test/`, `integration/`. Interface WebView adicionada apenas às dependências de teste de `cinemax`. |
 | Documentação | Este arquivo, `player_engine/README.md` e aviso no [plano antigo de reprodução nativa](historico/reproducao-nativa-tv-plano-substituido.md). |
 
-Arquivos protegidos de Cast e `MainActivity` não foram alterados.
+O host Android TV mantém a ponte nativa de toque virtual usada pelo player embed.
 
 ## Backend no Windows
 
@@ -112,7 +112,7 @@ Resultados desta execução:
 | Android TV | APK release de desenvolvimento compilado; identificação e assinatura registradas abaixo. |
 | Dispositivo físico | `adb devices -l` sem dispositivos; reprodução real, foco Android e decodificação não validados. |
 
-Os testes de widgets usam uma plataforma WebView de teste; validam estado e encaminhamento de eventos, não renderização/decodificação Android. A suíte Flutter completa não foi repetida nesta etapa: na verificação anterior havia seis falhas de Cast fora deste escopo (quatro sem plataforma WebView de teste e duas de classificação/MIME). Os arquivos protegidos envolvidos continuam inalterados.
+Os testes de widgets usam uma plataforma WebView de teste; validam estado e encaminhamento de eventos, não renderização/decodificação Android. A suíte Flutter completa não foi repetida nesta etapa; os resultados direcionados estão registrados acima.
 
 Comando Flutter executado em `cinemax`:
 

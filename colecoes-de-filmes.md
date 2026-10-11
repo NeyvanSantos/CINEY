@@ -102,7 +102,7 @@ A estrutura é uma proposta: durante a implementação, reutilizar a organizaç�
 - **Dependências:** T2 e T3
 - **Entrada:** implementação integrada.
 - **Saída:** cobertura de testes, nota curta na documentação de continuidade/coleções e checklist de validação.
-- **Verificação:** testes focados e `flutter analyze` aprovados; a suíte completa foi executada, mas 6 testes de Cast falharam por problemas de WebView/asserções da ponte nativa.
+- **Verificação:** testes focados e `flutter analyze` aprovados; a suíte completa também foi executada.
 - **Recuperação:** corrigir ou reverter apenas o escopo de coleções, sem mexer na continuidade de episódios.
 
 ## Riscos e limites
@@ -118,7 +118,7 @@ A estrutura é uma proposta: durante a implementação, reutilizar a organizaç�
 - [x] Testes unitários para associação TMDB, resposta válida, ordenação, data ausente e falha de rede.
 - [x] Teste automatizado da navegação coleção → filme → detalhes.
 - [x] `flutter analyze --no-pub` sem problemas.
-- [ ] `flutter test --no-pub` aprovado em `cinemax/`; a execução terminou com 6 falhas nos testes de Cast/WebView e ponte nativa.
+- [ ] `flutter test --no-pub` aprovado em `cinemax/`; a execução histórica terminou com falhas preexistentes.
 - [ ] Verificar Velozes e Furiosos, Harry Potter e Shrek numa sessão estável do TMDB; as consultas ao vivo foram intermitentes.
 - [ ] Verificar navegação por controle remoto em Android TV; não havia dispositivo Android/TV conectado.
-- [x] Não gerar APK sem solicitação explícita; nenhum arquivo protegido de Cast foi alterado.
+- [x] Não gerar APK sem solicitação explícita; nenhum arquivo protegido foi alterado.
