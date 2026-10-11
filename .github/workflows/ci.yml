@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install Flutter dependencies
+        working-directory: cinemax
+        run: flutter pub get
+
+      - name: Analyze Flutter code
+        working-directory: cinemax
+        run: flutter analyze
+
+      - name: Run Flutter tests
+        working-directory: cinemax
+        run: flutter test --no-pub
+
+      - name: Run embed JavaScript tests
+        working-directory: cinemax
+        run: node --test test/embed_bridge_test.cjs test/embed_media_observer_test.cjs test/embed_startup_test.cjs
