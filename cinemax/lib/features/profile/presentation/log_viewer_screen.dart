@@ -619,7 +619,7 @@ class _LogViewerScreenState extends ConsumerState<LogViewerScreen>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Text(
-                      'CINEMAX LOG CONSOLE',
+                      'CiNey LOG CONSOLE',
                       style: TextStyle(
                         fontSize: 9,
                         color: AppColors.textTertiary,

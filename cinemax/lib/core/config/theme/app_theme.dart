@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
 
-/// Tema principal do CineMax
+/// Tema principal do CiNey
 /// Dark theme premium com glassmorphism
 class AppTheme {
   AppTheme._();

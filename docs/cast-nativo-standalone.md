@@ -1,7 +1,7 @@
 # Transmissão Nativa Autônoma (Standalone Cast)
 
 ## Objetivo
-Tornar a transmissão para TV (Chromecast, DLNA e WebCast) 100% autônoma e interna no Cinemax, eliminando qualquer dependência de aplicativos externos (como Web Video Caster), utilizando sniffer de mídia em segundo plano e proxy de stream com base na arquitetura do `crx-webcast-reloaded`.
+Tornar a transmissão para TV (Chromecast, DLNA e WebCast) 100% autônoma e interna no CiNey, eliminando qualquer dependência de aplicativos externos (como Web Video Caster), utilizando sniffer de mídia em segundo plano e proxy de stream com base na arquitetura do `crx-webcast-reloaded`.
 
 ## Tarefas
 - [x] 1. Criar `MediaStreamSniffer`: Interceptador headless em segundo plano para extrair URLs diretas (.m3u8, .mp4) e headers de fontes Embed → Concluído: Implementado com hooks JS (fetch/xhr/DOM) e delegado de navegação.

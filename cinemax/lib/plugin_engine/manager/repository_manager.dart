@@ -43,7 +43,7 @@ class RepositoryManager extends StateNotifier<RepositoryState> {
     fetchRepositoryPlugins(state.activeRepoUrl);
   }
 
-  /// Adiciona o repositório padrão do CineMax
+  /// Adiciona o repositório padrão do CiNey
   void addDefaultRepository() {
     const defaultUrl = 'https://plugins.cinemax-stream.app/repo.json';
     if (!state.repositories.contains(defaultUrl)) {
@@ -86,7 +86,7 @@ class RepositoryManager extends StateNotifier<RepositoryState> {
   Future<void> fetchRepositoryPlugins(String repoUrl) async {
     state = state.copyWith(isLoading: true, error: null);
 
-    // Fallback com os plugins oficiais do CineMax
+    // Fallback com os plugins oficiais do CiNey
     await Future.delayed(const Duration(milliseconds: 600));
 
     final plugins = <PluginManifest>[

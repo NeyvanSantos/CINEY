@@ -51,7 +51,7 @@ class AppUpdater {
       receiveTimeout: const Duration(seconds: 30),
       headers: {
         'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': 'CineMax-Updater',
+        'User-Agent': 'CiNey-Updater',
       },
     ),
   );

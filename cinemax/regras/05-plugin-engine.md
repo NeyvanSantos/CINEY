@@ -4,7 +4,7 @@
 
 ## 1. Princípio do Desacoplamento
 
-O CineMax opera como um agregador de catálogo modular através do `plugin_engine/`.  
+O CiNey opera como um agregador de catálogo modular através do `plugin_engine/`.
 A camada de apresentação (telas de catálogo, busca e player) **NUNCA** deve conter lógica proprietária de scrapers de sites ou parsers de streams. Toda fonte deve implementar os contratos definidos.
 
 ---

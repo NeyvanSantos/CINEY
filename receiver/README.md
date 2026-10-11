@@ -1,4 +1,4 @@
-# CineMax Custom Receiver
+# CiNey Custom Receiver
 
 Este receiver precisa ser hospedado em uma URL HTTPS publica e cadastrado no Google Cast Developer Console.
 

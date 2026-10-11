@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Paleta de cores premium do CineMax
+/// Paleta de cores premium do CiNey
 /// Inspirada no TLN+ com melhorias visuais
 class AppColors {
   AppColors._();

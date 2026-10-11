@@ -1,7 +1,7 @@
 # Otimizacao de performance e estabilidade
 
 ## Objetivo
-Reduzir travamentos, jank, consumo de memória e tempo percebido no CineMax sem alterar contratos de reprodução ou navegação.
+Reduzir travamentos, jank, consumo de memória e tempo percebido no CiNey sem alterar contratos de reprodução ou navegação.
 
 ## Tarefas
 - [x] Medir a linha de base com `flutter analyze`, testes e auditoria mobile -> registrar falhas reais antes de editar.

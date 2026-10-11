@@ -43,7 +43,7 @@ class LogEntry {
   String toString() => '[$formattedTime] [$levelLabel] [$tag] $message';
 }
 
-/// Serviço global de logging em tempo real do Cinemax.
+/// Serviço global de logging em tempo real do CiNey.
 /// Registra eventos de busca, streams, plugins, erros e navegação.
 class AppLogger {
   AppLogger._();

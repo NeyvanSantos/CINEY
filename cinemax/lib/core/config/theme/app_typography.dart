@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Tipografia premium do CineMax
+/// Tipografia premium do CiNey
 /// Fonte: Outfit (Google Fonts) - moderna e elegante
 class AppTypography {
   AppTypography._();

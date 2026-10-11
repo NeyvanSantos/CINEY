@@ -1,10 +1,10 @@
-# 🎨 Regra 02: UI/UX & Design System CineMax
+# 🎨 Regra 02: UI/UX & Design System CiNey
 
 ---
 
 ## 1. Identidade Visual e Filosofia de Design
 
-O CineMax possui uma interface com estética **Dark Glassmorphism Premium**, focada em imersão cinematográfica para dispositivos móveis e TVs.
+O CiNey possui uma interface com estética **Dark Glassmorphism Premium**, focada em imersão cinematográfica para dispositivos móveis e TVs.
 
 ### Cores Oficiais (`AppColors`):
 - **Background Principal:** `#0A0A1A` (`AppColors.background`)

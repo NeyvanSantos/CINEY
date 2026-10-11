@@ -62,7 +62,7 @@ AppLogger.error('Falha ao obter catálogo: $error', tag: 'PLUGINS', stackTrace: 
 AppLogger.success('Download da atualização concluído com sucesso', tag: 'UPDATER');
 ```
 
-**Motivo:** O CineMax conta com uma tela integrada de diagnóstico e monitoramento em tempo real (`/logs`), permitindo debugar streams, conexões e extensões diretamente no app.
+**Motivo:** O CiNey conta com uma tela integrada de diagnóstico e monitoramento em tempo real (`/logs`), permitindo debugar streams, conexões e extensões diretamente no app.
 
 ---
 
