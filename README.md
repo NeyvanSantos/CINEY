@@ -29,6 +29,14 @@ A busca aceita sugestões enquanto você digita e permite abrir os detalhes do t
 - **Contas e favoritos:** cadastro, perfil e lista compartilhada entre celular e TV, após [configurar o Supabase](docs/contas-supabase.md).
 - **Atualizações:** verificação de releases do projeto e validação SHA-256 quando o hash está disponível.
 
+## Capturas de tela
+
+<p align="center">
+	<img src="docs/screenshots/home.jpeg" alt="Tela inicial do CiNey" width="30%">
+	<img src="docs/screenshots/perfil.jpeg" alt="Tela Perfil e Ajustes do CiNey" width="30%">
+	<img src="docs/screenshots/busca.jpeg" alt="Tela Buscar do CiNey" width="30%">
+</p>
+
 ## Uma base, duas experiências
 
 O projeto [`cinemax/`](cinemax/README.md) é a fonte única das telas, serviços, motor de plugins e assets Flutter. O projeto [`cinemax_tv/`](cinemax_tv/README.md) mantém somente o host Android TV: manifesto, launcher Leanback, banner e configurações específicas da plataforma. Assim, melhorias na base podem ser compartilhadas entre celular e TV, enquanto cada variante conserva seu identificador e canal de atualização.
