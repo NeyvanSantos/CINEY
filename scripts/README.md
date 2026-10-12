@@ -49,6 +49,23 @@ O script atualiza a versão de `cinemax/pubspec.yaml` e envia o commit e a tag
 que acionam `.github/workflows/release.yml`. A assinatura usa os secrets já
 configurados no repositório. O parâmetro `-BuildLocal` também compila localmente.
 
+## Publicação Android TV
+
+O publicador TV usa o mesmo fluxo assinado pelo GitHub Actions. Valide sem
+publicar com:
+
+```powershell
+node scripts/publish-tv.js --preflight-only
+```
+
+Para publicar a próxima versão TV, execute `node scripts/publish-tv.js`; para
+informar uma versão, passe `X.Y.Z`. O fluxo exige `main` atualizada e árvore
+limpa, valida análise e testes Flutter/Node, atualiza `cinemax_tv/pubspec.yaml`
+e o inventário, cria commit e tag `tv-vX.Y.Z`, envia `main` antes da tag e
+acompanha o workflow assinado. O APK e seu SHA-256 são conferidos antes de
+atualizar `releases/tv/`. Falhas deixam a tag intacta para retentativa; não há
+build ou upload local.
+
 ## Publicação com APK local
 
 ```powershell

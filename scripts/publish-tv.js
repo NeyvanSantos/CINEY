@@ -1,270 +1,507 @@
-const { execSync } = require('child_process');
+'use strict';
+
+const { execFileSync, execSync } = require('child_process');
+const crypto = require('crypto');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
-const SCRIPT_DIR = __dirname;
-const ROOT_DIR = path.resolve(SCRIPT_DIR, '..');
-const CINEMAX_DIR = path.join(ROOT_DIR, 'cinemax_tv');
+const ROOT_DIR = path.resolve(__dirname, '..');
+const CINEMAX_DIR = path.join(ROOT_DIR, 'cinemax');
+const TV_DIR = path.join(ROOT_DIR, 'cinemax_tv');
+const TV_PUBSPEC = path.join(TV_DIR, 'pubspec.yaml');
+const INVENTORY = path.join(ROOT_DIR, 'releases', 'README.md');
 const RELEASE_DIR = path.join(ROOT_DIR, 'releases', 'tv');
-const PUBSPEC_PATH = path.join(CINEMAX_DIR, 'pubspec.yaml');
 const REPO_SLUG = 'NeyvanSantos/CINEY';
+const WORKFLOW_FILE = 'release-tv.yml';
+const ASSET_PREFIX = 'CiNey-v';
 
-function getGitHubToken() {
+function execute(command, args, options) {
+  if (process.platform === 'win32' && command === 'flutter') {
+    // Flutter is a .bat on Windows; the command and arguments here are constants.
+    return execSync([command, ...args].join(' '), options);
+  }
+  return execFileSync(command, args, options);
+}
+
+function run(command, args, cwd = ROOT_DIR, input) {
   try {
-    const out = execSync('git credential fill', {
-      input: 'protocol=https\nhost=github.com\n\n',
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'ignore'],
+    return execute(command, args, {
+      cwd,
+      encoding: 'utf8',
+      input,
+      stdio: input === undefined ? 'inherit' : 'pipe',
+      windowsHide: true,
     });
-    const match = out.match(/password=(.+)/);
-    if (match && match[1]) {
-      return match[1].trim();
+  } catch (error) {
+    const exitCode = Number.isInteger(error.status) ? error.status : 'unknown';
+    throw new Error(`${command} ${args[0] ?? ''} failed (exit code ${exitCode}).`);
+  }
+}
+
+function output(command, args, cwd = ROOT_DIR) {
+  try {
+    return execute(command, args, {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    }).trim();
+  } catch (error) {
+    const exitCode = Number.isInteger(error.status) ? error.status : 'unknown';
+    throw new Error(`${command} ${args[0] ?? ''} failed (exit code ${exitCode}).`);
+  }
+}
+
+function parseArguments(args) {
+  const preflightOnly = args.includes('--preflight-only');
+  const positional = args.filter((arg) => arg !== '--preflight-only');
+  if (positional.some((arg) => arg.startsWith('-')) || positional.length > 1) {
+    throw new Error(
+      'Uso: node scripts/publish-tv.js [X.Y.Z] [--preflight-only].',
+    );
+  }
+  if (positional.length === 1 && !/^\d+\.\d+\.\d+$/.test(positional[0])) {
+    throw new Error('A versão deve usar o formato X.Y.Z.');
+  }
+  return { preflightOnly, requestedVersion: positional[0] ?? null };
+}
+
+function parseVersion(pubspec) {
+  const match = pubspec.match(/^version:[ \t]*(\d+\.\d+\.\d+)\+(\d+)[ \t]*$/m);
+  if (!match) {
+    throw new Error('Não foi possível ler a versão de cinemax_tv/pubspec.yaml.');
+  }
+  return { version: match[1], build: Number(match[2]) };
+}
+
+function nextPatch(version) {
+  const [major, minor, patch] = version.split('.').map(Number);
+  return `${major}.${minor}.${patch + 1}`;
+}
+
+function compareVersions(left, right) {
+  const leftParts = left.split('.').map(Number);
+  const rightParts = right.split('.').map(Number);
+  for (let index = 0; index < 3; index += 1) {
+    if (leftParts[index] !== rightParts[index]) {
+      return leftParts[index] - rightParts[index];
     }
+  }
+  return 0;
+}
+
+function getRemoteTagLines(tag) {
+  const ref = `refs/tags/${tag}`;
+  return output('git', ['ls-remote', '--tags', 'origin', ref, `${ref}^{}`])
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function getRelease(tag) {
+  try {
+    return JSON.parse(
+      output('gh', [
+        'release',
+        'view',
+        tag,
+        '--repo',
+        REPO_SLUG,
+        '--json',
+        'tagName,assets,url',
+      ]),
+    );
   } catch {
-    // Silencioso se falhar
+    return null;
   }
-  return process.env.GH_TOKEN || process.env.GITHUB_TOKEN || null;
 }
 
-function run(cmd, cwd = ROOT_DIR, env = {}) {
-  return execSync(cmd, {
-    cwd: cwd,
-    stdio: 'inherit',
-    env: { ...process.env, ...env },
-    encoding: 'utf-8',
-  });
+function hasUploadedAsset(release, name) {
+  return Boolean(
+    release?.assets?.some(
+      (asset) => asset.name === name && asset.state === 'uploaded' && asset.size > 0,
+    ),
+  );
 }
 
-function runOutput(cmd, cwd = ROOT_DIR) {
+function assertToolsAndAuth() {
+  for (const [command, args] of [
+    ['git', ['--version']],
+    ['gh', ['--version']],
+    ['flutter', ['--version']],
+    ['node', ['--version']],
+  ]) {
+    output(command, args);
+  }
   try {
-    return execSync(cmd, { cwd: cwd, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+    execFileSync('gh', ['auth', 'status', '--hostname', 'github.com'], {
+      cwd: ROOT_DIR,
+      stdio: 'ignore',
+      windowsHide: true,
+    });
   } catch {
-    return '';
+    throw new Error('Autenticação do GitHub indisponível no GitHub CLI.');
   }
 }
 
-function buildReleaseApk() {
-  console.log('\n🔨 [CineMax TV] Compilando APK de Release oficial (Flutter AOT)...');
-  const tempDrive = 'X:';
+function validateMain() {
+  const branch = output('git', ['branch', '--show-current']);
+  if (branch !== 'main') {
+    throw new Error('Publique somente a partir da branch main.');
+  }
+  const remote = output('git', ['remote', 'get-url', 'origin']);
+  if (!/github\.com[:/]NeyvanSantos\/CINEY(?:\.git)?$/i.test(remote)) {
+    throw new Error(`origin não aponta para github.com/${REPO_SLUG}.`);
+  }
+  run('git', ['fetch', 'origin']);
+  const behind = Number(output('git', ['rev-list', '--count', 'main..origin/main']));
+  if (behind > 0) {
+    throw new Error(`main está atrás ou divergiu de origin/main em ${behind} commit(s).`);
+  }
+  const localCommits = output('git', ['log', '--oneline', 'origin/main..main']);
+  if (localCommits) {
+    console.log('Commits locais da main ainda não enviados; serão incluídos na publicação:');
+    console.log(localCommits);
+  }
+  output('git', ['var', 'GIT_AUTHOR_IDENT']);
+}
 
-  try {
-    // Cria mapeamento temporário para contornar caracteres acentuados no caminho
-    try {
-      execSync(`subst ${tempDrive} /d`, { stdio: 'ignore' });
-    } catch {}
-    execSync(`subst ${tempDrive} "${ROOT_DIR}"`, { stdio: 'inherit' });
+function updateInventory(version) {
+  const content = fs.readFileSync(INVENTORY, 'utf8');
+  const rowPattern = /^\| Android TV \| `tv\/` \| `CiNey-v\d+\.\d+\.\d+-TV\.apk` \|[ \t]*(?=\r?$)/m;
+  const matches = content.match(rowPattern) ?? [];
+  if (matches.length !== 1) {
+    throw new Error('Não foi encontrada uma única linha Android TV em releases/README.md.');
+  }
+  return content.replace(
+    rowPattern,
+    `| Android TV | \`tv/\` | \`CiNey-v${version}-TV.apk\` |`,
+  );
+}
 
-    const virtualCinemax = `${tempDrive}\\cinemax_tv`;
-    console.log(`📍 Compilando na unidade virtual: ${virtualCinemax}`);
+function replaceTvVersion(pubspec, version, build) {
+  const pattern = /^version:[ \t]*\d+\.\d+\.\d+\+\d+[ \t]*(?=\r?$)/m;
+  if (!pattern.test(pubspec)) {
+    throw new Error('Não foi encontrada a linha version em cinemax_tv/pubspec.yaml.');
+  }
+  return pubspec.replace(pattern, `version: ${version}+${build}`);
+}
 
-    run('flutter build apk --release --no-tree-shake-icons', virtualCinemax);
-    console.log('✅ Compilação do APK concluída com sucesso!');
-  } finally {
-    try {
-      execSync(`subst ${tempDrive} /d`, { stdio: 'ignore' });
-    } catch {}
+function assertCleanTree() {
+  const status = output('git', ['status', '--porcelain', '--untracked-files=all']);
+  if (status) {
+    console.error('Existem alterações locais. Faça commit antes de publicar:');
+    console.error(status);
+    throw new Error('Publicação cancelada para não incluir alterações inesperadas.');
   }
 }
 
-function generateChangelog() {
-  try {
-    const tags = runOutput('git tag --sort=-creatordate')
-      .split('\n')
-      .map((t) => t.trim())
-      .filter(Boolean);
+function runQualityGates() {
+  run('flutter', ['analyze'], CINEMAX_DIR);
+  run('flutter', ['analyze'], TV_DIR);
+  run(
+    'flutter',
+    [
+      'test',
+      '--no-pub',
+      'test/details_auto_play_test.dart',
+      'test/player_episode_continuity_test.dart',
+    ],
+    CINEMAX_DIR,
+  );
+  run('flutter', ['test', '--no-pub'], CINEMAX_DIR);
+  run(
+    'node',
+    [
+      '--test',
+      'test/embed_bridge_test.cjs',
+      'test/embed_media_observer_test.cjs',
+      'test/embed_startup_test.cjs',
+    ],
+    CINEMAX_DIR,
+  );
+}
 
-    let logCmd = 'git log -n 15 --pretty=format:"%s"';
-    if (tags.length > 1) {
-      const prevTag = tags[1];
-      logCmd = `git log ${prevTag}..HEAD --pretty=format:"%s"`;
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function parseChecksum(content, assetName) {
+  const match = content.trim().match(
+    new RegExp(`^([0-9a-fA-F]{64}) [ *]${escapeRegex(assetName)}$`),
+  );
+  if (!match) throw new Error(`Checksum inválido para ${assetName}.`);
+  return match[1].toLowerCase();
+}
+
+async function delay(milliseconds) {
+  await new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function listRuns(tag) {
+  return JSON.parse(
+    output('gh', [
+      'run',
+      'list',
+      '--repo',
+      REPO_SLUG,
+      '--workflow',
+      WORKFLOW_FILE,
+      '--branch',
+      tag,
+      '--limit',
+      '20',
+      '--json',
+      'databaseId,headSha,status,conclusion,event,createdAt',
+    ]),
+  );
+}
+
+function findMatchingRun(runs, commit, startTime, event) {
+  return runs
+    .filter(
+      (candidate) =>
+        candidate.headSha === commit &&
+        candidate.event === event &&
+        Date.parse(candidate.createdAt) >= startTime - 5000,
+    )
+    .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt))[0];
+}
+
+async function waitForRun(tag, commit, startTime, event) {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const match = findMatchingRun(listRuns(tag), commit, startTime, event);
+    if (match) return String(match.databaseId);
+    if (attempt < 5) await delay(5000);
+  }
+  throw new Error(`Workflow solicitado, mas não encontrei execução para ${tag} e o commit da tag.`);
+}
+
+function getAsset(release, assetName) {
+  const asset = release.assets?.find(
+    (entry) => entry.name === assetName && entry.state === 'uploaded',
+  );
+  if (!asset || asset.size <= 0) {
+    throw new Error(`A release não contém o asset ${assetName}.`);
+  }
+  return asset;
+}
+
+function keepLatestTvApk(version) {
+  for (const file of fs.readdirSync(RELEASE_DIR)) {
+    const match = file.match(/^CiNey-v(\d+\.\d+\.\d+)-TV\.apk$/);
+    if (!match || file === `${ASSET_PREFIX}${version}-TV.apk`) continue;
+    if (compareVersions(match[1], version) < 0) {
+      fs.rmSync(path.join(RELEASE_DIR, file), { force: true });
     }
+  }
+}
 
-    const commits = runOutput(logCmd)
-      .split('\n')
-      .map((c) => c.trim())
-      .filter(Boolean);
-
-    if (commits.length === 0) return '';
-
-    const feats = [];
-    const fixes = [];
-    const docs = [];
-    const others = [];
-
-    for (const msg of commits) {
-      if (/^feat(\([^)]+\))?:\s*/i.test(msg)) {
-        feats.push(msg.replace(/^feat(\([^)]+\))?:\s*/i, ''));
-      } else if (/^fix(\([^)]+\))?:\s*/i.test(msg)) {
-        fixes.push(msg.replace(/^fix(\([^)]+\))?:\s*/i, ''));
-      } else if (/^docs(\([^)]+\))?:\s*/i.test(msg)) {
-        docs.push(msg.replace(/^docs(\([^)]+\))?:\s*/i, ''));
-      } else if (!/^chore\(release\)/i.test(msg)) {
-        others.push(msg);
+async function downloadAndValidate(tag, version, release) {
+  const assetName = `${ASSET_PREFIX}${version}-TV.apk`;
+  const checksumName = `${assetName}.sha256`;
+  const asset = getAsset(release, assetName);
+  getAsset(release, checksumName);
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ciney-tv-release-'));
+  try {
+    run('gh', [
+      'release', 'download', tag, '--repo', REPO_SLUG,
+      '--pattern', assetName, '--pattern', checksumName, '--dir', downloadDir,
+    ]);
+    const apkPath = path.join(downloadDir, assetName);
+    const checksumPath = path.join(downloadDir, checksumName);
+    if (!fs.existsSync(apkPath) || fs.statSync(apkPath).size !== asset.size) {
+      throw new Error('O APK TV baixado diverge do tamanho informado pelo GitHub.');
+    }
+    const actualHash = crypto
+      .createHash('sha256')
+      .update(fs.readFileSync(apkPath))
+      .digest('hex');
+    const checksumHash = parseChecksum(fs.readFileSync(checksumPath, 'utf8'), assetName);
+    if (actualHash !== checksumHash) {
+      throw new Error('O SHA-256 do APK TV diverge do arquivo checksum publicado.');
+    }
+    if (asset.digest) {
+      const digestMatch = asset.digest.match(/^sha256:([0-9a-fA-F]{64})$/);
+      if (!digestMatch || digestMatch[1].toLowerCase() !== actualHash) {
+        throw new Error('O SHA-256 do APK TV diverge do digest do GitHub.');
       }
     }
 
-    let notes = '';
-    if (feats.length > 0) {
-      notes += '### 🚀 Novidades e Novos Recursos\n';
-      notes += feats.map((f) => `- ${f}`).join('\n') + '\n\n';
-    }
-    if (fixes.length > 0) {
-      notes += '### 🐛 Correções e Melhorias\n';
-      notes += fixes.map((f) => `- ${f}`).join('\n') + '\n\n';
-    }
-    if (docs.length > 0) {
-      notes += '### 📚 Documentação e Regras\n';
-      notes += docs.map((d) => `- ${d}`).join('\n') + '\n\n';
-    }
-    if (others.length > 0 && feats.length === 0 && fixes.length === 0) {
-      notes += '### 📝 Alterações nesta Versão\n';
-      notes += others.map((o) => `- ${o}`).join('\n') + '\n\n';
-    }
-
-    return notes;
-  } catch {
-    return '';
-  }
-}
-
-function main() {
-  console.log('\n🎬 [CineMax TV] Publicador de Releases no GitHub com Changelog e APK...\n');
-
-  // 1. Ler e atualizar pubspec.yaml
-  let pubspecContent = fs.readFileSync(PUBSPEC_PATH, 'utf-8');
-  let currentVersion = '1.0.0';
-  let currentBuild = 1;
-
-  const versionMatch = pubspecContent.match(/version:\s*(\d+\.\d+\.\d+)\+(\d+)/);
-  if (versionMatch) {
-    currentVersion = versionMatch[1];
-    currentBuild = parseInt(versionMatch[2], 10);
-  }
-
-  // Permite passar versão como argumento (ex: node publish-release.js 1.0.1)
-  const argVersion = process.argv.find((a) => /^\d+\.\d+\.\d+$/.test(a));
-  let version = argVersion || currentVersion;
-
-  if (argVersion && argVersion !== currentVersion) {
-    const newBuild = currentBuild + 1;
-    const newVersionLine = `version: ${version}+${newBuild}`;
-    pubspecContent = pubspecContent.replace(/version:\s*.*/, newVersionLine);
-    fs.writeFileSync(PUBSPEC_PATH, pubspecContent, 'utf-8');
-    console.log(`📌 Versão atualizada no pubspec.yaml para: v${version} (Build ${newBuild})`);
-
-    // Comita o bump de versão
-    try {
-      run(`git add cinemax_tv/pubspec.yaml`);
-      run(`git commit -m "chore(release): bump version to v${version} [skip ci]"`);
-      run(`git push origin main`);
-    } catch {}
-  } else {
-    console.log(`📌 Versão alvo: v${version}`);
-  }
-
-  // 2. Verificar ou compilar APK de Release
-  const builtApkPath = path.join(CINEMAX_DIR, 'build', 'app', 'outputs', 'flutter-apk', 'app-release.apk');
-  const namedApkPath = path.join(RELEASE_DIR, `CiNey-v${version}-TV.apk`);
-  const shouldBuild = !fs.existsSync(namedApkPath) || process.argv.includes('--build');
-
-  if (shouldBuild) {
-    buildReleaseApk();
     fs.mkdirSync(RELEASE_DIR, { recursive: true });
-    fs.copyFileSync(builtApkPath, namedApkPath);
+    const destination = path.join(RELEASE_DIR, assetName);
+    const pending = `${destination}.${process.pid}.pending`;
+    fs.copyFileSync(apkPath, pending);
+    fs.rmSync(destination, { force: true });
+    fs.renameSync(pending, destination);
+    keepLatestTvApk(version);
+    console.log(`APK TV publicado e validado: ${destination}`);
+    console.log(`SHA-256: ${actualHash}`);
+    console.log(`GitHub: ${release.url}`);
+  } finally {
+    fs.rmSync(downloadDir, { recursive: true, force: true });
   }
-
-  const finalApkToUpload = namedApkPath;
-  const apkStats = fs.statSync(finalApkToUpload);
-  const apkSizeMb = (apkStats.size / (1024 * 1024)).toFixed(1);
-  console.log(`✅ APK localizado: "${finalApkToUpload}" (${apkSizeMb} MB)`);
-
-  // 3. Obter token de autenticação
-  const token = getGitHubToken();
-  if (!token) {
-    console.error('❌ Erro: Não foi possível obter o token de autenticação do GitHub.');
-    console.error('Execute "gh auth login" ou verifique suas credenciais do Git.');
-    process.exit(1);
-  }
-
-  const tag = `tv${version}`;
-  const title = `CiNey TV ${tag}`;
-
-  // 4. Montar Changelog / O que foi alterado
-  console.log('📋 Coletando lista de alterações (Changelog)...');
-  const dynamicChangelog = generateChangelog();
-
-  // Permite notas personalizadas via argumento: --notes "..."
-  const notesIndex = process.argv.indexOf('--notes');
-  const customNotes = notesIndex !== -1 && process.argv[notesIndex + 1] ? process.argv[notesIndex + 1] : null;
-
-  let releaseBody = `## 🎬 CineMax ${tag}\n\n`;
-
-  if (customNotes) {
-    releaseBody += `### 📌 Destaques desta Versão:\n${customNotes}\n\n`;
-  } else if (dynamicChangelog) {
-    releaseBody += dynamicChangelog;
-  } else {
-    releaseBody += `### 🚀 Destaques:\n- Atualização de estabilidade, novas fontes e sistema de auto-atualização.\n\n`;
-  }
-
-  releaseBody += `### 📦 Como Instalar / Atualizar:\n`;
-  releaseBody += `1. Baixe o APK oficial anexado abaixo (**\`CiNey-${tag}.apk\`**).\n`;
-  releaseBody += `2. Instale no seu dispositivo Android TV.\n`;
-  releaseBody += `3. Os próximos lançamentos serão detectados e atualizados **automaticamente pelo próprio aplicativo**!\n\n`;
-  releaseBody += `---\n*CineMax — Filmes, Séries & Animes Sem Limites.*`;
-
-  // Salva arquivo temporário de notas
-  const notesFile = path.join(RELEASE_DIR, 'release-notes-temp.md');
-  fs.writeFileSync(notesFile, releaseBody, 'utf-8');
-
-  // 5. Criação da Tag Git
-  console.log(`🏷️  Criando e sincronizando tag ${tag}...`);
-  try {
-    run(`git tag -a ${tag} -m "${title}"`);
-  } catch {
-    console.log(`Tag ${tag} local já existe, prosseguindo...`);
-  }
-
-  try {
-    run(`git push origin ${tag}`);
-  } catch {
-    console.log(`Tag ${tag} já está sincronizada no remoto.`);
-  }
-
-  // 6. Publicação no GitHub Releases via GitHub CLI com o Changelog e APK
-  console.log(`🌐 Publicando Release ${tag} no GitHub (${REPO_SLUG}) com APK anexado...`);
-
-  const filesToUpload = [`"${finalApkToUpload}"`];
-
-  try {
-    run(
-      `gh release create ${tag} ${filesToUpload.join(' ')} --repo ${REPO_SLUG} --title "${title}" --notes-file "${notesFile}"`,
-      ROOT_DIR,
-      { GH_TOKEN: token }
-    );
-  } catch {
-    console.log('⚠️ Release já existente detectada. Atualizando notas e arquivos anexados...');
-    try {
-      run(
-        `gh release edit ${tag} --repo ${REPO_SLUG} --title "${title}" --notes-file "${notesFile}"`,
-        ROOT_DIR,
-        { GH_TOKEN: token }
-      );
-    } catch {}
-    run(
-      `gh release upload ${tag} ${filesToUpload.join(' ')} --repo ${REPO_SLUG} --clobber`,
-      ROOT_DIR,
-      { GH_TOKEN: token }
-    );
-  }
-
-  // Remove arquivo temporário de notas
-  try {
-    fs.unlinkSync(notesFile);
-  } catch {}
-
-  console.log('\n🎉 RELEASE PUBLICADA COM SUCESSO NO GITHUB COM CHANGELOG E APK ANEXADO!');
-  console.log(`🔗 Ver em: https://github.com/${REPO_SLUG}/releases/tag/${tag}\n`);
 }
 
-main();
+async function main() {
+  const { preflightOnly, requestedVersion } = parseArguments(process.argv.slice(2));
+  assertToolsAndAuth();
+  validateMain();
+  const branch = output('git', ['branch', '--show-current']);
+  const pubspec = fs.readFileSync(TV_PUBSPEC, 'utf8');
+  const current = parseVersion(pubspec);
+  const currentTag = `tv-v${current.version}`;
+  const currentRemoteLines = getRemoteTagLines(currentTag);
+  const currentRelease = currentRemoteLines.length > 0 ? getRelease(currentTag) : null;
+  const currentAsset = `${ASSET_PREFIX}${current.version}-TV.apk`;
+  const currentReleaseHasApk = hasUploadedAsset(currentRelease, currentAsset);
+  let version = requestedVersion ?? nextPatch(current.version);
+  let retryCurrentTag = false;
+  let pushLocalCurrentTag = false;
+
+  if (!requestedVersion && currentRemoteLines.length > 0 && !currentReleaseHasApk) {
+    version = current.version;
+    retryCurrentTag = true;
+  } else if (
+    !requestedVersion &&
+    currentRemoteLines.length === 0 &&
+    output('git', ['tag', '--list', currentTag])
+  ) {
+    const localCommit = output('git', ['rev-parse', `${currentTag}^{commit}`]);
+    const headCommit = output('git', ['rev-parse', 'HEAD']);
+    if (localCommit !== headCommit) {
+      throw new Error(`A tag local ${currentTag} não aponta para HEAD e não existe no remoto.`);
+    }
+    version = current.version;
+    retryCurrentTag = true;
+    pushLocalCurrentTag = true;
+  }
+
+  if (!/^\d+\.\d+\.\d+$/.test(version)) {
+    throw new Error('Versão inválida; use o formato X.Y.Z.');
+  }
+  if (!retryCurrentTag && compareVersions(version, current.version) <= 0) {
+    throw new Error(`A versão alvo ${version} deve ser maior que ${current.version}.`);
+  }
+  const tag = `tv-v${version}`;
+  let tagCommit = null;
+
+  if (retryCurrentTag) {
+    if (pushLocalCurrentTag) {
+      tagCommit = output('git', ['rev-parse', `${currentTag}^{commit}`]);
+    } else {
+      const peeled = currentRemoteLines.find((line) =>
+        line.endsWith(`\trefs/tags/${currentTag}^{}`),
+      );
+      if (peeled) {
+        tagCommit = peeled.split(/\s+/)[0];
+      } else {
+        run('git', ['fetch', '--quiet', 'origin', `refs/tags/${currentTag}:refs/tags/${currentTag}`]);
+        tagCommit = output('git', ['rev-parse', `${currentTag}^{commit}`]);
+      }
+    }
+    if (tagCommit !== output('git', ['rev-parse', 'HEAD'])) {
+      throw new Error(`A tag ${currentTag} não aponta para o código atual; retentativa recusada.`);
+    }
+  } else {
+    const targetRemote = getRemoteTagLines(tag);
+    if (targetRemote.length > 0 || output('git', ['tag', '--list', tag])) {
+      throw new Error(`A tag ${tag} já existe; tags/releases não são sobrescritas.`);
+    }
+  }
+
+  console.log('===================================================');
+  console.log(' CiNey TV - Publicação segura via GitHub Actions');
+  console.log(` Branch: ${branch} (validada contra origin/main)`);
+  console.log(` Versão atual: ${current.version}+${current.build}`);
+  console.log(` Versão alvo: ${tag}`);
+  console.log(' Build assinado e release: GitHub Actions');
+  console.log('===================================================');
+
+  if (preflightOnly) {
+    const status = output('git', ['status', '--porcelain', '--untracked-files=all']);
+    if (status) {
+      console.log('Preflight OK; antes de publicar, faça commit das alterações:');
+      console.log(status);
+    } else {
+      console.log('Preflight OK; main limpa e atualizada. Nenhuma tag ou workflow criado.');
+    }
+    return;
+  }
+
+  const status = output('git', ['status', '--porcelain', '--untracked-files=all']);
+  if (status) {
+    console.error('Existem alterações locais. Faça commit antes de publicar:');
+    console.error(status);
+    throw new Error('Publicação cancelada para não incluir alterações inesperadas.');
+  }
+
+  if (!retryCurrentTag) {
+    runQualityGates();
+    const newBuild = current.build + 1;
+    const updatedPubspec = replaceTvVersion(pubspec, version, newBuild);
+    const updatedInventory = updateInventory(version);
+    fs.writeFileSync(TV_PUBSPEC, updatedPubspec, 'utf8');
+    fs.writeFileSync(INVENTORY, updatedInventory, 'utf8');
+    run('git', ['add', '--', 'cinemax_tv/pubspec.yaml', 'releases/README.md']);
+    run('git', ['commit', '-m', `chore(release): bump TV version to ${tag} [skip ci]`]);
+    run('git', ['tag', '-a', tag, '-m', `Release TV ${tag}`]);
+    tagCommit = output('git', ['rev-parse', `${tag}^{commit}`]);
+  }
+
+  try {
+    run('git', ['push', 'origin', 'main']);
+  } catch {
+    throw new Error(`Push da main recusado. A tag ${tag} foi preservada localmente; resolva a proteção e retente.`);
+  }
+  if (!retryCurrentTag || pushLocalCurrentTag) {
+    try {
+      run('git', ['push', 'origin', tag]);
+    } catch {
+      throw new Error(`A main foi enviada, mas a tag ${tag} não. Execute novamente para retomar.`);
+    }
+  }
+
+  const runList = listRuns(tag);
+  const activeRun = runList.find(
+    (candidate) =>
+      candidate.headSha === tagCommit &&
+      ['queued', 'in_progress'].includes(candidate.status),
+  );
+  let runId = activeRun ? String(activeRun.databaseId) : null;
+
+  if (!runId && retryCurrentTag) {
+    const dispatchStart = Date.now();
+    const dispatchInput = JSON.stringify({
+      version_tag: tag,
+      release_notes: 'Retentativa da publicação CiNey para Android TV.',
+    });
+    const dispatchOutput = run(
+      'gh',
+      ['workflow', 'run', WORKFLOW_FILE, '--repo', REPO_SLUG, '--ref', tag, '--json'],
+      ROOT_DIR,
+      `${dispatchInput}\n`,
+    );
+    console.log(dispatchOutput.trim());
+    const runMatch = dispatchOutput.match(/\/actions\/runs\/(\d+)/);
+    runId = runMatch?.[1] ?? null;
+    if (!runId) {
+      runId = await waitForRun(tag, tagCommit, dispatchStart, 'workflow_dispatch');
+    }
+  } else if (!runId) {
+    runId = await waitForRun(tag, tagCommit, Date.now() - 10000, 'push');
+  }
+
+  run('gh', ['run', 'watch', runId, '--repo', REPO_SLUG, '--exit-status']);
+  const release = getRelease(tag);
+  if (!release || release.tagName !== tag) {
+    throw new Error(`A release ${tag} não foi encontrada após o workflow.`);
+  }
+  await downloadAndValidate(tag, version, release);
+}
+
+main().catch((error) => {
+  console.error(error.message);
+  process.exitCode = 1;
+});
