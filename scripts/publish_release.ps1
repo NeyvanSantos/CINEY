@@ -76,7 +76,7 @@ try {
         throw "Arquivo pubspec.yaml nao encontrado: $pubspecPath"
     }
 
-    foreach ($tool in @('git', 'gh', 'flutter')) {
+    foreach ($tool in @('git', 'gh', 'flutter', 'node')) {
         if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
             throw "Ferramenta obrigatoria nao encontrada no PATH: $tool"
         }
@@ -192,6 +192,10 @@ try {
             Invoke-Checked 'flutter' @('analyze') 'flutter analyze falhou'
             Write-Host "`nExecutando testes focados do fluxo de reproducao..." -ForegroundColor Cyan
             Invoke-Checked 'flutter' @('test', '--no-pub', 'test/details_auto_play_test.dart', 'test/player_episode_continuity_test.dart') 'Testes focados falharam'
+            Write-Host "`nExecutando suite completa Flutter..." -ForegroundColor Cyan
+            Invoke-Checked 'flutter' @('test', '--no-pub') 'Suite completa Flutter falhou'
+            Write-Host "`nExecutando testes Node da ponte de embeds..." -ForegroundColor Cyan
+            Invoke-Checked 'node' @('--test', 'test/embed_bridge_test.cjs', 'test/embed_media_observer_test.cjs', 'test/embed_startup_test.cjs') 'Testes Node falharam'
         } finally {
             Pop-Location
         }
