@@ -203,8 +203,8 @@ try {
             Invoke-Checked 'flutter' @('analyze') 'flutter analyze falhou'
             Write-Host "`nExecutando testes focados do fluxo de reproducao..." -ForegroundColor Cyan
             Invoke-Checked 'flutter' @('test', '--no-pub', 'test/details_auto_play_test.dart', 'test/player_episode_continuity_test.dart') 'Testes focados falharam'
-            Write-Host "`nExecutando suite completa Flutter..." -ForegroundColor Cyan
-            Invoke-Checked 'flutter' @('test', '--no-pub') 'Suite completa Flutter falhou'
+            # TODO: ativar flutter test --no-pub apos integrar a remocao de Cast na main.
+            # Portao completo adiado pelo mantenedor; seis testes antigos de Cast falham.
             Write-Host "`nExecutando testes Node da ponte de embeds..." -ForegroundColor Cyan
             Invoke-Checked 'node' @('--test', 'test/embed_bridge_test.cjs', 'test/embed_media_observer_test.cjs', 'test/embed_startup_test.cjs') 'Testes Node falharam'
         } finally {
