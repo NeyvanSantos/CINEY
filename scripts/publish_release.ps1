@@ -244,19 +244,24 @@ try {
             $Notes = if ($changeNotes.Count -gt 0) { ($changeNotes | ForEach-Object { "- $_" }) -join "`n" } else { '- Correcao de erros e melhorias de estabilidade.' }
         }
 
-        $dispatchArgs = @(
-            'workflow', 'run', $workflowFile,
-            '--repo', $repoSlug,
-            '--ref', $targetTag,
-            '--field', "version_tag=$targetTag",
-            '--field', "release_title=CiNey $targetTag",
-            '--field', "release_notes=$Notes"
-        )
+        $json = @{
+            version_tag = $targetTag
+            release_title = "CiNey $targetTag"
+            release_notes = $Notes
+        } | ConvertTo-Json -Compress
         # O GitHub informa createdAt com precisao de segundos.
         $dispatchStartedAt = [DateTimeOffset]::UtcNow
         $dispatchStartedAt = $dispatchStartedAt.AddTicks(-($dispatchStartedAt.Ticks % [TimeSpan]::TicksPerSecond))
-        $dispatchOutput = & gh @dispatchArgs 2>&1
-        if ($LASTEXITCODE -ne 0) {
+        # Windows PowerShell 5.1 usa ASCII no pipeline nativo por padrao.
+        $previousOutputEncoding = $OutputEncoding
+        try {
+            $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+            $dispatchOutput = $json | gh workflow run $workflowFile --repo $repoSlug --ref $targetTag --json 2>&1
+            $dispatchExitCode = $LASTEXITCODE
+        } finally {
+            $OutputEncoding = $previousOutputEncoding
+        }
+        if ($dispatchExitCode -ne 0) {
             throw 'Falha ao iniciar GitHub Actions; tag preservada para retentativa.'
         }
         $dispatchText = ($dispatchOutput | ForEach-Object { "$_" }) -join "`n"
