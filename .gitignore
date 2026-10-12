@@ -10,6 +10,8 @@
 *.iml
 *.apk
 *.aab
+*.jks
+key.properties
 build/
 
 # Caches e arquivos gerados
