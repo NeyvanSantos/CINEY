@@ -203,7 +203,7 @@ try {
         $newVersionLine = "version: $targetVersion+$newBuild"
         $updatedPubspec = [regex]::Replace($pubspecContent, '(?m)^version:\s*.*$', $newVersionLine, 1)
         $inventoryContent = [System.IO.File]::ReadAllText($inventoryPath)
-        $inventoryPattern = '(?m)^\| Mobile \| `mobile/` \| `CiNey-v\d+\.\d+\.\d+\.apk` \|$'
+        $inventoryPattern = '(?m)^\| Mobile \| `mobile/` \| `CiNey-v\d+\.\d+\.\d+\.apk` \|[ \t]*(?=\r?$)'
         if (-not [regex]::IsMatch($inventoryContent, $inventoryPattern)) {
             throw 'Nao encontrei a linha da variante Mobile em releases/README.md.'
         }
