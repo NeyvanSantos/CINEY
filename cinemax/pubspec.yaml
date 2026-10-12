@@ -36,6 +36,9 @@ dependencies:
   # Accounts and cloud favorites
   supabase_flutter: ^2.18.0
 
+  # System notifications (admin announcements)
+  flutter_local_notifications: ^19.5.0
+
   # UI/UX
   cached_network_image: ^3.4.1
   shimmer: ^3.0.0

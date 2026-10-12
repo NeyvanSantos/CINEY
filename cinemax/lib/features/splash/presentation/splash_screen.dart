@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/config/app_environment.dart';
 import '../../../core/config/theme/app_colors.dart';
 import '../../../core/config/theme/app_typography.dart';
 import '../../../core/services/app_logger.dart';
+import '../../../core/services/app_notifications.dart';
 import '../../../core/services/app_updater.dart';
 import '../../../core/widgets/update_dialog.dart';
+import '../../auth/services/account_repository.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -50,6 +53,16 @@ class _SplashScreenState extends State<SplashScreen> {
     } catch (e) {
       AppLogger.warn('Falha ao verificar atualizações: $e', tag: 'UPDATER');
     }
+
+    if (!mounted) return;
+
+    // Avisos do administrador (não bloqueiam a abertura do app)
+    final client = ProviderScope.containerOf(
+      context,
+      listen: false,
+    ).read(supabaseClientProvider);
+    // ignore: unawaited_futures
+    AppNotifications.checkAndNotify(client);
 
     if (!mounted) return;
 
