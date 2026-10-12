@@ -104,21 +104,33 @@ jobs:
 
       - name: 🏷️ Determinar Tag e Título
         id: vars
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          VERSION_TAG: ${{ inputs.version_tag }}
+          RELEASE_TITLE: ${{ inputs.release_title }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.version_tag }}" >> $GITHUB_OUTPUT
-            echo "title=${{ github.event.inputs.release_title }}" >> $GITHUB_OUTPUT
-            echo "notes=${{ github.event.inputs.release_notes }}" >> $GITHUB_OUTPUT
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            TAG="$VERSION_TAG"
+            TITLE="$RELEASE_TITLE"
+            NOTES="$RELEASE_NOTES"
           else
-            TAG_NAME="${GITHUB_REF#refs/tags/}"
-            echo "tag=${TAG_NAME}" >> $GITHUB_OUTPUT
-            echo "title=CiNey ${TAG_NAME}" >> $GITHUB_OUTPUT
-            echo "notes=Atualização automática lançada via Git Tag." >> $GITHUB_OUTPUT
+            TAG="${GITHUB_REF#refs/tags/}"
+            TITLE="CiNey ${TAG}"
+            NOTES="Atualização automática lançada via Git Tag."
           fi
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo 'Tag invalida; use vX.Y.Z.' >&2
+            exit 1
+          fi
+          TITLE="$(printf '%s' "$TITLE" | tr -d '\r\n')"
+          printf 'tag=%s\ntitle=%s\n' "$TAG" "$TITLE" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$NOTES" > "$RUNNER_TEMP/release-notes.md"
 
       - name: 📋 Renomear APK para Distribuição
+        env:
+          TAG: ${{ steps.vars.outputs.tag }}
         run: |
-          TAG="${{ steps.vars.outputs.tag }}"
           cp cinemax/build/app/outputs/flutter-apk/app-release.apk "CiNey-${TAG}.apk"
 
       - name: 🚀 Criar Release no GitHub e Anexar APK
@@ -126,7 +138,7 @@ jobs:
         with:
           tag_name: ${{ steps.vars.outputs.tag }}
           name: ${{ steps.vars.outputs.title }}
-          body: ${{ steps.vars.outputs.notes }}
+          body_path: ${{ runner.temp }}/release-notes.md
           draft: false
           prerelease: false
           files: |
