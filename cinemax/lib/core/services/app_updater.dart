@@ -44,6 +44,35 @@ class AppUpdateInfo {
 
 enum InstallPermissionStatus { granted, denied, permanentlyDenied }
 
+class AppUpdateIntegrity {
+  static String? normalizeSha256(String? value) {
+    if (value == null) return null;
+    var hash = value.trim();
+    if (hash.toLowerCase().startsWith('sha256:')) {
+      hash = hash.substring('sha256:'.length);
+    }
+    hash = hash.replaceAll(':', '').toLowerCase();
+    return RegExp(r'^[0-9a-f]{64}$').hasMatch(hash) ? hash : null;
+  }
+
+  static String? parseSha256Checksum(String content, String assetName) {
+    final lines = content.trimRight().split(RegExp(r'\r?\n'));
+    if (lines.length != 1) return null;
+    final match = RegExp(
+      r'^([0-9a-fA-F]{64}) [ *](.+)$',
+    ).firstMatch(lines.single);
+    if (match == null || match.group(2) != assetName) return null;
+    return match.group(1)!.toLowerCase();
+  }
+
+  static Future<bool> matchesFile(File file, String? expectedSha256) async {
+    final expected = normalizeSha256(expectedSha256);
+    if (expected == null) return false;
+    final actual = await sha256.bind(file.openRead()).first;
+    return actual.toString() == expected;
+  }
+}
+
 class AppUpdater {
   static final Dio _dio = Dio(
     BaseOptions(
@@ -62,10 +91,14 @@ class AppUpdater {
     required bool isTvApp,
   }) {
     final prefix = isTvApp ? kTvReleaseTagPrefix : 'v';
+    final tagPattern = RegExp(
+      isTvApp ? r'^tv-v\d+\.\d+\.\d+$' : r'^v\d+\.\d+\.\d+$',
+    );
     final matchingReleases =
         releases.whereType<Map<String, dynamic>>().where((release) {
-          final tag = release['tag_name'] as String? ?? '';
-          return tag.startsWith(prefix) &&
+          final tag = release['tag_name'];
+          return tag is String &&
+              tagPattern.hasMatch(tag) &&
               release['draft'] != true &&
               (isTvApp
                   ? release['prerelease'] == true
@@ -114,9 +147,16 @@ class AppUpdater {
         data = response.data as Map<String, dynamic>;
       }
       final tagName = (data['tag_name'] as String?) ?? '';
-      final latestVersion = isTvApp
-          ? tagName.replaceFirst(kTvReleaseTagPrefix, '')
-          : tagName.replaceFirst(RegExp(r'^v'), '');
+      final tagMatch =
+          (isTvApp
+                  ? RegExp(r'^tv-v(\d+\.\d+\.\d+)$')
+                  : RegExp(r'^v(\d+\.\d+\.\d+)$'))
+              .firstMatch(tagName);
+      if (tagMatch == null || data['draft'] == true) return null;
+      if (isTvApp ? data['prerelease'] != true : data['prerelease'] == true) {
+        return null;
+      }
+      final latestVersion = tagMatch.group(1)!;
       final releaseName = (data['name'] as String?) ?? 'Nova Atualização';
       final releaseNotes = (data['body'] as String?) ?? 'Sem notas de versão.';
       final htmlUrl = (data['html_url'] as String?) ?? '';
@@ -126,34 +166,60 @@ class AppUpdater {
       // Verifica se a release é do autor oficial
       final isOfficial = author?['login'] == kGitHubOwner;
 
-      // Procura o APK nos assets da release
-      String downloadUrl = '';
-      int fileSize = 0;
-      String? sha256Hash;
+      final assetName = isTvApp
+          ? 'CiNey-v$latestVersion-TV.apk'
+          : 'CiNey-v$latestVersion.apk';
+      Map<String, dynamic>? apkAsset;
+      Map<String, dynamic>? checksumAsset;
+      for (final asset in assets.whereType<Map<String, dynamic>>()) {
+        if (asset['name'] == assetName) apkAsset = asset;
+        if (asset['name'] == '$assetName.sha256') checksumAsset = asset;
+      }
+      if (apkAsset == null) {
+        AppLogger.warn(
+          'Release $tagName não contém $assetName.',
+          tag: 'UPDATER',
+        );
+        return null;
+      }
 
-      for (final asset in assets) {
-        final name = (asset['name'] as String?) ?? '';
-        final lowerName = name.toLowerCase();
-        if (isTvApp
-            ? lowerName.endsWith('-tv.apk')
-            : lowerName.endsWith('.apk') && !lowerName.endsWith('-tv.apk')) {
-          downloadUrl = (asset['browser_download_url'] as String?) ?? '';
-          fileSize = (asset['size'] as int?) ?? 0;
+      final downloadUrl = apkAsset['browser_download_url']?.toString() ?? '';
+      final fileSize = apkAsset['size'] as int? ?? 0;
+      if (fileSize <= 0 ||
+          !_isReleaseAssetUrl(downloadUrl, tagName, assetName)) {
+        AppLogger.error(
+          'Asset de atualização inválido na release $tagName.',
+          tag: 'UPDATER',
+        );
+        return null;
+      }
 
-          // Extrai hash SHA-256 se presente no label do asset
-          final label = (asset['label'] as String?) ?? '';
-          if (label.startsWith('sha256:')) {
-            sha256Hash = label.replaceFirst('sha256:', '');
-          }
-
-          // Procura hash no digest do asset (GitHub gera automaticamente)
-          final digest = (asset['digest'] as String?) ?? '';
-          if (digest.startsWith('sha256:')) {
-            sha256Hash = digest.replaceFirst('sha256:', '');
-          }
-
-          break;
+      var sha256Hash = AppUpdateIntegrity.normalizeSha256(
+        apkAsset['digest']?.toString(),
+      );
+      sha256Hash ??= AppUpdateIntegrity.normalizeSha256(
+        apkAsset['label']?.toString(),
+      );
+      if (sha256Hash == null && checksumAsset != null) {
+        final checksumUrl =
+            checksumAsset['browser_download_url']?.toString() ?? '';
+        if (_isReleaseAssetUrl(checksumUrl, tagName, '$assetName.sha256')) {
+          final checksumResponse = await _dio.get<String>(
+            checksumUrl,
+            options: Options(responseType: ResponseType.plain),
+          );
+          sha256Hash = AppUpdateIntegrity.parseSha256Checksum(
+            checksumResponse.data ?? '',
+            assetName,
+          );
         }
+      }
+      if (sha256Hash == null) {
+        AppLogger.error(
+          'Release $tagName não fornece SHA-256 válido para $assetName.',
+          tag: 'SECURITY',
+        );
+        return null;
       }
 
       final hasUpdate = _compareVersions(latestVersion, currentVersion) > 0;
@@ -230,7 +296,7 @@ class AppUpdater {
       }
     } catch (e) {
       AppLogger.error('Erro ao solicitar permissão: $e', tag: 'UPDATER');
-      return InstallPermissionStatus.granted; // Tenta prosseguir
+      return InstallPermissionStatus.denied;
     }
   }
 
@@ -239,22 +305,30 @@ class AppUpdater {
     String downloadUrl, {
     required ValueChanged<double> onProgress,
     String? expectedSha256,
+    int? expectedSizeBytes,
   }) async {
+    final expectedHash = AppUpdateIntegrity.normalizeSha256(expectedSha256);
+    if (expectedHash == null || !_isGithubReleaseAssetUrl(downloadUrl)) {
+      AppLogger.error(
+        'Download recusado: URL ou SHA-256 da atualização inválido.',
+        tag: 'SECURITY',
+      );
+      return null;
+    }
+
+    File? file;
     try {
       AppLogger.info('Iniciando download do APK...', tag: 'UPDATER');
 
       final dir = await getTemporaryDirectory();
-      final filePath = '${dir.path}/cinemax_update.apk';
-
-      // Remove APK antigo se existir
-      final oldFile = File(filePath);
-      if (await oldFile.exists()) {
-        await oldFile.delete();
-      }
+      final filePath =
+          '${dir.path}${Platform.pathSeparator}cinemax_update_${DateTime.now().microsecondsSinceEpoch}.apk';
+      file = File(filePath);
 
       await _dio.download(
         downloadUrl,
         filePath,
+        deleteOnError: true,
         onReceiveProgress: (received, total) {
           if (total > 0) {
             onProgress(received / total);
@@ -262,7 +336,6 @@ class AppUpdater {
         },
       );
 
-      final file = File(filePath);
       if (await file.exists()) {
         final sizeInMb = (await file.length()) / (1024 * 1024);
         AppLogger.info(
@@ -270,25 +343,26 @@ class AppUpdater {
           tag: 'UPDATER',
         );
 
-        // Verificação de integridade SHA-256
-        if (expectedSha256 != null && expectedSha256.isNotEmpty) {
-          AppLogger.info('Verificando integridade SHA-256...', tag: 'UPDATER');
-          final fileBytes = await file.readAsBytes();
-          final computedHash = sha256.convert(fileBytes).toString();
-
-          if (computedHash.toLowerCase() != expectedSha256.toLowerCase()) {
-            AppLogger.error(
-              'FALHA NA VERIFICAÇÃO! Hash esperado: $expectedSha256 | Calculado: $computedHash',
-              tag: 'SECURITY',
-            );
-            await file.delete();
-            return null;
-          }
-          AppLogger.info(
-            'Integridade verificada com sucesso ✅',
+        if (expectedSizeBytes != null &&
+            await file.length() != expectedSizeBytes) {
+          AppLogger.error(
+            'Tamanho do APK diverge do asset publicado.',
             tag: 'SECURITY',
           );
+          await file.delete();
+          return null;
         }
+
+        AppLogger.info('Verificando integridade SHA-256...', tag: 'UPDATER');
+        if (!await AppUpdateIntegrity.matchesFile(file, expectedHash)) {
+          AppLogger.error(
+            'SHA-256 do APK baixado não confere.',
+            tag: 'SECURITY',
+          );
+          await file.delete();
+          return null;
+        }
+        AppLogger.info('Integridade verificada com sucesso ✅', tag: 'SECURITY');
 
         return file;
       }
@@ -296,8 +370,54 @@ class AppUpdater {
       return null;
     } catch (e) {
       AppLogger.error('Erro ao baixar APK: $e', tag: 'UPDATER');
+      if (file != null && await file.exists()) {
+        try {
+          await file.delete();
+        } catch (cleanupError) {
+          AppLogger.warn(
+            'Falha ao limpar download incompleto: $cleanupError',
+            tag: 'UPDATER',
+          );
+        }
+      }
       return null;
     }
+  }
+
+  static bool _isReleaseAssetUrl(String value, String tag, String assetName) {
+    final uri = Uri.tryParse(value);
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        uri.host != 'github.com' ||
+        uri.hasQuery ||
+        uri.hasFragment) {
+      return false;
+    }
+    final segments = uri.pathSegments;
+    return segments.length == 6 &&
+        segments[0] == kGitHubOwner &&
+        segments[1] == kGitHubRepo &&
+        segments[2] == 'releases' &&
+        segments[3] == 'download' &&
+        segments[4] == tag &&
+        segments[5] == assetName;
+  }
+
+  static bool _isGithubReleaseAssetUrl(String value) {
+    final uri = Uri.tryParse(value);
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        uri.host != 'github.com' ||
+        uri.hasQuery ||
+        uri.hasFragment) {
+      return false;
+    }
+    final segments = uri.pathSegments;
+    return segments.length == 6 &&
+        segments[0] == kGitHubOwner &&
+        segments[1] == kGitHubRepo &&
+        segments[2] == 'releases' &&
+        segments[3] == 'download';
   }
 
   /// Compara duas versões semver. Retorna:

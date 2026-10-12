@@ -109,6 +109,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
         }
       },
       expectedSha256: widget.updateInfo.sha256Hash,
+      expectedSizeBytes: widget.updateInfo.fileSize,
     );
 
     if (!mounted) return;
