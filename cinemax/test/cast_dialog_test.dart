@@ -4,6 +4,60 @@ import 'package:cinemax/plugin_engine/models/stream_source.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:webview_flutter_platform_interface/webview_flutter_platform_interface.dart';
+
+// O dialogo inicializa o sniffer mesmo sem iniciar uma transmissao.
+class _WebPlatform extends WebViewPlatform {
+  @override
+  PlatformWebViewController createPlatformWebViewController(
+    PlatformWebViewControllerCreationParams params,
+  ) => _Controller(params);
+
+  @override
+  PlatformNavigationDelegate createPlatformNavigationDelegate(
+    PlatformNavigationDelegateCreationParams params,
+  ) => _Navigation(params);
+
+  @override
+  PlatformWebViewWidget createPlatformWebViewWidget(
+    PlatformWebViewWidgetCreationParams params,
+  ) => _View(params);
+}
+
+class _Controller extends PlatformWebViewController {
+  _Controller(super.params) : super.implementation();
+
+  @override
+  Future<void> setJavaScriptMode(JavaScriptMode mode) async {}
+  @override
+  Future<void> setUserAgent(String? userAgent) async {}
+  @override
+  Future<void> addJavaScriptChannel(JavaScriptChannelParams params) async {}
+  @override
+  Future<void> setPlatformNavigationDelegate(
+    PlatformNavigationDelegate handler,
+  ) async {}
+}
+
+class _Navigation extends PlatformNavigationDelegate {
+  _Navigation(super.params) : super.implementation();
+
+  @override
+  Future<void> setOnProgress(ProgressCallback callback) async {}
+  @override
+  Future<void> setOnNavigationRequest(
+    NavigationRequestCallback callback,
+  ) async {}
+  @override
+  Future<void> setOnPageFinished(PageEventCallback callback) async {}
+}
+
+class _View extends PlatformWebViewWidget {
+  _View(super.params) : super.implementation();
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
+}
 
 const castChannel = MethodChannel('com.cinemax.cinemax/cast');
 
@@ -53,6 +107,7 @@ Future<void> openDialog(
 }
 
 void main() {
+  setUp(() => WebViewPlatform.instance = _WebPlatform());
   tearDown(AppLogger.clear);
 
   testWidgets('não abre sem uma fonte de mídia e botão aparece desabilitado', (
@@ -75,17 +130,21 @@ void main() {
     var openedPlayer = false;
     await openDialog(tester, onOpenPlayer: () => openedPlayer = true);
     expect(calls, isEmpty);
-    // Sem fontes: botão mostra "Nenhuma fonte disponível" e está desabilitado
-    expect(find.text('Nenhuma fonte disponível'), findsOneWidget);
+    expect(
+      tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+      isNull,
+    );
     expect(openedPlayer, isFalse);
-    await tester.ensureVisible(find.text('Abrir filme'));
-    await tester.tap(find.text('Abrir filme'));
+    await tester.ensureVisible(find.text('Assistir no celular'));
+    await tester.tap(find.text('Assistir no celular'));
     await tester.pumpAndSettle();
     expect(openedPlayer, isTrue);
     expect(find.byType(CastDialog), findsNothing);
   });
 
-  testWidgets('exibe seletor de servidor quando há múltiplas fontes', (tester) async {
+  testWidgets('exibe seletor de servidor quando há múltiplas fontes', (
+    tester,
+  ) async {
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
       castChannel,
       (call) async => true,
@@ -101,11 +160,16 @@ void main() {
     expect(find.text('Escolha o Servidor'), findsOneWidget);
     expect(find.text('EmbedMovies'), findsOneWidget);
     expect(find.text('SuperFlix'), findsOneWidget);
-    // Botão principal mostra o servidor selecionado (primeiro por padrão)
-    expect(find.text('Transmitir via EmbedMovies'), findsOneWidget);
+    expect(find.text('Chromecast / Google TV'), findsOneWidget);
+    expect(
+      tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+      isNotNull,
+    );
   });
 
-  testWidgets('trocar servidor altera o botão de transmissão', (tester) async {
+  testWidgets('trocar servidor atualiza a selecao de transmissão', (
+    tester,
+  ) async {
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
       castChannel,
       (call) async => true,
@@ -118,11 +182,27 @@ void main() {
     );
     await openDialog(tester, sources: _testSources);
     // Selecionar SuperFlix
+    final selected = find.ancestor(
+      of: find.text('SuperFlix'),
+      matching: find.byType(InkWell),
+    );
+    expect(
+      find.descendant(
+        of: selected,
+        matching: find.byIcon(Icons.check_circle_rounded),
+      ),
+      findsNothing,
+    );
     await tester.ensureVisible(find.text('SuperFlix'));
     await tester.tap(find.text('SuperFlix'));
     await tester.pumpAndSettle();
-    // Botão agora mostra "Transmitir via SuperFlix"
-    expect(find.text('Transmitir via SuperFlix'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: selected,
+        matching: find.byIcon(Icons.check_circle_rounded),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('instruções cabem em modo paisagem com rolagem', (tester) async {
@@ -131,7 +211,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     await openDialog(tester, sources: _testSources);
-    await tester.ensureVisible(find.text('Transmitir via EmbedMovies'));
+    await tester.ensureVisible(find.text('Chromecast / Google TV'));
     expect(tester.takeException(), isNull);
   });
 }

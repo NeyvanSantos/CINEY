@@ -12,6 +12,7 @@ import 'package:cinemax/features/favorites/services/favorites_repository.dart';
 import 'package:cinemax/plugin_engine/models/content_item.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -71,7 +72,13 @@ Future<GoRouter> _mount(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [accountRepositoryProvider.overrideWithValue(accounts)],
-      child: MaterialApp.router(routerConfig: router),
+      child: MaterialApp.router(
+        routerConfig: router,
+        // Os seletores abaixo verificam os textos do fluxo em portugues.
+        locale: const Locale('pt', 'BR'),
+        supportedLocales: const [Locale('pt', 'BR')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      ),
     ),
   );
   await tester.pumpAndSettle();

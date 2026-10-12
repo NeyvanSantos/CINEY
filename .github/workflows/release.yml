@@ -52,6 +52,23 @@ jobs:
         working-directory: cinemax
         run: flutter pub get
 
+      - name: Analisar codigo Flutter
+        working-directory: cinemax
+        run: flutter analyze
+
+      - name: Executar suite Flutter
+        working-directory: cinemax
+        run: flutter test --no-pub
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.18.0'
+
+      - name: Testar ponte de embeds
+        working-directory: cinemax
+        run: node --test test/embed_bridge_test.cjs test/embed_media_observer_test.cjs test/embed_startup_test.cjs
+
       - name: 🔐 Configurar assinatura do APK
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
