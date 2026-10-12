@@ -78,6 +78,37 @@ jobs:
         working-directory: cinemax
         run: node --test test/embed_bridge_test.cjs test/embed_media_observer_test.cjs test/embed_startup_test.cjs
 
+      - name: Validar tag TV
+        id: vars
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION_TAG: ${{ inputs.version_tag }}
+          INPUT_RELEASE_NOTES: ${{ inputs.release_notes }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            VERSION_REF="$INPUT_VERSION_TAG"
+            NOTES="$INPUT_RELEASE_NOTES"
+          else
+            VERSION_REF="$GITHUB_REF_NAME"
+            NOTES='Atualização do aplicativo CiNey para Android TV.'
+          fi
+          if [[ ! "$VERSION_REF" =~ ^tv-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo 'Tag TV invalida; use tv-vX.Y.Z.' >&2
+            exit 1
+          fi
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            TAG_COMMIT="$(git rev-parse "${VERSION_REF}^{commit}")"
+            HEAD_COMMIT="$(git rev-parse HEAD)"
+            if [[ "$TAG_COMMIT" != "$HEAD_COMMIT" ]]; then
+              echo 'A tag TV informada não corresponde ao commit verificado.' >&2
+              exit 1
+            fi
+          fi
+          VERSION="${VERSION_REF#tv-v}"
+          printf 'tag=%s\nversion=%s\ntitle=CiNey TV v%s\n' "$VERSION_REF" "$VERSION" "$VERSION" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$NOTES" > "$RUNNER_TEMP/release-notes.md"
+
       - name: Configurar assinatura do APK
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -123,37 +154,6 @@ jobs:
           )
           config.chmod(0o600)
           PY
-
-      - name: Validar tag TV
-        id: vars
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          INPUT_VERSION_TAG: ${{ inputs.version_tag }}
-          INPUT_RELEASE_NOTES: ${{ inputs.release_notes }}
-        run: |
-          set -euo pipefail
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            VERSION_REF="$INPUT_VERSION_TAG"
-            NOTES="$INPUT_RELEASE_NOTES"
-          else
-            VERSION_REF="$GITHUB_REF_NAME"
-            NOTES='Atualização do aplicativo CiNey para Android TV.'
-          fi
-          if [[ ! "$VERSION_REF" =~ ^tv-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo 'Tag TV invalida; use tv-vX.Y.Z.' >&2
-            exit 1
-          fi
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            TAG_COMMIT="$(git rev-parse "${VERSION_REF}^{commit}")"
-            HEAD_COMMIT="$(git rev-parse HEAD)"
-            if [[ "$TAG_COMMIT" != "$HEAD_COMMIT" ]]; then
-              echo 'A tag TV informada não corresponde ao commit verificado.' >&2
-              exit 1
-            fi
-          fi
-          VERSION="${VERSION_REF#tv-v}"
-          printf 'tag=%s\nversion=%s\ntitle=CiNey TV v%s\n' "$VERSION_REF" "$VERSION" "$VERSION" >> "$GITHUB_OUTPUT"
-          printf '%s\n' "$NOTES" > "$RUNNER_TEMP/release-notes.md"
 
       - name: Compilar APK Android TV
         working-directory: cinemax_tv
