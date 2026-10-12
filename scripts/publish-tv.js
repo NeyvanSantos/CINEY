@@ -424,7 +424,9 @@ async function main() {
     }
   }
 
-  const event = retryCurrentTag && !pushLocalCurrentTag ? 'workflow_dispatch' : 'push';
+  // O commit de bump usa [skip ci], então o push da tag não dispara o workflow.
+  // Assim como no publicador mobile, acionamos explicitamente via workflow_dispatch.
+  const event = 'workflow_dispatch';
   let runId = listRuns(tag, event)
     .filter((candidate) =>
       candidate.headSha === tagCommit &&
@@ -432,11 +434,13 @@ async function main() {
     )
     .map((candidate) => String(candidate.databaseId))[0] ?? null;
 
-  if (!runId && retryCurrentTag && !pushLocalCurrentTag) {
+  if (!runId) {
     runStartedAt = Date.now();
     const input = JSON.stringify({
       version_tag: tag,
-      release_notes: 'Retentativa da publicação CiNey para Android TV.',
+      release_notes: retryCurrentTag
+        ? 'Retentativa da publicação CiNey para Android TV.'
+        : 'Atualização do aplicativo CiNey para Android TV.',
     });
     const dispatchOutput = run(
       'gh',
