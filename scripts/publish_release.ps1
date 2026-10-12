@@ -127,7 +127,6 @@ try {
     }
     if ($retryCurrentTag) {
         if ($pushLocalCurrentTag) {
-            Invoke-Checked 'git' @('push', 'origin', $currentTag) 'Falha ao enviar novamente a tag local'
             $targetCommit = Get-CommandText 'git' @('rev-parse', "$currentTag^{commit}") 'Falha ao ler o commit da tag'
         } else {
             $peeledLine = $currentTagLines | Where-Object { $_ -match "refs/tags/$([regex]::Escape($currentTag))\^\{\}$" } | Select-Object -First 1
@@ -217,7 +216,12 @@ try {
         Invoke-Checked 'git' @('add', '--', 'cinemax/pubspec.yaml', 'releases/README.md') 'Falha ao preparar arquivos da release'
         Invoke-Checked 'git' @('commit', '-m', "chore(release): bump version to $targetTag [skip ci]") 'Falha ao criar commit da versao'
         Invoke-Checked 'git' @('tag', '-a', $targetTag, '-m', "Release $targetTag") 'Falha ao criar tag'
-        Invoke-Checked 'git' @('push', 'origin', $targetTag) 'Falha ao enviar a tag; main nao foi alterada'
+    }
+
+    # Tambem na retentativa, main precisa receber o commit antes da tag.
+    Invoke-Checked 'git' @('push', 'origin', 'main') 'Push da main recusado; nenhuma tag foi enviada nesta tentativa. Resolva a protecao ou divergencia e execute novamente; a tag local foi preservada'
+    if (-not $retryCurrentTag -or $pushLocalCurrentTag) {
+        Invoke-Checked 'git' @('push', 'origin', $targetTag) 'Falha ao enviar a tag; main ja recebeu o commit. Execute novamente para retomar'
     }
 
     $tagCommit = Get-CommandText 'git' @('rev-parse', "$targetTag^{commit}") 'Falha ao ler o commit da tag'
