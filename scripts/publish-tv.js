@@ -18,7 +18,6 @@ const ASSET_PREFIX = 'CiNey-v';
 
 function execute(command, args, options) {
   if (process.platform === 'win32' && command === 'flutter') {
-    // Flutter is a .bat on Windows; the command and arguments here are constants.
     return execSync([command, ...args].join(' '), options);
   }
   return execFileSync(command, args, options);
@@ -57,9 +56,7 @@ function parseArguments(args) {
   const preflightOnly = args.includes('--preflight-only');
   const positional = args.filter((arg) => arg !== '--preflight-only');
   if (positional.some((arg) => arg.startsWith('-')) || positional.length > 1) {
-    throw new Error(
-      'Uso: node scripts/publish-tv.js [X.Y.Z] [--preflight-only].',
-    );
+    throw new Error('Uso: node scripts/publish-tv.js [X.Y.Z] [--preflight-only].');
   }
   if (positional.length === 1 && !/^\d+\.\d+\.\d+$/.test(positional[0])) {
     throw new Error('A versão deve usar o formato X.Y.Z.');
@@ -97,6 +94,14 @@ function getRemoteTagLines(tag) {
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean);
+}
+
+function getTagCommit(tag, remoteLines) {
+  const peeledRef = `refs/tags/${tag}^{}`;
+  const peeled = remoteLines.find((line) => line.endsWith(`\t${peeledRef}`));
+  if (peeled) return peeled.split(/\s+/)[0];
+  run('git', ['fetch', '--quiet', 'origin', `refs/tags/${tag}:refs/tags/${tag}`]);
+  return output('git', ['rev-parse', `${tag}^{commit}`]);
 }
 
 function getRelease(tag) {
@@ -147,9 +152,7 @@ function assertToolsAndAuth() {
 
 function validateMain() {
   const branch = output('git', ['branch', '--show-current']);
-  if (branch !== 'main') {
-    throw new Error('Publique somente a partir da branch main.');
-  }
+  if (branch !== 'main') throw new Error('Publique somente a partir da branch main.');
   const remote = output('git', ['remote', 'get-url', 'origin']);
   if (!/github\.com[:/]NeyvanSantos\/CINEY(?:\.git)?$/i.test(remote)) {
     throw new Error(`origin não aponta para github.com/${REPO_SLUG}.`);
@@ -198,6 +201,8 @@ function assertCleanTree() {
 }
 
 function runQualityGates() {
+  run('flutter', ['pub', 'get'], CINEMAX_DIR);
+  run('flutter', ['pub', 'get'], TV_DIR);
   run('flutter', ['analyze'], CINEMAX_DIR);
   run('flutter', ['analyze'], TV_DIR);
   run(
@@ -235,11 +240,11 @@ function parseChecksum(content, assetName) {
   return match[1].toLowerCase();
 }
 
-async function delay(milliseconds) {
-  await new Promise((resolve) => setTimeout(resolve, milliseconds));
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-function listRuns(tag) {
+function listRuns(tag, event) {
   return JSON.parse(
     output('gh', [
       'run',
@@ -250,28 +255,28 @@ function listRuns(tag) {
       WORKFLOW_FILE,
       '--branch',
       tag,
+      '--event',
+      event,
       '--limit',
       '20',
       '--json',
-      'databaseId,headSha,status,conclusion,event,createdAt',
+      'databaseId,headSha,status,event,createdAt',
     ]),
   );
 }
 
-function findMatchingRun(runs, commit, startTime, event) {
+function findRun(runs, commit, since) {
   return runs
     .filter(
       (candidate) =>
-        candidate.headSha === commit &&
-        candidate.event === event &&
-        Date.parse(candidate.createdAt) >= startTime - 5000,
+        candidate.headSha === commit && Date.parse(candidate.createdAt) >= since - 5000,
     )
     .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt))[0];
 }
 
-async function waitForRun(tag, commit, startTime, event) {
+async function waitForRun(tag, commit, since, event) {
   for (let attempt = 0; attempt < 6; attempt += 1) {
-    const match = findMatchingRun(listRuns(tag), commit, startTime, event);
+    const match = findRun(listRuns(tag, event), commit, since);
     if (match) return String(match.databaseId);
     if (attempt < 5) await delay(5000);
   }
@@ -307,7 +312,11 @@ async function downloadAndValidate(tag, version, release) {
   try {
     run('gh', [
       'release', 'download', tag, '--repo', REPO_SLUG,
-      '--pattern', assetName, '--pattern', checksumName, '--dir', downloadDir,
+      '--pattern', assetName, '--dir', downloadDir,
+    ]);
+    run('gh', [
+      'release', 'download', tag, '--repo', REPO_SLUG,
+      '--pattern', checksumName, '--dir', downloadDir,
     ]);
     const apkPath = path.join(downloadDir, assetName);
     const checksumPath = path.join(downloadDir, checksumName);
@@ -320,7 +329,7 @@ async function downloadAndValidate(tag, version, release) {
       .digest('hex');
     const checksumHash = parseChecksum(fs.readFileSync(checksumPath, 'utf8'), assetName);
     if (actualHash !== checksumHash) {
-      throw new Error('O SHA-256 do APK TV diverge do arquivo checksum publicado.');
+      throw new Error('O SHA-256 do APK TV diverge do checksum publicado.');
     }
     if (asset.digest) {
       const digestMatch = asset.digest.match(/^sha256:([0-9a-fA-F]{64})$/);
@@ -348,19 +357,24 @@ async function main() {
   const { preflightOnly, requestedVersion } = parseArguments(process.argv.slice(2));
   assertToolsAndAuth();
   validateMain();
-  const branch = output('git', ['branch', '--show-current']);
   const pubspec = fs.readFileSync(TV_PUBSPEC, 'utf8');
   const current = parseVersion(pubspec);
   const currentTag = `tv-v${current.version}`;
   const currentRemoteLines = getRemoteTagLines(currentTag);
   const currentRelease = currentRemoteLines.length > 0 ? getRelease(currentTag) : null;
   const currentAsset = `${ASSET_PREFIX}${current.version}-TV.apk`;
-  const currentReleaseHasApk = hasUploadedAsset(currentRelease, currentAsset);
+  const currentTagCommit = currentRemoteLines.length
+    ? getTagCommit(currentTag, currentRemoteLines)
+    : null;
+  const headCommit = output('git', ['rev-parse', 'HEAD']);
+  const currentReleaseComplete =
+    hasUploadedAsset(currentRelease, currentAsset) &&
+    (hasUploadedAsset(currentRelease, `${currentAsset}.sha256`) || currentTagCommit !== headCommit);
   let version = requestedVersion ?? nextPatch(current.version);
   let retryCurrentTag = false;
   let pushLocalCurrentTag = false;
 
-  if (!requestedVersion && currentRemoteLines.length > 0 && !currentReleaseHasApk) {
+  if (!requestedVersion && currentRemoteLines.length > 0 && !currentReleaseComplete) {
     version = current.version;
     retryCurrentTag = true;
   } else if (
@@ -369,7 +383,6 @@ async function main() {
     output('git', ['tag', '--list', currentTag])
   ) {
     const localCommit = output('git', ['rev-parse', `${currentTag}^{commit}`]);
-    const headCommit = output('git', ['rev-parse', 'HEAD']);
     if (localCommit !== headCommit) {
       throw new Error(`A tag local ${currentTag} não aponta para HEAD e não existe no remoto.`);
     }
@@ -385,23 +398,15 @@ async function main() {
     throw new Error(`A versão alvo ${version} deve ser maior que ${current.version}.`);
   }
   const tag = `tv-v${version}`;
+  const assetName = `${ASSET_PREFIX}${version}-TV.apk`;
   let tagCommit = null;
 
   if (retryCurrentTag) {
-    if (pushLocalCurrentTag) {
+    tagCommit = currentTagCommit;
+    if (!tagCommit) {
       tagCommit = output('git', ['rev-parse', `${currentTag}^{commit}`]);
-    } else {
-      const peeled = currentRemoteLines.find((line) =>
-        line.endsWith(`\trefs/tags/${currentTag}^{}`),
-      );
-      if (peeled) {
-        tagCommit = peeled.split(/\s+/)[0];
-      } else {
-        run('git', ['fetch', '--quiet', 'origin', `refs/tags/${currentTag}:refs/tags/${currentTag}`]);
-        tagCommit = output('git', ['rev-parse', `${currentTag}^{commit}`]);
-      }
     }
-    if (tagCommit !== output('git', ['rev-parse', 'HEAD'])) {
+    if (tagCommit !== headCommit) {
       throw new Error(`A tag ${currentTag} não aponta para o código atual; retentativa recusada.`);
     }
   } else {
@@ -413,7 +418,7 @@ async function main() {
 
   console.log('===================================================');
   console.log(' CiNey TV - Publicação segura via GitHub Actions');
-  console.log(` Branch: ${branch} (validada contra origin/main)`);
+  console.log(` Branch: main (validada contra origin/main)`);
   console.log(` Versão atual: ${current.version}+${current.build}`);
   console.log(` Versão alvo: ${tag}`);
   console.log(' Build assinado e release: GitHub Actions');
@@ -430,17 +435,10 @@ async function main() {
     return;
   }
 
-  const status = output('git', ['status', '--porcelain', '--untracked-files=all']);
-  if (status) {
-    console.error('Existem alterações locais. Faça commit antes de publicar:');
-    console.error(status);
-    throw new Error('Publicação cancelada para não incluir alterações inesperadas.');
-  }
-
+  assertCleanTree();
   if (!retryCurrentTag) {
     runQualityGates();
-    const newBuild = current.build + 1;
-    const updatedPubspec = replaceTvVersion(pubspec, version, newBuild);
+    const updatedPubspec = replaceTvVersion(pubspec, version, current.build + 1);
     const updatedInventory = updateInventory(version);
     fs.writeFileSync(TV_PUBSPEC, updatedPubspec, 'utf8');
     fs.writeFileSync(INVENTORY, updatedInventory, 'utf8');
@@ -455,6 +453,7 @@ async function main() {
   } catch {
     throw new Error(`Push da main recusado. A tag ${tag} foi preservada localmente; resolva a proteção e retente.`);
   }
+  let runStartedAt = Date.now();
   if (!retryCurrentTag || pushLocalCurrentTag) {
     try {
       run('git', ['push', 'origin', tag]);
@@ -463,17 +462,17 @@ async function main() {
     }
   }
 
-  const runList = listRuns(tag);
-  const activeRun = runList.find(
-    (candidate) =>
+  const event = retryCurrentTag && !pushLocalCurrentTag ? 'workflow_dispatch' : 'push';
+  let runId = listRuns(tag, event)
+    .filter((candidate) =>
       candidate.headSha === tagCommit &&
       ['queued', 'in_progress'].includes(candidate.status),
-  );
-  let runId = activeRun ? String(activeRun.databaseId) : null;
+    )
+    .map((candidate) => String(candidate.databaseId))[0] ?? null;
 
-  if (!runId && retryCurrentTag) {
-    const dispatchStart = Date.now();
-    const dispatchInput = JSON.stringify({
+  if (!runId && retryCurrentTag && !pushLocalCurrentTag) {
+    runStartedAt = Date.now();
+    const input = JSON.stringify({
       version_tag: tag,
       release_notes: 'Retentativa da publicação CiNey para Android TV.',
     });
@@ -481,17 +480,13 @@ async function main() {
       'gh',
       ['workflow', 'run', WORKFLOW_FILE, '--repo', REPO_SLUG, '--ref', tag, '--json'],
       ROOT_DIR,
-      `${dispatchInput}\n`,
+      `${input}\n`,
     );
     console.log(dispatchOutput.trim());
     const runMatch = dispatchOutput.match(/\/actions\/runs\/(\d+)/);
     runId = runMatch?.[1] ?? null;
-    if (!runId) {
-      runId = await waitForRun(tag, tagCommit, dispatchStart, 'workflow_dispatch');
-    }
-  } else if (!runId) {
-    runId = await waitForRun(tag, tagCommit, Date.now() - 10000, 'push');
   }
+  if (!runId) runId = await waitForRun(tag, tagCommit, runStartedAt, event);
 
   run('gh', ['run', 'watch', runId, '--repo', REPO_SLUG, '--exit-status']);
   const release = getRelease(tag);
