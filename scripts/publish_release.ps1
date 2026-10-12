@@ -252,6 +252,9 @@ try {
             '--field', "release_title=CiNey $targetTag",
             '--field', "release_notes=$Notes"
         )
+        # O GitHub informa createdAt com precisao de segundos.
+        $dispatchStartedAt = [DateTimeOffset]::UtcNow
+        $dispatchStartedAt = $dispatchStartedAt.AddTicks(-($dispatchStartedAt.Ticks % [TimeSpan]::TicksPerSecond))
         $dispatchOutput = & gh @dispatchArgs 2>&1
         if ($LASTEXITCODE -ne 0) {
             throw 'Falha ao iniciar GitHub Actions; tag preservada para retentativa.'
@@ -259,10 +262,25 @@ try {
         $dispatchText = ($dispatchOutput | ForEach-Object { "$_" }) -join "`n"
         Write-Host $dispatchText
         $runMatch = [regex]::Match($dispatchText, '/actions/runs/(\d+)')
-        if (-not $runMatch.Success) {
-            throw "O workflow foi solicitado, mas nao encontrei o ID da execucao. Veja https://github.com/$repoSlug/actions."
+        if ($runMatch.Success) {
+            $runId = $runMatch.Groups[1].Value
+        } else {
+            $runId = $null
+            for ($attempt = 1; $attempt -le 6; $attempt++) {
+                $dispatchedRunsJson = Get-CommandText 'gh' @('run', 'list', '--repo', $repoSlug, '--workflow', $workflowFile, '--branch', $targetTag, '--event', 'workflow_dispatch', '--limit', '20', '--json', 'databaseId,headSha,createdAt') 'Falha ao localizar a execucao disparada'
+                $dispatchedRun = @($dispatchedRunsJson | ConvertFrom-Json | Where-Object {
+                    $_.headSha -eq $tagCommit -and [DateTimeOffset]::Parse($_.createdAt) -ge $dispatchStartedAt
+                } | Sort-Object createdAt | Select-Object -First 1)
+                if ($dispatchedRun.Count -gt 0) {
+                    $runId = [string]$dispatchedRun[0].databaseId
+                    break
+                }
+                if ($attempt -lt 6) { Start-Sleep -Seconds 5 }
+            }
+            if (-not $runId) {
+                throw "O workflow foi solicitado, mas nao encontrei uma execucao nova para o commit da tag. Veja https://github.com/$repoSlug/actions; a tag foi preservada."
+            }
         }
-        $runId = $runMatch.Groups[1].Value
     }
 
     Write-Host "`nAguardando build assinado e publicacao do APK..." -ForegroundColor Cyan
