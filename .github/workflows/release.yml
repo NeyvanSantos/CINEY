@@ -102,6 +102,30 @@ jobs:
         working-directory: cinemax
         run: flutter build apk --release --no-pub
 
+      - name: Verificar certificado do APK
+        env:
+          # Obtenha o valor rodando apksigner verify --print-certs em um APK
+          # ja publicado que funciona; use o certificate SHA-256 digest.
+          ANDROID_CERT_SHA256: ${{ vars.ANDROID_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          EXPECTED="$(printf '%s' "$ANDROID_CERT_SHA256" | tr '[:upper:]' '[:lower:]' | tr -d ':[:space:]')"
+          if [[ ! "$EXPECTED" =~ ^[0-9a-f]{64}$ ]]; then
+            echo 'ANDROID_CERT_SHA256 ausente ou invalido nas variaveis do repositorio.' >&2
+            exit 1
+          fi
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -mindepth 2 -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)"
+          if [[ -z "$APKSIGNER" || ! -x "$APKSIGNER" ]]; then
+            echo 'apksigner nao encontrado no Android SDK.' >&2
+            exit 1
+          fi
+          CERTS="$("$APKSIGNER" verify --print-certs cinemax/build/app/outputs/flutter-apk/app-release.apk)"
+          ACTUAL="$(printf '%s\n' "$CERTS" | sed -n 's/^Signer #[0-9][0-9]* certificate SHA-256 digest: //p' | tr '[:upper:]' '[:lower:]' | tr -d ':\r')"
+          if [[ ! "$ACTUAL" =~ ^[0-9a-f]{64}$ || "$ACTUAL" != "$EXPECTED" ]]; then
+            echo 'Certificado do APK diverge de ANDROID_CERT_SHA256.' >&2
+            exit 1
+          fi
+
       - name: 🏷️ Determinar Tag e Título
         id: vars
         env:
