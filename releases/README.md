@@ -6,7 +6,7 @@ do repositório.
 
 | Variante | Pasta | Último lançamento mantido nesta organização |
 | --- | --- | --- |
-| Mobile | `mobile/` | `CiNey-v1.0.33.apk` |
+| Mobile | `mobile/` | `CiNey-v1.0.34.apk` |
 | Android TV | `tv/` | `CiNey-v1.0.33-TV.apk` |
 
 Os APKs das versões anteriores foram substituídos conforme a política de manter apenas o binário mais recente em cada pasta. Confira a verificação da publicação TV em [docs/historico/publicacao-2026-10-09-tv26.md](../docs/historico/publicacao-2026-10-09-tv26.md).
