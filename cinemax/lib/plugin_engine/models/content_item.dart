@@ -91,6 +91,7 @@ class ContentDetail {
   final List<Season>? seasons;
   final String? collectionId;
   final String? collectionName;
+  final List<ContentItem> similar;
 
   const ContentDetail({
     required this.id,
@@ -110,6 +111,7 @@ class ContentDetail {
     this.seasons,
     this.collectionId,
     this.collectionName,
+    this.similar = const [],
   });
 
   factory ContentDetail.fromJson(Map<String, dynamic> json, String pluginId) {
@@ -143,6 +145,14 @@ class ContentDetail {
           .toList(),
       collectionId: json['collectionId']?.toString(),
       collectionName: json['collectionName']?.toString(),
+      similar:
+          (json['similar'] as List<dynamic>?)
+              ?.map(
+                (e) =>
+                    ContentItem.fromJson(e as Map<String, dynamic>, pluginId),
+              )
+              .toList() ??
+          [],
     );
   }
 }

@@ -8,6 +8,7 @@ import '../../../core/config/theme/app_colors.dart';
 import '../../../core/config/theme/app_typography.dart';
 import '../../../core/localization/app_localization.dart';
 import '../../../core/widgets/glass_card.dart';
+import '../../../core/widgets/gradient_poster.dart';
 import '../../../plugin_engine/manager/plugin_manager.dart';
 import '../../../plugin_engine/models/content_item.dart';
 import '../../../plugin_engine/models/stream_source.dart';
@@ -107,6 +108,16 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
         queryParameters: {'name': collectionName},
       ).toString(),
     );
+  }
+
+  String _detailsRoute(ContentItem item) {
+    final params = <String, String>{
+      'title': item.title,
+      'type': item.type.value,
+      if (item.posterUrl.isNotEmpty) 'poster': item.posterUrl,
+      if (item.overview?.isNotEmpty == true) 'overview': item.overview!,
+    };
+    return '/details/${item.id}/${item.pluginId}?${Uri(queryParameters: params).query}';
   }
 
   void _playContent({
@@ -633,7 +644,8 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                         const minWidthItem = 70.0;
                         final columns = math.max(
                           1,
-                          ((constraints.maxWidth + spacing) / minWidthItem).floor(),
+                          ((constraints.maxWidth + spacing) / minWidthItem)
+                              .floor(),
                         );
                         final cardWidth =
                             (constraints.maxWidth - spacing * (columns - 1)) /
@@ -718,6 +730,38 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                           ],
                         );
                       },
+                    ),
+                    const SizedBox(height: 40),
+                  ],
+
+                  // Títulos Semelhantes
+                  if (item.similar.isNotEmpty) ...[
+                    Text(
+                      'Títulos Semelhantes',
+                      style: AppTypography.headlineMedium,
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 195,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: item.similar.length,
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(width: 12),
+                        itemBuilder: (context, index) {
+                          final similar = item.similar[index];
+                          return GradientPoster(
+                            title: similar.title,
+                            posterUrl: similar.posterUrl,
+                            rating: similar.rating,
+                            year: similar.year,
+                            type: similar.type.value,
+                            width: 130,
+                            height: 195,
+                            onTap: () => context.push(_detailsRoute(similar)),
+                          );
+                        },
+                      ),
                     ),
                     const SizedBox(height: 40),
                   ],

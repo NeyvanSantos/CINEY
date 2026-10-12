@@ -541,7 +541,7 @@ class TmdbService {
       final endpoint = isTv ? '/tv/$tmdbId' : '/movie/$tmdbId';
       final response = await (client ?? _dio).get(
         endpoint,
-        queryParameters: {'append_to_response': 'credits,videos'},
+        queryParameters: {'append_to_response': 'credits,videos,similar'},
       );
 
       final data = response.data as Map<String, dynamic>;
@@ -606,6 +606,22 @@ class TmdbService {
           ? collection['name']?.toString()
           : null;
 
+      final similarResults =
+          (data['similar'] as Map<String, dynamic>?)?['results']
+              as List<dynamic>? ??
+          [];
+      final similarList = similarResults
+          .take(12)
+          .map(
+            (j) => _mapJsonToItem(
+              j as Map<String, dynamic>,
+              pluginId,
+              defaultType: isTv ? ContentType.series : ContentType.movie,
+            ),
+          )
+          .whereType<ContentItem>()
+          .toList();
+
       return ContentDetail(
         id: contentId,
         title: title.toString(),
@@ -629,6 +645,7 @@ class TmdbService {
         seasons: seasonsList,
         collectionId: collectionId,
         collectionName: collectionName,
+        similar: similarList,
       );
     } catch (_) {
       return null;
