@@ -34,9 +34,10 @@ class RepositoryState {
   }
 }
 
-final repositoryManagerProvider = StateNotifierProvider<RepositoryManager, RepositoryState>((ref) {
-  return RepositoryManager();
-});
+final repositoryManagerProvider =
+    StateNotifierProvider<RepositoryManager, RepositoryState>((ref) {
+      return RepositoryManager();
+    });
 
 class RepositoryManager extends StateNotifier<RepositoryState> {
   RepositoryManager() : super(const RepositoryState()) {
@@ -102,7 +103,12 @@ class RepositoryManager extends StateNotifier<RepositoryState> {
         baseUrl: 'https://amenicplus.com',
         entryPoint: 'amenictv.js',
         size: '27 KB',
-        capabilities: PluginCapabilities(search: true, home: true, detail: true, streams: true),
+        capabilities: PluginCapabilities(
+          search: true,
+          home: true,
+          detail: true,
+          streams: true,
+        ),
       ),
       const PluginManifest(
         id: 'com.animescloud',
@@ -116,7 +122,12 @@ class RepositoryManager extends StateNotifier<RepositoryState> {
         baseUrl: 'https://animescloud.tv',
         entryPoint: 'animescloud.js',
         size: '25 KB',
-        capabilities: PluginCapabilities(search: true, home: true, detail: true, streams: true),
+        capabilities: PluginCapabilities(
+          search: true,
+          home: true,
+          detail: true,
+          streams: true,
+        ),
       ),
       const PluginManifest(
         id: 'com.animesdigital',
@@ -130,7 +141,12 @@ class RepositoryManager extends StateNotifier<RepositoryState> {
         baseUrl: 'https://animesdigital.org',
         entryPoint: 'animesdigital.js',
         size: '30 KB',
-        capabilities: PluginCapabilities(search: true, home: true, detail: true, streams: true),
+        capabilities: PluginCapabilities(
+          search: true,
+          home: true,
+          detail: true,
+          streams: true,
+        ),
       ),
       const PluginManifest(
         id: 'com.animesonlinenet',
@@ -144,7 +160,12 @@ class RepositoryManager extends StateNotifier<RepositoryState> {
         baseUrl: 'https://animesonline.net',
         entryPoint: 'animesonline.js',
         size: '20 KB',
-        capabilities: PluginCapabilities(search: true, home: true, detail: true, streams: true),
+        capabilities: PluginCapabilities(
+          search: true,
+          home: true,
+          detail: true,
+          streams: true,
+        ),
       ),
       const PluginManifest(
         id: 'com.doramas',
@@ -158,7 +179,12 @@ class RepositoryManager extends StateNotifier<RepositoryState> {
         baseUrl: 'https://doramas.io',
         entryPoint: 'doramas.js',
         size: '18 KB',
-        capabilities: PluginCapabilities(search: true, home: true, detail: true, streams: true),
+        capabilities: PluginCapabilities(
+          search: true,
+          home: true,
+          detail: true,
+          streams: true,
+        ),
       ),
       const PluginManifest(
         id: 'com.megaflix',
@@ -172,7 +198,12 @@ class RepositoryManager extends StateNotifier<RepositoryState> {
         baseUrl: 'https://megaflix.biz',
         entryPoint: 'megaflix.js',
         size: '21 KB',
-        capabilities: PluginCapabilities(search: true, home: true, detail: true, streams: true),
+        capabilities: PluginCapabilities(
+          search: true,
+          home: true,
+          detail: true,
+          streams: true,
+        ),
       ),
       const PluginManifest(
         id: 'com.probreflix',
@@ -186,7 +217,12 @@ class RepositoryManager extends StateNotifier<RepositoryState> {
         baseUrl: 'https://probreflix.app',
         entryPoint: 'probreflix.js',
         size: '27 KB',
-        capabilities: PluginCapabilities(search: true, home: true, detail: true, streams: true),
+        capabilities: PluginCapabilities(
+          search: true,
+          home: true,
+          detail: true,
+          streams: true,
+        ),
       ),
       const PluginManifest(
         id: 'com.reidoscanais',
@@ -200,7 +236,12 @@ class RepositoryManager extends StateNotifier<RepositoryState> {
         baseUrl: 'https://reidoscanais.tv',
         entryPoint: 'reidoscanais.js',
         size: '22 KB',
-        capabilities: PluginCapabilities(search: true, home: true, detail: true, streams: true),
+        capabilities: PluginCapabilities(
+          search: true,
+          home: true,
+          detail: true,
+          streams: true,
+        ),
       ),
       const PluginManifest(
         id: 'com.streamberry',
@@ -214,7 +255,12 @@ class RepositoryManager extends StateNotifier<RepositoryState> {
         baseUrl: 'https://streamberry.xyz',
         entryPoint: 'streamberry.js',
         size: '23 KB',
-        capabilities: PluginCapabilities(search: true, home: true, detail: true, streams: true),
+        capabilities: PluginCapabilities(
+          search: true,
+          home: true,
+          detail: true,
+          streams: true,
+        ),
       ),
       const PluginManifest(
         id: 'com.supercine',
@@ -228,7 +274,12 @@ class RepositoryManager extends StateNotifier<RepositoryState> {
         baseUrl: 'https://supercine.org',
         entryPoint: 'supercine.js',
         size: '28 KB',
-        capabilities: PluginCapabilities(search: true, home: true, detail: true, streams: true),
+        capabilities: PluginCapabilities(
+          search: true,
+          home: true,
+          detail: true,
+          streams: true,
+        ),
       ),
       const PluginManifest(
         id: 'com.ultracine',
@@ -242,13 +293,15 @@ class RepositoryManager extends StateNotifier<RepositoryState> {
         baseUrl: 'https://ultracine.to',
         entryPoint: 'ultracine.js',
         size: '19 KB',
-        capabilities: PluginCapabilities(search: true, home: true, detail: true, streams: true),
+        capabilities: PluginCapabilities(
+          search: true,
+          home: true,
+          detail: true,
+          streams: true,
+        ),
       ),
     ];
 
-    state = state.copyWith(
-      availablePlugins: plugins,
-      isLoading: false,
-    );
+    state = state.copyWith(availablePlugins: plugins, isLoading: false);
   }
 }
