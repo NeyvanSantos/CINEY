@@ -276,7 +276,29 @@ try {
             throw 'O APK baixado nao corresponde ao tamanho informado pelo GitHub.'
         }
         $downloadHash = (Get-FileHash $downloadedApk -Algorithm SHA256).Hash.ToLowerInvariant()
-        if ($asset[0].digest -and $asset[0].digest -ne "sha256:$downloadHash") {
+        $digestProperty = $asset[0].PSObject.Properties['digest']
+        if ($digestProperty -and $digestProperty.Value) {
+            $digest = [string]$digestProperty.Value
+            if ($digest -notmatch '^sha256:([0-9a-fA-F]{64})$') {
+                throw 'O digest do asset nao e um SHA-256 valido.'
+            }
+            $expectedHash = $Matches[1].ToLowerInvariant()
+        } else {
+            $checksumName = "$targetAssetName.sha256"
+            $checksumAsset = @($releaseInfo.assets | Where-Object { $_.name -eq $checksumName -and $_.state -eq 'uploaded' })
+            if ($checksumAsset.Count -ne 1) {
+                throw "A release nao fornece digest nem $checksumName; nao e possivel validar o APK."
+            }
+            Invoke-Checked 'gh' @('release', 'download', $targetTag, '--repo', $repoSlug, '--pattern', $checksumName, '--dir', $downloadDirectory) 'Falha ao baixar o arquivo SHA-256'
+            $checksumText = [System.IO.File]::ReadAllText((Join-Path $downloadDirectory $checksumName))
+            $checksumPattern = '\A([0-9a-fA-F]{64}) [ *]' + [regex]::Escape($targetAssetName) + '(?:\r?\n)?\z'
+            $checksumMatch = [regex]::Match($checksumText, $checksumPattern)
+            if (-not $checksumMatch.Success) {
+                throw "O arquivo $checksumName nao contem um SHA-256 valido para $targetAssetName."
+            }
+            $expectedHash = $checksumMatch.Groups[1].Value.ToLowerInvariant()
+        }
+        if ($expectedHash -ne $downloadHash) {
             throw 'O SHA-256 do APK baixado diverge do asset publicado; mantive a copia local anterior.'
         }
 
