@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -68,31 +70,67 @@ class AppNotifications {
           .maybeSingle();
       if (row == null) return;
 
-      final id = (row['id'] as num).toInt();
-      final prefs = await SharedPreferences.getInstance();
-      if (prefs.getInt(_lastSeenKey) == id) return;
-
-      await _plugin.show(
-        id,
-        row['title']?.toString() ?? 'CiNey',
-        row['body']?.toString() ?? '',
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            _channelId,
-            _channelName,
-            channelDescription: _channelDescription,
-            importance: Importance.high,
-            priority: Priority.high,
-          ),
-        ),
-      );
-      await prefs.setInt(_lastSeenKey, id);
-      AppLogger.info('Aviso $id exibido ao usuário.', tag: 'NOTIFY');
+      await _showIfNew(row);
     } catch (error) {
       AppLogger.warn(
         'Falha ao verificar avisos (${error.runtimeType}).',
         tag: 'NOTIFY',
       );
     }
+  }
+
+  static RealtimeChannel? _liveChannel;
+
+  /// Entrega instantânea: enquanto o app estiver aberto, qualquer aviso
+  /// publicado no Supabase chega na hora via Realtime.
+  static void watchLive(SupabaseClient? client) {
+    if (client == null || _liveChannel != null) return;
+    try {
+      _liveChannel = client
+          .channel('app_notifications_live')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.insert,
+            schema: 'public',
+            table: 'app_notifications',
+            callback: (payload) {
+              unawaited(
+                initialize().then((_) => _showIfNew(payload.newRecord)),
+              );
+            },
+          )
+          .subscribe();
+      AppLogger.info('Avisos em tempo real ativados.', tag: 'NOTIFY');
+    } catch (error) {
+      AppLogger.warn(
+        'Realtime de avisos indisponível (${error.runtimeType}).',
+        tag: 'NOTIFY',
+      );
+    }
+  }
+
+  static Future<void> _showIfNew(Map<String, dynamic> row) async {
+    if (!_initialized) return;
+    final id = (row['id'] as num?)?.toInt();
+    if (id == null) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getInt(_lastSeenKey) == id) return;
+
+    await _plugin.show(
+      id,
+      row['title']?.toString() ?? 'CiNey',
+      row['body']?.toString() ?? '',
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          _channelId,
+          _channelName,
+          channelDescription: _channelDescription,
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+      ),
+    );
+    await prefs.setInt(_lastSeenKey, id);
+    AppLogger.info('Aviso $id exibido ao usuário.', tag: 'NOTIFY');
   }
 }

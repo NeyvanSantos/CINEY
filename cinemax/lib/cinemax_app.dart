@@ -12,6 +12,7 @@ import 'core/config/theme/app_theme.dart';
 import 'core/localization/app_localization.dart';
 import 'core/routes/app_router.dart';
 import 'core/services/app_logger.dart';
+import 'core/services/app_notifications.dart';
 import 'plugin_engine/runtime/tmdb_service.dart';
 
 Future<void> runCinemaxApp({bool isTv = false}) async {
@@ -62,6 +63,7 @@ Future<void> runCinemaxApp({bool isTv = false}) async {
         ),
       );
       accountClient = Supabase.instance.client;
+      AppNotifications.watchLive(accountClient);
     } catch (error) {
       AppLogger.warn(
         'Contas indisponíveis na inicialização (${error.runtimeType}).',
