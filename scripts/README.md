@@ -1,7 +1,7 @@
 # Scripts do projeto
 
 Execute os comandos abaixo na raiz do repositório. Os scripts de publicação
-publicam a variante mobile e devem ser usados somente quando for lançar uma versão.
+publicam as variantes mobile e TV e devem ser usados somente quando for lançar uma versão.
 
 ## Testes do banco de contas
 
@@ -17,18 +17,18 @@ Veja o [guia de contas e favoritos](../docs/contas-supabase.md).
 
 ## Publicação Mobile em um Clique
 
-Com o repositório em uma branch de trabalho, sem alterações pendentes e com
-`gh auth login` configurado, dê duplo clique em `scripts/publicar-mobile.bat`.
+Com o repositório na `main` atualizada, árvore limpa e `gh auth login`
+configurado, dê duplo clique em `scripts/publicar-mobile.bat`.
 
-O launcher executa `publish_release.ps1`, valida `flutter analyze` e os testes
-focados do player, incrementa versão/build, cria commit e tag na branch atual,
-dispara o workflow assinado no GitHub Actions, aguarda o resultado e baixa o
-APK para `releases/mobile/`. O SHA-256 do download é comparado ao asset remoto
-antes de substituir o APK local anterior.
+O launcher executa `publish_release.ps1`, valida análise, testes Flutter focados
+e completos e os testes Node dos embeds, incrementa versão/build, cria commit e
+tag, envia a `main` antes da tag, acompanha o workflow assinado no GitHub Actions
+e baixa o APK para `releases/mobile/`. O tamanho e SHA-256 do download são
+comparados aos assets remotos antes de substituir a cópia local anterior.
 
-O script não envia commits para `main`, não sobrescreve tags e se recusa a
-publicar com uma árvore suja. Se o workflow falhar depois de a tag ser enviada,
-execute novamente na mesma árvore limpa para tentar concluir essa versão.
+O script não sobrescreve tags e se recusa a publicar com uma árvore suja ou
+`main` desatualizada. Se o workflow falhar depois de a tag ser enviada, execute
+novamente na mesma árvore limpa para tentar concluir essa versão.
 
 Para validar ferramentas e autenticação sem publicar:
 
@@ -51,20 +51,19 @@ configurados no repositório. O parâmetro `-BuildLocal` também compila localme
 
 ## Publicação Android TV
 
-O publicador TV usa o mesmo fluxo assinado pelo GitHub Actions. Valide sem
-publicar com:
+O publicador TV usa o workflow assinado do GitHub Actions. Valide sem publicar:
 
 ```powershell
 node scripts/publish-tv.js --preflight-only
 ```
 
-Para publicar a próxima versão TV, execute `node scripts/publish-tv.js`; para
-informar uma versão, passe `X.Y.Z`. O fluxo exige `main` atualizada e árvore
-limpa, valida análise e testes Flutter/Node, atualiza `cinemax_tv/pubspec.yaml`
-e o inventário, cria commit e tag `tv-vX.Y.Z`, envia `main` antes da tag e
-acompanha o workflow assinado. O APK e seu SHA-256 são conferidos antes de
-atualizar `releases/tv/`. Falhas deixam a tag intacta para retentativa; não há
-build ou upload local.
+Para publicar a próxima versão, execute `node scripts/publish-tv.js`; também é
+possível informar uma versão `X.Y.Z`. O fluxo exige a branch `main` atualizada
+e uma árvore limpa, valida análise e testes Flutter/Node, atualiza
+`cinemax_tv/pubspec.yaml` e o inventário, cria commit e tag `tv-vX.Y.Z`, envia
+`main` antes da tag e acompanha o workflow. O APK assinado e o checksum SHA-256
+são validados antes de atualizar `releases/tv/`. Falhas preservam a tag para
+retentativa; não há build ou upload local.
 
 ## Publicação com APK local
 
