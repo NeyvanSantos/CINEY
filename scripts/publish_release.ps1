@@ -71,6 +71,7 @@ function Get-NextVersion {
     return '{0}.{1}.{2}' -f [int]$parts[0], [int]$parts[1], ([int]$parts[2] + 1)
 }
 
+Push-Location -LiteralPath $rootDir
 try {
     if (-not (Test-Path $pubspecPath)) {
         throw "Arquivo pubspec.yaml nao encontrado: $pubspecPath"
@@ -83,6 +84,26 @@ try {
     }
 
     Invoke-Checked 'gh' @('auth', 'status', '--hostname', 'github.com') 'Autenticacao do GitHub indisponivel'
+
+    $branch = Get-CommandText 'git' @('branch', '--show-current') 'Falha ao ler a branch atual'
+    if ($branch -cne 'main') {
+        throw 'Publique somente a partir da branch main; o preflight tambem exige main.'
+    }
+    $remoteUrl = Get-CommandText 'git' @('remote', 'get-url', 'origin') 'Remote origin indisponivel'
+    if ($remoteUrl -notmatch '(?i)github\.com[:/]NeyvanSantos/CINEY(?:\.git)?$') {
+        throw "O remote origin nao aponta para github.com/$repoSlug. Nenhuma alteracao foi feita."
+    }
+    Invoke-Checked 'git' @('fetch', 'origin') 'Falha ao atualizar origin antes de validar main'
+    $behindCount = [int](Get-CommandText 'git' @('rev-list', '--count', 'main..origin/main') 'Falha ao comparar main com origin/main')
+    if ($behindCount -gt 0) {
+        throw "A main local esta atras de origin/main em $behindCount commit(s), ou divergiu. Atualize main antes de publicar; nenhum push foi feito."
+    }
+    $localCommits = Get-CommandText 'git' @('log', '--oneline', 'origin/main..main') 'Falha ao listar commits locais'
+    if ($localCommits) {
+        Write-Host 'Commits locais da main ainda nao enviados; serao incluidos na publicacao:' -ForegroundColor Yellow
+        Write-Host $localCommits
+    }
+    Get-CommandText 'git' @('var', 'GIT_AUTHOR_IDENT') 'Configure git user.name e user.email antes de publicar' | Out-Null
 
     $pubspecContent = [System.IO.File]::ReadAllText($pubspecPath)
     $versionMatch = [regex]::Match($pubspecContent, '(?m)^version:\s*(\d+\.\d+\.\d+)\+(\d+)\s*$')
@@ -148,31 +169,22 @@ try {
         }
     }
 
-    $branch = Get-CommandText 'git' @('branch', '--show-current') 'Falha ao ler a branch atual'
-    if (-not $branch -or $branch -eq 'main') {
-        throw 'Publique a partir de uma branch de release/feature; este script nao cria commits em main.'
-    }
-    $remoteUrl = Get-CommandText 'git' @('remote', 'get-url', 'origin') 'Remote origin indisponivel'
-    if ($remoteUrl -notmatch '(?i)github\.com[:/]NeyvanSantos/CINEY(?:\.git)?$') {
-        throw "O remote origin nao aponta para github.com/$repoSlug. Nenhuma alteracao foi feita."
-    }
-    Get-CommandText 'git' @('var', 'GIT_AUTHOR_IDENT') 'Configure git user.name e user.email antes de publicar' | Out-Null
-
     Write-Host '===================================================' -ForegroundColor Cyan
     Write-Host '  CiNey - Publicacao Mobile em um clique' -ForegroundColor Cyan
-    Write-Host "  Branch: $(git branch --show-current)" -ForegroundColor Gray
+    Write-Host "  Branch: $branch (validada contra origin/main)" -ForegroundColor Gray
     Write-Host "  Versao atual: $currentVersion+$currentBuild" -ForegroundColor Gray
     Write-Host "  Versao alvo: $targetTag" -ForegroundColor Yellow
     Write-Host '  Build assinado e release: GitHub Actions' -ForegroundColor Gray
     Write-Host '===================================================' -ForegroundColor Cyan
 
     if ($PreflightOnly) {
+        Write-Host 'Preflight da main: nenhum commit, tag, push ou workflow sera criado/disparado.' -ForegroundColor Gray
         $workingTree = git status --porcelain --untracked-files=all
         if ($workingTree) {
-            Write-Host 'Preflight OK; antes de publicar, faca commit das alteracoes:' -ForegroundColor Yellow
+            Write-Host 'Preflight OK na main; antes de publicar, faca commit das alteracoes:' -ForegroundColor Yellow
             $workingTree | ForEach-Object { Write-Host "  $_" }
         } else {
-            Write-Host 'Preflight OK; arvore de trabalho limpa.' -ForegroundColor Green
+            Write-Host 'Preflight OK na main; arvore limpa e sem commits remotos pendentes de integracao.' -ForegroundColor Green
         }
         return
     }
@@ -356,4 +368,6 @@ try {
 } catch {
     Write-Host $_ -ForegroundColor Red
     exit 1
+} finally {
+    Pop-Location
 }
