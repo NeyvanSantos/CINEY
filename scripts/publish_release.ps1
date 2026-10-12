@@ -331,6 +331,6 @@ try {
         Remove-Item $downloadDirectory -Recurse -Force -ErrorAction SilentlyContinue
     }
 } catch {
-    Write-Error $_
+    Write-Host $_ -ForegroundColor Red
     exit 1
 }
