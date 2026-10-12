@@ -156,6 +156,7 @@ jobs:
           TAG: ${{ steps.vars.outputs.tag }}
         run: |
           cp cinemax/build/app/outputs/flutter-apk/app-release.apk "CiNey-${TAG}.apk"
+          sha256sum "CiNey-${TAG}.apk" > "CiNey-${TAG}.apk.sha256"
 
       - name: 🚀 Criar Release no GitHub e Anexar APK
         uses: softprops/action-gh-release@v2
@@ -167,5 +168,6 @@ jobs:
           prerelease: false
           files: |
             CiNey-${{ steps.vars.outputs.tag }}.apk
+            CiNey-${{ steps.vars.outputs.tag }}.apk.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
