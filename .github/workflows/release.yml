@@ -155,7 +155,7 @@ jobs:
           fi
           CERTS="$("$APKSIGNER" verify --print-certs cinemax/build/app/outputs/flutter-apk/app-release.apk)"
           printf '%s\n' "$CERTS"
-          ACTUAL="$(printf '%s\n' "$CERTS" | sed -n 's/^Signer .*certificate SHA-256 digest: //p' | tr '[:upper:]' '[:lower:]' | tr -d ':\r' | sort -u)"
+          ACTUAL="$(printf '%s\n' "$CERTS" | sed -nE 's/^(Signer.*|V[0-9.]+ Signer.*) certificate SHA-256 digest: //p' | tr '[:upper:]' '[:lower:]' | tr -d ':\r' | sort -u)"
           if [[ ! "$ACTUAL" =~ ^[0-9a-f]{64}$ || "$ACTUAL" != "$EXPECTED" ]]; then
             echo 'Certificado do APK diverge de ANDROID_CERT_SHA256.' >&2
             exit 1
