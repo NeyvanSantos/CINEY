@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/material.dart' show Color;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -28,7 +29,7 @@ class AppNotifications {
     if (_initialized) return;
     try {
       const settings = InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        android: AndroidInitializationSettings('@drawable/ic_notification'),
       );
       await _plugin.initialize(settings);
 
@@ -127,6 +128,9 @@ class AppNotifications {
           channelDescription: _channelDescription,
           importance: Importance.high,
           priority: Priority.high,
+          icon: 'ic_notification',
+          largeIcon: DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
+          color: Color(0xFFFF6B00),
         ),
       ),
     );
