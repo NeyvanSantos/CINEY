@@ -238,7 +238,7 @@ try {
 
     $tagCommit = Get-CommandText 'git' @('rev-parse', "$targetTag^{commit}") 'Falha ao ler o commit da tag'
     $runsJson = Get-CommandText 'gh' @('run', 'list', '--repo', $repoSlug, '--workflow', $workflowFile, '--branch', $targetTag, '--limit', '10', '--json', 'databaseId,headSha,status') 'Falha ao consultar execucoes recentes'
-    $existingRun = @($runsJson | ConvertFrom-Json | Where-Object { $_.headSha -eq $tagCommit -and $_.status -in @('queued', 'in_progress') } | Select-Object -First 1)
+    $existingRun = @(($runsJson | ConvertFrom-Json) | Where-Object { $_.headSha -eq $tagCommit -and $_.status -in @('queued', 'in_progress') } | Select-Object -First 1)
 
     if ($existingRun.Count -gt 0) {
         $runId = [string]$existingRun[0].databaseId
@@ -285,8 +285,8 @@ try {
             $runId = $null
             for ($attempt = 1; $attempt -le 6; $attempt++) {
                 $dispatchedRunsJson = Get-CommandText 'gh' @('run', 'list', '--repo', $repoSlug, '--workflow', $workflowFile, '--branch', $targetTag, '--event', 'workflow_dispatch', '--limit', '20', '--json', 'databaseId,headSha,createdAt') 'Falha ao localizar a execucao disparada'
-                $dispatchedRun = @($dispatchedRunsJson | ConvertFrom-Json | Where-Object {
-                    $_.headSha -eq $tagCommit -and [DateTimeOffset]::Parse($_.createdAt) -ge $dispatchStartedAt
+                $dispatchedRun = @(($dispatchedRunsJson | ConvertFrom-Json) | Where-Object {
+                    $_.headSha -eq $tagCommit -and [DateTimeOffset]$_.createdAt -ge $dispatchStartedAt
                 } | Sort-Object createdAt | Select-Object -First 1)
                 if ($dispatchedRun.Count -gt 0) {
                     $runId = [string]$dispatchedRun[0].databaseId
