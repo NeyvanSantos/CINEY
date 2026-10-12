@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../../core/config/app_environment.dart';
 import '../../../core/config/theme/app_colors.dart';
 import '../../../core/config/theme/app_typography.dart';
 import '../../../core/services/app_logger.dart';
@@ -81,54 +82,90 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Logo Icon animado com gradiente e borda
+            // Logo CiNey com entrada elástica, brilho e flutuação contínua
             Container(
-              width: 100,
-              height: 100,
-              decoration: BoxDecoration(
-                gradient: AppColors.primaryGradient,
-                borderRadius: BorderRadius.circular(28),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primary.withValues(alpha: 0.4),
-                    blurRadius: 30,
-                    offset: const Offset(0, 10),
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(30),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.45),
+                        blurRadius: 40,
+                        spreadRadius: 2,
+                        offset: const Offset(0, 12),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              child: const Icon(
-                Icons.play_arrow_rounded,
-                color: Colors.white,
-                size: 60,
-              ),
-            )
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(30),
+                    child: Image.asset(
+                      AppEnvironment.assetPath('assets/images/logo.png'),
+                      width: 120,
+                      height: 120,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => Container(
+                        decoration: BoxDecoration(
+                          gradient: AppColors.primaryGradient,
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                        child: const Icon(
+                          Icons.play_arrow_rounded,
+                          color: Colors.white,
+                          size: 64,
+                        ),
+                      ),
+                    ),
+                  ),
+                )
                 .animate()
-                .scale(duration: 700.ms, curve: Curves.easeOutBack)
+                .fadeIn(duration: 450.ms)
+                .scale(
+                  begin: const Offset(0.5, 0.5),
+                  duration: 800.ms,
+                  curve: Curves.easeOutBack,
+                )
                 .then()
-                .shimmer(duration: 1200.ms),
+                .shimmer(duration: 1400.ms, delay: 150.ms)
+                .then()
+                .animate(
+                  onPlay: (controller) => controller.repeat(reverse: true),
+                )
+                .moveY(
+                  begin: 0,
+                  end: -8,
+                  duration: 1600.ms,
+                  curve: Curves.easeInOut,
+                )
+                .scaleXY(
+                  begin: 1,
+                  end: 1.04,
+                  duration: 1600.ms,
+                  curve: Curves.easeInOut,
+                ),
 
             const SizedBox(height: 24),
 
             // Título do App
             RichText(
-              text: TextSpan(
-                text: 'CI',
-                style: AppTypography.displayMedium.copyWith(
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 2,
-                ),
-                children: const [
-                  TextSpan(
-                    text: 'NEY',
-                    style: TextStyle(
-                      color: AppColors.primary,
+                  text: TextSpan(
+                    text: 'CI',
+                    style: AppTypography.displayMedium.copyWith(
                       fontWeight: FontWeight.w900,
                       letterSpacing: 2,
                     ),
+                    children: const [
+                      TextSpan(
+                        text: 'NEY',
+                        style: TextStyle(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 2,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            )
+                )
                 .animate()
                 .fadeIn(duration: 800.ms, delay: 300.ms)
                 .slideY(begin: 0.3, end: 0),
@@ -171,4 +208,3 @@ class _SplashScreenState extends State<SplashScreen> {
     );
   }
 }
-
