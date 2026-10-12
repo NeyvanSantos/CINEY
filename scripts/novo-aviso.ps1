@@ -1,4 +1,3 @@
-#requires -Version 7.0
 <#
 .SYNOPSIS
   Publica um aviso do CiNey para todos os clientes, sem abrir o Supabase Dashboard.
