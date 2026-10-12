@@ -19,9 +19,6 @@ import '../../../plugin_engine/manager/plugin_manager.dart';
 import '../../../plugin_engine/models/stream_source.dart';
 import '../../../plugin_engine/runtime/stream_resolver.dart';
 import '../../../plugin_engine/runtime/tmdb_service.dart';
-import '../../cast/presentation/cast_dialog.dart';
-import '../../cast/services/native_cast_bridge.dart';
-import '../../cast/services/web_cast_server.dart';
 import '../tv/tv_embed_player.dart';
 import '../tv/tv_engine_client.dart';
 import '../tv/tv_source_policy.dart';
@@ -222,12 +219,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   bool _resumePlayback = true;
   bool _landscapeOnMobile = true;
   Timer? _hideControlsTimer;
-
-  // Estado do Cast / Controle Remoto da TV
-  bool _isCasting = false;
-  String _castingDeviceName = '';
-  bool _isChromecast = false;
-  Timer? _castPollTimer;
 
   // Configurações Selecionadas
   VideoQuality _selectedQuality = VideoQuality.auto;
@@ -541,7 +532,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     if (!_hasEpisode ||
         _completionHandled ||
         _advancingEpisode ||
-        _isCasting ||
         _closingPlayer ||
         _appInBackground) {
       return;
@@ -553,7 +543,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   }
 
   Future<void> _advanceEpisode() async {
-    if (!_hasEpisode || _advancingEpisode || _isCasting || _closingPlayer) {
+    if (!_hasEpisode || _advancingEpisode || _closingPlayer) {
       return;
     }
     setState(() => _advancingEpisode = true);
@@ -646,9 +636,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           foregroundColor: AppColors.primary,
           side: const BorderSide(color: AppColors.primary),
         ),
-        onPressed: busy || _isCasting
-            ? null
-            : () => unawaited(_advanceEpisode()),
+        onPressed: busy ? null : () => unawaited(_advanceEpisode()),
         icon: busy
             ? const SizedBox(
                 width: 18,
@@ -1493,7 +1481,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     WidgetsBinding.instance.removeObserver(this);
     AppLogger.info('Player fechado: $_title.', tag: 'PLAYER');
     _nextEpisodeFocusNode.dispose();
-    _castPollTimer?.cancel();
     _hideControlsTimer?.cancel();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemChrome.setPreferredOrientations(
@@ -1504,390 +1491,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     _tvEmbedSource = null;
     _disposeCurrentPlayer(saveProgress: !_allowExit);
     super.dispose();
-  }
-
-  // ══════════════════════════════════════════════
-  // Controle Remoto e Sincronização de Cast (TV)
-  // ══════════════════════════════════════════════
-  Future<void> _showCastDialog() async {
-    _startHideControlsTimer();
-    final currentPos =
-        _videoPlayerController?.value.position ?? _currentPosition;
-    await CastDialog.show(
-      context,
-      title: _title,
-      sources: _sources,
-      initialSourceIndex: _currentSourceIndex,
-      startPosition: currentPos,
-      onCastStarted: (deviceName, isChromecast) {
-        _onStartCasting(deviceName, isChromecast);
-      },
-    );
-  }
-
-  void _onStartCasting(String deviceName, bool isChromecast) {
-    setState(() {
-      _isCasting = true;
-      _castingDeviceName = deviceName;
-      _isChromecast = isChromecast;
-      _controlsVisible = true;
-    });
-
-    // Pausa a reprodução local no celular
-    _videoPlayerController?.pause();
-
-    // Inicia a sincronização periódica de status com a TV
-    _startCastSyncTimer();
-  }
-
-  Future<void> _stopCasting() async {
-    _castPollTimer?.cancel();
-    if (_isChromecast) {
-      await NativeCastBridge.stopCasting();
-    }
-    setState(() {
-      _isCasting = false;
-      _castingDeviceName = '';
-    });
-    // Retoma a reprodução local no celular a partir do ponto atual
-    if (_videoPlayerController != null) {
-      await _videoPlayerController!.seekTo(_currentPosition);
-      _videoPlayerController!.play();
-      setState(() => _isPlaying = true);
-    }
-  }
-
-  Future<void> _toggleCastPlayPause() async {
-    if (_isChromecast) {
-      if (_isPlaying) {
-        await NativeCastBridge.pause();
-      } else {
-        await NativeCastBridge.play();
-      }
-    } else {
-      if (_isPlaying) {
-        WebCastServer.instance.pause();
-      } else {
-        WebCastServer.instance.play();
-      }
-    }
-    setState(() => _isPlaying = !_isPlaying);
-  }
-
-  Future<void> _seekCast(Duration newPosition) async {
-    final clamped = newPosition < Duration.zero
-        ? Duration.zero
-        : (_totalDuration > Duration.zero && newPosition > _totalDuration
-              ? _totalDuration
-              : newPosition);
-
-    setState(() {
-      _currentPosition = clamped;
-    });
-
-    if (_isChromecast) {
-      await NativeCastBridge.seekTo(clamped);
-    } else {
-      WebCastServer.instance.seekTo(clamped.inSeconds.toDouble());
-    }
-  }
-
-  void _startCastSyncTimer() {
-    _castPollTimer?.cancel();
-    _castPollTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
-      if (!mounted || !_isCasting) {
-        timer.cancel();
-        return;
-      }
-
-      if (_isChromecast) {
-        final status = await NativeCastBridge.getMediaStatus();
-        if (status != null && mounted) {
-          final isConnected = status['isConnected'] as bool? ?? false;
-          if (!isConnected) {
-            _stopCasting();
-            return;
-          }
-          final isPlaying = status['isPlaying'] as bool? ?? false;
-          final posMs = (status['positionMs'] as num?)?.toInt() ?? 0;
-          final durMs = (status['durationMs'] as num?)?.toInt() ?? 0;
-
-          setState(() {
-            _isPlaying = isPlaying;
-            if (posMs > 0) _currentPosition = Duration(milliseconds: posMs);
-            if (durMs > 0) _totalDuration = Duration(milliseconds: durMs);
-          });
-        }
-      } else {
-        final serverTime = WebCastServer.instance.currentTime;
-        final serverDur = WebCastServer.instance.duration;
-        final serverPlaying = WebCastServer.instance.isPlaying;
-
-        if (mounted) {
-          setState(() {
-            _isPlaying = serverPlaying;
-            if (serverTime > 0) {
-              _currentPosition = Duration(
-                milliseconds: (serverTime * 1000).toInt(),
-              );
-            }
-            if (serverDur > 0) {
-              _totalDuration = Duration(
-                milliseconds: (serverDur * 1000).toInt(),
-              );
-            }
-          });
-        }
-      }
-    });
-  }
-
-  Widget _buildCastRemoteOverlay() {
-    final progress = _totalDuration.inMilliseconds > 0
-        ? (_currentPosition.inMilliseconds / _totalDuration.inMilliseconds)
-              .clamp(0.0, 1.0)
-        : 0.0;
-
-    return Container(
-      color: const Color(0xFF070B14),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          child: Column(
-            children: [
-              // ── Barra Superior do Remoto ──
-              Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(
-                      Icons.arrow_back_rounded,
-                      color: Colors.white,
-                    ),
-                    onPressed: () {
-                      _stopCasting();
-                      Navigator.of(context).pop();
-                    },
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _title,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.cast_connected_rounded,
-                              color: AppColors.primary,
-                              size: 14,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Transmitindo em $_castingDeviceName',
-                              style: const TextStyle(
-                                color: AppColors.primary,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  FilledButton.icon(
-                    onPressed: _stopCasting,
-                    icon: const Icon(Icons.phone_android_rounded, size: 16),
-                    label: Text(context.tr('player.watch_mobile')),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: Colors.white.withValues(alpha: 0.15),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 8,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-
-              const Spacer(),
-
-              // ── Ícone Central Pulsante da TV ──
-              Container(
-                width: 90,
-                height: 90,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.primary.withValues(alpha: 0.12),
-                  border: Border.all(
-                    color: AppColors.primary.withValues(alpha: 0.4),
-                    width: 2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.primary.withValues(alpha: 0.2),
-                      blurRadius: 28,
-                      spreadRadius: 4,
-                    ),
-                  ],
-                ),
-                child: Center(
-                  child: Icon(
-                    _isChromecast ? Icons.tv_rounded : Icons.language_rounded,
-                    color: AppColors.primary,
-                    size: 44,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                _isPlaying ? 'Reproduzindo na TV' : 'Pausado na TV',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Controlando reprodução remota em $_castingDeviceName',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.6),
-                  fontSize: 12,
-                ),
-              ),
-
-              const Spacer(),
-
-              // ── Controles de Mídia Principais ──
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  IconButton(
-                    iconSize: 40,
-                    icon: const Icon(
-                      Icons.replay_10_rounded,
-                      color: Colors.white,
-                    ),
-                    onPressed: () => _seekCast(
-                      _currentPosition - const Duration(seconds: 10),
-                    ),
-                  ),
-                  const SizedBox(width: 28),
-                  Container(
-                    width: 64,
-                    height: 64,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColors.primary,
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.primary.withValues(alpha: 0.4),
-                          blurRadius: 16,
-                          spreadRadius: 2,
-                        ),
-                      ],
-                    ),
-                    child: IconButton(
-                      iconSize: 34,
-                      icon: Icon(
-                        _isPlaying
-                            ? Icons.pause_rounded
-                            : Icons.play_arrow_rounded,
-                        color: Colors.white,
-                      ),
-                      onPressed: _toggleCastPlayPause,
-                    ),
-                  ),
-                  const SizedBox(width: 28),
-                  IconButton(
-                    iconSize: 40,
-                    icon: const Icon(
-                      Icons.forward_10_rounded,
-                      color: Colors.white,
-                    ),
-                    onPressed: () => _seekCast(
-                      _currentPosition + const Duration(seconds: 10),
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 18),
-
-              // ── Barra de Progresso com Tempo ──
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  children: [
-                    SliderTheme(
-                      data: SliderTheme.of(context).copyWith(
-                        trackHeight: 4,
-                        thumbShape: const RoundSliderThumbShape(
-                          enabledThumbRadius: 7,
-                        ),
-                        overlayShape: const RoundSliderOverlayShape(
-                          overlayRadius: 16,
-                        ),
-                        activeTrackColor: AppColors.primary,
-                        inactiveTrackColor: Colors.white.withValues(alpha: 0.2),
-                        thumbColor: AppColors.primary,
-                      ),
-                      child: Slider(
-                        value: progress,
-                        onChanged: (val) {
-                          if (_totalDuration.inMilliseconds > 0) {
-                            final seekTarget = Duration(
-                              milliseconds:
-                                  (val * _totalDuration.inMilliseconds).toInt(),
-                            );
-                            _seekCast(seekTarget);
-                          }
-                        },
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            _formatDuration(_currentPosition),
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.7),
-                              fontSize: 12,
-                            ),
-                          ),
-                          Text(
-                            _formatDuration(_totalDuration),
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.7),
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 8),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   String _formatDuration(Duration duration) {
@@ -2117,8 +1720,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 if (!widget.isTv &&
                     _webViewController != null &&
                     _sources.length > 1 &&
-                    !_isScreenLocked &&
-                    !_isCasting)
+                    !_isScreenLocked)
                   Positioned(
                     top: 12,
                     right: 12,
@@ -2172,14 +1774,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                     ),
                   ),
 
-                // ── Controle Remoto de Transmissão na TV (Modo Cast Ativo) ──
-                if (_isCasting)
-                  Positioned.fill(child: _buildCastRemoteOverlay()),
-
                 if (_hasEpisode &&
                     _isNearEpisodeEnd &&
                     !_isScreenLocked &&
-                    !_isCasting &&
                     (_nextEpisode != null ||
                         _nextEpisodeLoading ||
                         _nextEpisodeFailed ||
@@ -2353,28 +1950,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                 ),
               );
             },
-          ),
-
-          // Botão Transmitir para TV (Cast)
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 4),
-            decoration: BoxDecoration(
-              color: _isCasting
-                  ? AppColors.primary.withValues(alpha: 0.3)
-                  : Colors.white.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: IconButton(
-              icon: Icon(
-                _isCasting ? Icons.cast_connected_rounded : Icons.cast_rounded,
-                color: _isCasting ? AppColors.primary : Colors.white,
-                size: 20,
-              ),
-              tooltip: _isCasting
-                  ? 'Transmitindo em $_castingDeviceName'
-                  : 'Transmitir para TV',
-              onPressed: _showCastDialog,
-            ),
           ),
 
           // Botão Trocar Servidor
@@ -2954,19 +2529,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           onTap: () {
             Navigator.pop(context);
             _showServerSelectorModal();
-          },
-        ),
-        _buildSettingsItem(
-          icon: _isCasting ? Icons.cast_connected_rounded : Icons.cast_rounded,
-          title: context.tr('player.cast.title'),
-          subtitle: _isCasting
-              ? context
-                    .tr('player.cast.connected')
-                    .replaceAll('{device}', _castingDeviceName)
-              : context.tr('player.cast.mirror'),
-          onTap: () {
-            Navigator.pop(context);
-            _showCastDialog();
           },
         ),
         _buildSettingsItem(

@@ -56,10 +56,8 @@ conferidos no manifesto compilado.
 - Análise estática de `cinemax` e `cinemax_tv`: nenhum problema.
 - 43 testes Flutter do player, continuidade de episódios, retomada, documento embed e atualizador: aprovados.
 - 40 testes JavaScript da ponte, observador e início da reprodução: aprovados.
-- Suíte Flutter completa: 134 testes aprovados e seis falhas nos testes de Cast já presentes no código anterior.
-- Quatro falhas em `cast_dialog_test.dart`: ausência de implementação de WebView no ambiente de teste.
-- Duas falhas em `native_cast_bridge_test.dart`: classificação de URL embed com query de mídia e identificação de MIME por extensão na query.
-- Os arquivos de produção protegidos de Cast e esses dois arquivos de teste não foram alterados nesta release.
+- Suíte Flutter completa: 134 testes aprovados e seis falhas preexistentes.
+- Os arquivos protegidos e os testes complementares não foram alterados nesta release.
 - `git diff --check`: aprovado.
 
 A release TV é um pré-lançamento, com APK terminado em `-TV.apk`, conforme os

@@ -10,7 +10,6 @@ import '../../../plugin_engine/manager/plugin_manager.dart';
 import '../../../plugin_engine/models/content_item.dart';
 import '../../../plugin_engine/models/stream_source.dart';
 import '../../../plugin_engine/runtime/stream_resolver.dart';
-import '../../cast/presentation/cast_dialog.dart';
 import '../../favorites/presentation/favorite_button.dart';
 import 'widgets/server_selection_sheet.dart';
 
@@ -94,37 +93,6 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
         setState(() => _isLoadingEpisodes = false);
       }
     }
-  }
-
-  void _showCast(ContentDetail item) {
-    final sources = StreamResolverService.resolveFromContentId(
-      item.id,
-      season: item.type == ContentType.movie ? null : _selectedSeason,
-      episode: item.type == ContentType.movie ? null : 1,
-    );
-    CastDialog.show(
-      context,
-      title: item.title,
-      sources: sources,
-      onOpenPlayer: () {
-        if (!mounted) return;
-        context.push(
-          Uri(
-            pathSegments: ['', 'player', item.id, item.pluginId],
-            queryParameters: {
-              'title': item.title,
-              'contentTitle': item.title,
-              'poster': item.posterUrl,
-              'type': item.type.value,
-              if (item.type != ContentType.movie) ...{
-                'season': '$_selectedSeason',
-                'episode': '1',
-              },
-            },
-          ).toString(),
-        );
-      },
-    );
   }
 
   void _openCollection(ContentDetail item) {
@@ -268,11 +236,6 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
             pinned: true,
             backgroundColor: AppColors.background,
             actions: [
-              IconButton(
-                icon: const Icon(Icons.cast_rounded, color: Colors.white),
-                tooltip: 'Transmitir para TV',
-                onPressed: () => _showCast(item),
-              ),
               FavoriteButton.fromDetail(detail: item),
               IconButton(
                 icon: const Icon(Icons.share_rounded, color: Colors.white),
@@ -407,19 +370,6 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton.filledTonal(
-                        onPressed: () => _showCast(item),
-                        style: IconButton.styleFrom(
-                          backgroundColor: AppColors.primarySurface,
-                          padding: const EdgeInsets.all(14),
-                        ),
-                        icon: const Icon(
-                          Icons.cast_rounded,
-                          color: AppColors.primary,
-                        ),
-                        tooltip: 'Transmitir para Smart TV',
                       ),
                       const SizedBox(width: 8),
                       FavoriteButton.fromDetail(detail: item),

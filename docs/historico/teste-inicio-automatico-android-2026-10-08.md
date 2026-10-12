@@ -37,8 +37,8 @@ de episódio, TV física ou reprodução de todo o catálogo.
 
 O build inicial no caminho original falhou em `jni:buildCMakeDebug`, com saída
 nativa esperada ausente. Uma cópia temporária das fontes atuais em um caminho
-sem espaços ou acentos compilou em 63 segundos. Nenhum arquivo de Cast foi
-alterado nesta atividade; o build inclui as alterações locais que já existiam.
+sem espaços ou acentos compilou em 63 segundos. O build inclui as alterações
+locais que já existiam.
 
 Scripts de inspeção, logs brutos e o APK de depuração ficaram fora do repositório.
 

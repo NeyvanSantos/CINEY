@@ -42,8 +42,7 @@ O último APK TV publicado fica em `../releases/tv/`, conforme a
 [política de armazenamento local](../releases/README.md). Os binários não são
 versionados no Git.
 
-- [Recursos, reprodução, transmissão e privacidade](../README.md)
+- [Recursos, reprodução e privacidade](../README.md)
 - [Mapa do código-fonte e das pastas](../docs/estrutura.md)
 - [Regras compartilhadas de desenvolvimento](../cinemax/regras/README.md)
 - [Notas de otimização](../docs/performance-optimization.md)
-- [Receptor Google Cast compartilhado](../receiver/README.md)

@@ -24,5 +24,5 @@ A camada de apresentação (telas de catálogo, busca e player) **NUNCA** deve c
 ## 3. Resolução Segura de Streams
 
 1. Se um plugin retornar uma URL direta (`.m3u8` ou `.mp4`), certifique-se de preencher os cabeçalhos HTTP necessários (ex.: `User-Agent`, `Referer`) no objeto `StreamSource`.
-2. Se retornar um embed/iframe, o player utilizará a `WebViewBridge` ou o `WebCastServer` para contornar proteções.
+2. Se retornar um embed/iframe, o player utilizará sua WebView e respeitará os controles e as políticas do provedor.
 3. Tratamento de falhas: Se um servidor ou provedor falhar, o `StreamResolver` deve tentar o próximo servidor de fallback de maneira transparente antes de retornar erro para o usuário.
