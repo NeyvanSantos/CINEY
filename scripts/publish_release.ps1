@@ -77,7 +77,7 @@
             throw "Arquivo pubspec.yaml nao encontrado: $pubspecPath"
         }
 
-        foreach ($tool in @('git', 'gh', 'flutter', 'node')) {
+        foreach ($tool in @('git', 'gh')) {
             if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
                 throw "Ferramenta obrigatoria nao encontrada no PATH: $tool"
             }
@@ -197,20 +197,6 @@
         }
 
         if (-not $retryCurrentTag) {
-            Push-Location $projectDir
-            try {
-                Write-Host "`nExecutando flutter analyze..." -ForegroundColor Cyan
-                Invoke-Checked 'flutter' @('analyze') 'flutter analyze falhou'
-                Write-Host "`nExecutando testes focados do fluxo de reproducao..." -ForegroundColor Cyan
-                Invoke-Checked 'flutter' @('test', '--no-pub', 'test/details_auto_play_test.dart', 'test/player_episode_continuity_test.dart') 'Testes focados falharam'
-                Write-Host "`nExecutando a suite completa do Flutter..." -ForegroundColor Cyan
-                Invoke-Checked 'flutter' @('test', '--no-pub') 'Suite completa do Flutter falhou'
-                Write-Host "`nExecutando testes Node da ponte de embeds..." -ForegroundColor Cyan
-                Invoke-Checked 'node' @('--test', 'test/embed_bridge_test.cjs', 'test/embed_media_observer_test.cjs', 'test/embed_startup_test.cjs') 'Testes Node falharam'
-            } finally {
-                Pop-Location
-            }
-
             $newBuild = $currentBuild + 1
             $newVersionLine = "version: $targetVersion+$newBuild"
             $updatedPubspec = [regex]::Replace($pubspecContent, '(?m)^version:\s*.*$', $newVersionLine, 1)

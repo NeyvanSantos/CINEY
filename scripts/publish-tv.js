@@ -1,13 +1,12 @@
 'use strict';
 
-const { execFileSync, execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
-const CINEMAX_DIR = path.join(ROOT_DIR, 'cinemax');
 const TV_DIR = path.join(ROOT_DIR, 'cinemax_tv');
 const TV_PUBSPEC = path.join(TV_DIR, 'pubspec.yaml');
 const INVENTORY = path.join(ROOT_DIR, 'releases', 'README.md');
@@ -16,16 +15,9 @@ const REPO_SLUG = 'NeyvanSantos/CINEY';
 const WORKFLOW_FILE = 'release-tv.yml';
 const ASSET_PREFIX = 'CiNey-v';
 
-function execute(command, args, options) {
-  if (process.platform === 'win32' && command === 'flutter') {
-    return execSync([command, ...args].join(' '), options);
-  }
-  return execFileSync(command, args, options);
-}
-
 function run(command, args, cwd = ROOT_DIR, input) {
   try {
-    return execute(command, args, {
+    return execFileSync(command, args, {
       cwd,
       encoding: 'utf8',
       input,
@@ -40,7 +32,7 @@ function run(command, args, cwd = ROOT_DIR, input) {
 
 function output(command, args, cwd = ROOT_DIR) {
   try {
-    return execute(command, args, {
+    return execFileSync(command, args, {
       cwd,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -134,7 +126,6 @@ function assertToolsAndAuth() {
   for (const [command, args] of [
     ['git', ['--version']],
     ['gh', ['--version']],
-    ['flutter', ['--version']],
     ['node', ['--version']],
   ]) {
     output(command, args);
@@ -198,34 +189,6 @@ function assertCleanTree() {
     console.error(status);
     throw new Error('Publicação cancelada para não incluir alterações inesperadas.');
   }
-}
-
-function runQualityGates() {
-  run('flutter', ['pub', 'get'], CINEMAX_DIR);
-  run('flutter', ['pub', 'get'], TV_DIR);
-  run('flutter', ['analyze'], CINEMAX_DIR);
-  run('flutter', ['analyze'], TV_DIR);
-  run(
-    'flutter',
-    [
-      'test',
-      '--no-pub',
-      'test/details_auto_play_test.dart',
-      'test/player_episode_continuity_test.dart',
-    ],
-    CINEMAX_DIR,
-  );
-  run('flutter', ['test', '--no-pub'], CINEMAX_DIR);
-  run(
-    'node',
-    [
-      '--test',
-      'test/embed_bridge_test.cjs',
-      'test/embed_media_observer_test.cjs',
-      'test/embed_startup_test.cjs',
-    ],
-    CINEMAX_DIR,
-  );
 }
 
 function escapeRegex(value) {
@@ -437,7 +400,6 @@ async function main() {
 
   assertCleanTree();
   if (!retryCurrentTag) {
-    runQualityGates();
     const updatedPubspec = replaceTvVersion(pubspec, version, current.build + 1);
     const updatedInventory = updateInventory(version);
     fs.writeFileSync(TV_PUBSPEC, updatedPubspec, 'utf8');

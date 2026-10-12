@@ -20,9 +20,8 @@ Veja o [guia de contas e favoritos](../docs/contas-supabase.md).
 Com o repositório na `main` atualizada, árvore limpa e `gh auth login`
 configurado, dê duplo clique em `scripts/publicar-mobile.bat`.
 
-O launcher executa `publish_release.ps1`, valida análise, testes Flutter focados
-e completos e os testes Node dos embeds, incrementa versão/build, cria commit e
-tag, envia a `main` antes da tag, acompanha o workflow assinado no GitHub Actions
+O launcher executa `publish_release.ps1`, incrementa versão/build, cria commit e
+tag, envia a `main` antes da tag e acompanha a compilação e publicação no GitHub Actions
 e baixa o APK para `releases/mobile/`. O tamanho e SHA-256 do download são
 comparados aos assets remotos antes de substituir a cópia local anterior.
 
@@ -41,13 +40,18 @@ script PowerShell.
 
 ## Publicação pelo GitHub Actions
 
+Os fluxos de release preparam a assinatura, instalam dependências, compilam e
+publicam o APK com SHA-256. A senha da chave é conferida antes da compilação.
+Análise e testes ficam no workflow `CI`, sem repetição nos publicadores ou nas
+releases. O mobile exige apenas Git e GitHub CLI; o publicador TV também usa Node.js.
+
 ```powershell
 .\scripts\publish_release.ps1 -Version "1.0.10" -Notes "Descrição da atualização"
 ```
 
 O script atualiza a versão de `cinemax/pubspec.yaml` e envia o commit e a tag
 que acionam `.github/workflows/release.yml`. A assinatura usa os secrets já
-configurados no repositório. O parâmetro `-BuildLocal` também compila localmente.
+configurados no repositório. A compilação acontece no GitHub; Flutter não é necessário na máquina local.
 
 ## Publicação Android TV
 
@@ -59,7 +63,7 @@ node scripts/publish-tv.js --preflight-only
 
 Para publicar a próxima versão, execute `node scripts/publish-tv.js`; também é
 possível informar uma versão `X.Y.Z`. O fluxo exige a branch `main` atualizada
-e uma árvore limpa, valida análise e testes Flutter/Node, atualiza
+e uma árvore limpa, atualiza
 `cinemax_tv/pubspec.yaml` e o inventário, cria commit e tag `tv-vX.Y.Z`, envia
 `main` antes da tag e acompanha o workflow. O APK assinado e o checksum SHA-256
 são validados antes de atualizar `releases/tv/`. Falhas preservam a tag para
