@@ -2853,80 +2853,71 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     final effectiveBadgeColor = badgeColor ?? AppColors.primary;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      child: Material(
+      decoration: BoxDecoration(
         color: isSelected
             ? AppColors.primary.withValues(alpha: 0.12)
             : Colors.white.withValues(alpha: 0.04),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: BorderSide(
-            color: isSelected
-                ? AppColors.primary.withValues(alpha: 0.5)
-                : Colors.white.withValues(alpha: 0.06),
-          ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isSelected
+              ? AppColors.primary.withValues(alpha: 0.5)
+              : Colors.white.withValues(alpha: 0.06),
         ),
-        clipBehavior: Clip.antiAlias,
-        child: ListTile(
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 2,
-          ),
-          leading:
-              customLeading ??
-              Icon(
-                icon ?? Icons.check_circle_rounded,
-                color: isSelected ? AppColors.primary : Colors.white70,
-                size: 22,
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+        leading:
+            customLeading ??
+            Icon(
+              icon ?? Icons.check_circle_rounded,
+              color: isSelected ? AppColors.primary : Colors.white70,
+              size: 22,
+            ),
+        title: Row(
+          children: [
+            Flexible(
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: isSelected ? AppColors.primary : Colors.white,
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
-          title: Row(
-            children: [
-              Flexible(
+            ),
+            if (badge != null) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: effectiveBadgeColor.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(4),
+                ),
                 child: Text(
-                  title,
+                  badge,
                   style: TextStyle(
+                    color: effectiveBadgeColor,
+                    fontSize: 9,
                     fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: isSelected ? AppColors.primary : Colors.white,
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              if (badge != null) ...[
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: effectiveBadgeColor.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    badge,
-                    style: TextStyle(
-                      color: effectiveBadgeColor,
-                      fontSize: 9,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
             ],
-          ),
-          subtitle: Text(
-            subtitle,
-            style: const TextStyle(color: AppColors.textTertiary, fontSize: 12),
-          ),
-          trailing: isSelected
-              ? const Icon(
-                  Icons.check_circle_rounded,
-                  color: AppColors.primary,
-                  size: 20,
-                )
-              : null,
-          onTap: onTap,
+          ],
         ),
+        subtitle: Text(
+          subtitle,
+          style: const TextStyle(color: AppColors.textTertiary, fontSize: 12),
+        ),
+        trailing: isSelected
+            ? const Icon(
+                Icons.check_circle_rounded,
+                color: AppColors.primary,
+                size: 20,
+              )
+            : null,
+        onTap: onTap,
       ),
     );
   }

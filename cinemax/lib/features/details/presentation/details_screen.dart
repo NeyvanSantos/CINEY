@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -625,82 +627,97 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                       style: AppTypography.headlineMedium,
                     ),
                     const SizedBox(height: 12),
-                    SizedBox(
-                      height: 110,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: item.cast.length,
-                        separatorBuilder: (context, index) =>
-                            const SizedBox(width: 12),
-                        itemBuilder: (context, index) {
-                          final actor = item.cast[index];
-                          return Column(
-                            children: [
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        const spacing = 12.0;
+                        const minWidthItem = 70.0;
+                        final columns = math.max(
+                          1,
+                          ((constraints.maxWidth + spacing) / minWidthItem).floor(),
+                        );
+                        final cardWidth =
+                            (constraints.maxWidth - spacing * (columns - 1)) /
+                            columns;
+                        final photoSize = math.min(
+                          88.0,
+                          math.min(cardWidth * 0.75, cardWidth - 24),
+                        );
+                        final cacheWidth =
+                            (photoSize * MediaQuery.devicePixelRatioOf(context))
+                                .ceil();
+
+                        return Wrap(
+                          spacing: spacing,
+                          runSpacing: 20,
+                          children: [
+                            for (final actor in item.cast)
                               SizedBox(
-                                width: 60,
-                                height: 60,
-                                child: actor.photoUrl == null
-                                    ? const CircleAvatar(
-                                        radius: 30,
-                                        backgroundColor: AppColors.surfaceLight,
-                                        child: Icon(
-                                          Icons.person,
-                                          color: Colors.white70,
-                                        ),
-                                      )
-                                    : ClipOval(
-                                        child: CachedNetworkImage(
-                                          imageUrl: actor.photoUrl!,
-                                          fit: BoxFit.cover,
-                                          memCacheWidth: 120,
-                                          memCacheHeight: 120,
-                                          placeholder: (context, url) =>
-                                              Container(
-                                                color: AppColors.surfaceLight,
-                                              ),
-                                          errorWidget: (context, url, error) =>
-                                              const ColoredBox(
+                                width: cardWidth,
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    ClipOval(
+                                      child: SizedBox.square(
+                                        dimension: photoSize,
+                                        child:
+                                            actor.photoUrl == null ||
+                                                actor.photoUrl!.isEmpty
+                                            ? const ColoredBox(
                                                 color: AppColors.surfaceLight,
                                                 child: Icon(
                                                   Icons.person,
-                                                  color: Colors.white70,
+                                                  color:
+                                                      AppColors.textSecondary,
                                                 ),
+                                              )
+                                            : CachedNetworkImage(
+                                                imageUrl: actor.photoUrl!,
+                                                fit: BoxFit.contain,
+                                                alignment: Alignment.center,
+                                                memCacheWidth: cacheWidth,
+                                                placeholder: (context, url) =>
+                                                    const ColoredBox(
+                                                      color: AppColors
+                                                          .surfaceLight,
+                                                    ),
+                                                errorWidget:
+                                                    (context, url, error) =>
+                                                        const ColoredBox(
+                                                          color: AppColors
+                                                              .surfaceLight,
+                                                          child: Icon(
+                                                            Icons.person,
+                                                            color: AppColors
+                                                                .textSecondary,
+                                                          ),
+                                                        ),
                                               ),
-                                        ),
                                       ),
-                              ),
-                              const SizedBox(height: 6),
-                              SizedBox(
-                                width: 80,
-                                child: Text(
-                                  actor.name,
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              if (actor.character != null)
-                                SizedBox(
-                                  width: 80,
-                                  child: Text(
-                                    actor.character!,
-                                    style: const TextStyle(
-                                      fontSize: 10,
-                                      color: AppColors.textTertiary,
                                     ),
-                                    textAlign: TextAlign.center,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      actor.name,
+                                      style: AppTypography.labelMedium,
+                                      textAlign: TextAlign.center,
+                                    ),
+                                    if (actor.character?.isNotEmpty ??
+                                        false) ...[
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        actor.character!,
+                                        style: AppTypography.labelSmall
+                                            .copyWith(
+                                              color: AppColors.textTertiary,
+                                            ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ],
+                                  ],
                                 ),
-                            ],
-                          );
-                        },
-                      ),
+                              ),
+                          ],
+                        );
+                      },
                     ),
                     const SizedBox(height: 40),
                   ],

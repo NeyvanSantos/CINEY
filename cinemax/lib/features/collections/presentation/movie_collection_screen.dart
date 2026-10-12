@@ -28,6 +28,7 @@ class MovieCollectionScreen extends StatefulWidget {
 
 class _MovieCollectionScreenState extends State<MovieCollectionScreen> {
   late Future<MovieCollection> _collectionFuture;
+  List<ContentItem> _movies = [];
 
   @override
   void initState() {
@@ -36,13 +37,83 @@ class _MovieCollectionScreenState extends State<MovieCollectionScreen> {
   }
 
   void _loadCollection() {
+    _movies = [];
     _collectionFuture = (widget.loadCollection ?? TmdbService.getCollection)(
       widget.collectionId,
       widget.pluginId,
-    );
+    ).then((collection) {
+      if (mounted) {
+        setState(() {
+          _movies = collection.movies;
+        });
+      }
+      return collection;
+    });
   }
 
   void _retry() => setState(_loadCollection);
+
+  Widget _buildLoadingPlaceholder(int index) {
+    return GlassCard(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(10),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 20,
+            child: Center(
+              child: Text(
+                '${index + 1}',
+                style: AppTypography.labelLarge.copyWith(
+                  color: AppColors.textTertiary,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+           SizedBox(
+             width: 64,
+             height: 96,
+             child: Container(
+               decoration: BoxDecoration(
+                 color: AppColors.primarySurface,
+                 borderRadius: BorderRadius.circular(6),
+               ),
+             ),
+           ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                 SizedBox(
+                   width: double.infinity,
+                   height: 16,
+                   child: Container(
+                     decoration: BoxDecoration(
+                       color: AppColors.primarySurface,
+                       borderRadius: BorderRadius.circular(4),
+                     ),
+                   ),
+                 ),
+                 const SizedBox(height: 8),
+                 SizedBox(
+                   width: 60,
+                   height: 12,
+                   child: Container(
+                     decoration: BoxDecoration(
+                       color: AppColors.primarySurface,
+                       borderRadius: BorderRadius.circular(4),
+                     ),
+                   ),
+                 ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   void _openMovie(ContentItem movie) {
     context.push(
@@ -58,64 +129,58 @@ class _MovieCollectionScreenState extends State<MovieCollectionScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: Text(
-          widget.collectionName,
-          style: AppTypography.headlineMedium,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        backgroundColor: AppColors.background,
-      ),
-      body: FutureBuilder<MovieCollection>(
-        future: _collectionFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(color: AppColors.primary),
-            );
-          }
-          if (snapshot.hasError) return _buildFailure();
-
-          final collection = snapshot.data;
-          if (collection == null || collection.movies.isEmpty) {
-            return _buildEmpty();
-          }
-
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-            children: [
-              Text(collection.name, style: AppTypography.headlineLarge),
-              const SizedBox(height: 6),
-              Text(
-                '${collection.movies.length} filmes • ordem de lançamento',
-                style: AppTypography.bodySmall.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              if (collection.overview?.isNotEmpty == true) ...[
-                const SizedBox(height: 12),
-                Text(
-                  collection.overview!,
-                  style: AppTypography.bodyMedium.copyWith(
-                    color: AppColors.textSecondary,
-                    height: 1.5,
+   @override
+   Widget build(BuildContext context) {
+     return Scaffold(
+       backgroundColor: AppColors.background,
+       appBar: AppBar(
+         title: Text(
+           widget.collectionName,
+           style: AppTypography.headlineMedium,
+           maxLines: 1,
+           overflow: TextOverflow.ellipsis,
+         ),
+         backgroundColor: AppColors.background,
+       ),
+        body: FutureBuilder<MovieCollection>(
+          future: _collectionFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting && _movies.isEmpty) {
+              return ListView(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                children: [
+                  Text(widget.collectionName, style: AppTypography.headlineLarge),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Carregando filmes...',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
                   ),
-                ),
-              ],
-              const SizedBox(height: 20),
-              for (var index = 0; index < collection.movies.length; index++)
-                _buildMovieCard(collection.movies[index], index),
-            ],
-          );
-        },
-      ),
-    );
-  }
+                  const SizedBox(height: 20),
+                  for (var index = 0; index < 8; index++)
+                    _buildLoadingPlaceholder(index),
+                ],
+              );
+            }
+
+            final collection = snapshot.data;
+            if (collection == null) return _buildEmpty();
+            if (snapshot.hasError) return _buildFailure();
+            if (collection.movies.isEmpty) return _buildEmpty();
+
+            return ListView.separated(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+              itemCount: collection.movies.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                return _buildMovieCard(collection.movies[index], index);
+              },
+            );
+         },
+       ),
+     );
+   }
 
   Widget _buildMovieCard(ContentItem movie, int index) {
     return GlassCard(
@@ -135,20 +200,21 @@ class _MovieCollectionScreenState extends State<MovieCollectionScreen> {
             ),
           ),
           const SizedBox(width: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: SizedBox(
-              width: 64,
-              height: 96,
-              child: movie.posterUrl.isEmpty
-                  ? _posterFallback()
-                  : CachedNetworkImage(
-                      imageUrl: movie.posterUrl,
-                      fit: BoxFit.cover,
-                      errorWidget: (context, url, error) => _posterFallback(),
-                    ),
-            ),
-          ),
+           ClipRRect(
+             borderRadius: BorderRadius.circular(6),
+             child: SizedBox(
+               width: 64,
+               height: 96,
+               child: movie.posterUrl.isEmpty
+                   ? _posterFallback()
+                   : CachedNetworkImage(
+                       imageUrl: movie.posterUrl,
+                       fit: BoxFit.cover,
+                       memCacheWidth: 64,
+                       errorWidget: (context, url, error) => _posterFallback(),
+                     ),
+             ),
+           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
