@@ -159,7 +159,7 @@ try {
     Get-CommandText 'git' @('var', 'GIT_AUTHOR_IDENT') 'Configure git user.name e user.email antes de publicar' | Out-Null
 
     Write-Host '===================================================' -ForegroundColor Cyan
-    Write-Host '  CineMax - Publicacao Mobile em um clique' -ForegroundColor Cyan
+    Write-Host '  CiNey - Publicacao Mobile em um clique' -ForegroundColor Cyan
     Write-Host "  Branch: $(git branch --show-current)" -ForegroundColor Gray
     Write-Host "  Versao atual: $currentVersion+$currentBuild" -ForegroundColor Gray
     Write-Host "  Versao alvo: $targetTag" -ForegroundColor Yellow
@@ -249,7 +249,7 @@ try {
             '--repo', $repoSlug,
             '--ref', $targetTag,
             '--field', "version_tag=$targetTag",
-            '--field', "release_title=CineMax $targetTag",
+            '--field', "release_title=CiNey $targetTag",
             '--field', "release_notes=$Notes"
         )
         $dispatchOutput = & gh @dispatchArgs 2>&1
