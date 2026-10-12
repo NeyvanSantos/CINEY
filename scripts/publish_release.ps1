@@ -275,7 +275,7 @@ try {
         throw "A release $targetTag terminou sem o asset $targetAssetName."
     }
 
-    $downloadDirectory = Join-Path $env:TEMP ("ciney-release-download-" + [guid]::NewGuid().ToString('N'))
+    $downloadDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ("ciney-release-download-" + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $downloadDirectory | Out-Null
     try {
         Invoke-Checked 'gh' @('release', 'download', $targetTag, '--repo', $repoSlug, '--pattern', $targetAssetName, '--dir', $downloadDirectory) 'Falha ao baixar o APK publicado'
