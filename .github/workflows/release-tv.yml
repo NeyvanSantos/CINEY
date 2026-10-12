@@ -4,9 +4,24 @@ on:
   push:
     tags:
       - 'tv-v*'
+  workflow_dispatch:
+    inputs:
+      version_tag:
+        description: 'Tag TV existente para retentativa (tv-vX.Y.Z)'
+        required: true
+        type: string
+      release_notes:
+        description: 'Notas da versão TV'
+        required: false
+        default: 'Atualização do aplicativo CiNey para Android TV.'
+        type: string
 
 permissions:
   contents: write
+
+concurrency:
+  group: release-tv-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build-and-release:
@@ -15,28 +30,53 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
 
       - name: Configurar Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Configurar cache Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.18.0'
 
       - name: Configurar Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
-          channel: stable
+          flutter-version: '3.41.6'
           cache: true
+
+      - name: Instalar dependências Flutter compartilhadas
+        working-directory: cinemax
+        run: flutter pub get
 
       - name: Instalar dependências Flutter
         working-directory: cinemax_tv
         run: flutter pub get
+
+      - name: Analisar código Flutter compartilhado
+        working-directory: cinemax
+        run: flutter analyze
+
+      - name: Analisar código Android TV
+        working-directory: cinemax_tv
+        run: flutter analyze
+
+      - name: Testar suíte Flutter compartilhada
+        working-directory: cinemax
+        run: flutter test --no-pub
+
+      - name: Testar ponte de embeds
+        working-directory: cinemax
+        run: node --test test/embed_bridge_test.cjs test/embed_media_observer_test.cjs test/embed_startup_test.cjs
 
       - name: Configurar assinatura do APK
         env:
@@ -84,27 +124,89 @@ jobs:
           config.chmod(0o600)
           PY
 
+      - name: Validar tag TV
+        id: vars
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION_TAG: ${{ inputs.version_tag }}
+          INPUT_RELEASE_NOTES: ${{ inputs.release_notes }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            VERSION_REF="$INPUT_VERSION_TAG"
+            NOTES="$INPUT_RELEASE_NOTES"
+          else
+            VERSION_REF="$GITHUB_REF_NAME"
+            NOTES='Atualização do aplicativo CiNey para Android TV.'
+          fi
+          if [[ ! "$VERSION_REF" =~ ^tv-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo 'Tag TV invalida; use tv-vX.Y.Z.' >&2
+            exit 1
+          fi
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            TAG_COMMIT="$(git rev-parse "${VERSION_REF}^{commit}")"
+            HEAD_COMMIT="$(git rev-parse HEAD)"
+            if [[ "$TAG_COMMIT" != "$HEAD_COMMIT" ]]; then
+              echo 'A tag TV informada não corresponde ao commit verificado.' >&2
+              exit 1
+            fi
+          fi
+          VERSION="${VERSION_REF#tv-v}"
+          printf 'tag=%s\nversion=%s\ntitle=CiNey TV v%s\n' "$VERSION_REF" "$VERSION" "$VERSION" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$NOTES" > "$RUNNER_TEMP/release-notes.md"
+
       - name: Compilar APK Android TV
         working-directory: cinemax_tv
         run: flutter build apk --release --no-pub
 
-      - name: Preparar nome e notas
-        id: vars
-        shell: bash
+      - name: Verificar certificado do APK TV
+        env:
+          # Obtenha o valor rodando apksigner verify --print-certs em um APK TV
+          # já publicado que funciona; use o certificate SHA-256 digest.
+          ANDROID_CERT_SHA256: ${{ vars.ANDROID_CERT_SHA256 }}
         run: |
-          VERSION="${GITHUB_REF_NAME#tv-v}"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "asset=CiNey-v${VERSION}-TV.apk" >> "$GITHUB_OUTPUT"
-          cp cinemax_tv/build/app/outputs/flutter-apk/app-release.apk "CiNey-v${VERSION}-TV.apk"
+          set -euo pipefail
+          EXPECTED="$(printf '%s' "$ANDROID_CERT_SHA256" | tr '[:upper:]' '[:lower:]' | tr -d ':[:space:]')"
+          if [[ ! "$EXPECTED" =~ ^[0-9a-f]{64}$ ]]; then
+            echo 'ANDROID_CERT_SHA256 ausente ou inválido nas variáveis do repositório.' >&2
+            exit 1
+          fi
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -mindepth 2 -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)"
+          if [[ -z "$APKSIGNER" || ! -x "$APKSIGNER" ]]; then
+            echo 'apksigner não encontrado no Android SDK.' >&2
+            exit 1
+          fi
+          CERTS="$("$APKSIGNER" verify --print-certs cinemax_tv/build/app/outputs/flutter-apk/app-release.apk)"
+          ACTUAL="$(printf '%s\n' "$CERTS" | sed -n 's/^Signer #[0-9][0-9]* certificate SHA-256 digest: //p' | tr '[:upper:]' '[:lower:]' | tr -d ':\r')"
+          if [[ ! "$ACTUAL" =~ ^[0-9a-f]{64}$ || "$ACTUAL" != "$EXPECTED" ]]; then
+            echo 'Certificado do APK TV diverge de ANDROID_CERT_SHA256.' >&2
+            exit 1
+          fi
+
+      - name: Preparar APK TV e checksum
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+        run: |
+          set -euo pipefail
+          ASSET="CiNey-v${VERSION}-TV.apk"
+          cp cinemax_tv/build/app/outputs/flutter-apk/app-release.apk "$ASSET"
+          sha256sum "$ASSET" > "${ASSET}.sha256"
 
       - name: Publicar pré-release Android TV
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: CiNey TV v${{ steps.vars.outputs.version }}
-          body: Atualização do aplicativo CiNey para Android TV.
+          tag_name: ${{ steps.vars.outputs.tag }}
+          name: ${{ steps.vars.outputs.title }}
+          body_path: ${{ runner.temp }}/release-notes.md
           draft: false
           prerelease: true
-          files: ${{ steps.vars.outputs.asset }}
+          files: |
+            CiNey-v${{ steps.vars.outputs.version }}-TV.apk
+            CiNey-v${{ steps.vars.outputs.version }}-TV.apk.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Remover arquivos de assinatura
+        if: always()
+        run: |
+          rm -f -- "$RUNNER_TEMP/ciney-tv-release-key.jks" cinemax_tv/android/key.properties
