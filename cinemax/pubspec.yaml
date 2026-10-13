@@ -1,7 +1,7 @@
 name: cinemax
 description: "CiNey - Filmes e Séries com Sistema de Plugins"
 publish_to: 'none'
-version: 1.0.38+35
+version: 1.0.39+36
 
 environment:
   sdk: ^3.11.4
