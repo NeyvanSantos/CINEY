@@ -27,6 +27,8 @@ import '../services/embed_navigation.dart';
 import '../services/embed_document.dart';
 import '../services/episode_sequence.dart';
 import '../services/watch_history_repository.dart';
+import '../services/tv_cast_service.dart';
+import '../../auth/services/account_repository.dart';
 import '../../profile/services/playback_preferences.dart';
 
 enum VideoQuality {
@@ -1998,6 +2000,53 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
   }
 
+  Future<void> _castToTv() async {
+    if (_sources.isEmpty ||
+        _currentSourceIndex < 0 ||
+        _currentSourceIndex >= _sources.length) {
+      _showCastMessage('player.cast.failed');
+      return;
+    }
+    final client = ref.read(supabaseClientProvider);
+    if (client == null) {
+      _showCastMessage('player.cast.failed');
+      return;
+    }
+
+    final source = _sources[_currentSourceIndex];
+    final command = TvCastPlaybackCommand(
+      contentId: widget.contentId,
+      pluginId: widget.pluginId,
+      title: _title,
+      contentTitle: widget.contentTitle ?? _title,
+      posterUrl: widget.posterUrl,
+      mediaType: widget.mediaType,
+      server: source.server,
+      resumePositionMs: _currentPosition.inMilliseconds,
+      season: _season,
+      episode: _episode,
+    );
+    try {
+      await TvCastService(client).send(command);
+      if (mounted) _showCastMessage('player.cast.sent');
+    } catch (error) {
+      AppLogger.warn(
+        'Falha ao enviar reprodução ao receiver (${error.runtimeType}).',
+        tag: 'CAST',
+      );
+      if (mounted) _showCastMessage('player.cast.failed');
+    }
+  }
+
+  void _showCastMessage(String key) {
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(
+        content: Text(context.tr(key)),
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  }
+
   // ══════════════════════════════════════════════
   // Controles Centrais (Play, Pause, -10s, +10s)
   // ══════════════════════════════════════════════
@@ -2144,6 +2193,15 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               // Ações do lado direito
               Row(
                 children: [
+                  if (!widget.isTv)
+                    IconButton(
+                      icon: const Icon(
+                        Icons.cast_rounded,
+                        color: Colors.white70,
+                      ),
+                      tooltip: context.tr('player.cast'),
+                      onPressed: () => unawaited(_castToTv()),
+                    ),
                   // Recarregar / Reiniciar Stream
                   IconButton(
                     icon: const Icon(

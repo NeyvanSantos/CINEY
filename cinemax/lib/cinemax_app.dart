@@ -14,6 +14,7 @@ import 'core/routes/app_router.dart';
 import 'core/services/app_logger.dart';
 import 'core/services/app_notifications.dart';
 import 'plugin_engine/runtime/tmdb_service.dart';
+import 'features/player/presentation/tv_cast_listener.dart';
 
 Future<void> runCinemaxApp({bool isTv = false}) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -91,6 +92,7 @@ class CinemaxApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final router = ref.watch(appRouterProvider(isTv));
     return MaterialApp.router(
       title: 'CiNey',
       debugShowCheckedModeBanner: false,
@@ -102,7 +104,12 @@ class CinemaxApp extends ConsumerWidget {
         Locale('es', 'ES'),
       ],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
-      routerConfig: ref.watch(appRouterProvider(isTv)),
+      routerConfig: router,
+      builder: (context, child) => TvCastListener(
+        isTv: isTv,
+        router: router,
+        child: child ?? const SizedBox.shrink(),
+      ),
     );
   }
 }

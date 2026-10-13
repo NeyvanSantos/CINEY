@@ -1,11 +1,13 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/config/theme/app_colors.dart';
 import '../../../core/config/theme/app_typography.dart';
+import '../../../core/services/app_logger.dart';
 import '../../../core/localization/app_localization.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/gradient_poster.dart';
@@ -177,6 +179,73 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
     );
   }
 
+  StreamSource? _embedPageSource(ContentDetail item) {
+    if (item.type != ContentType.movie) return null;
+    for (final source in StreamResolverService.resolveFromContentId(item.id)) {
+      if (source.server == 'EmbedMovies' && source.isEmbed) return source;
+    }
+    return null;
+  }
+
+  void _showCastLinkDialog(StreamSource source) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text(context.tr('detail.cast_title')),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              context.tr('detail.cast_warning'),
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            SelectableText(
+              source.url,
+              style: AppTypography.bodySmall.copyWith(color: Colors.white),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(context.tr('detail.cast_close')),
+          ),
+          FilledButton.icon(
+            onPressed: () async {
+              try {
+                await Clipboard.setData(ClipboardData(text: source.url));
+              } on PlatformException catch (error) {
+                AppLogger.warn(
+                  'Falha ao copiar URL do player: $error',
+                  tag: 'PLAYER',
+                );
+                if (!dialogContext.mounted) return;
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  SnackBar(
+                    content: Text(context.tr('detail.cast_copy_failed')),
+                  ),
+                );
+                return;
+              }
+              if (!dialogContext.mounted || !mounted) return;
+              Navigator.of(dialogContext).pop();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(context.tr('detail.cast_copied'))),
+              );
+            },
+            icon: const Icon(Icons.copy_rounded),
+            label: Text(context.tr('detail.cast_copy')),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showServerSelectionSheet({
     required ContentDetail item,
     required List<StreamSource> sources,
@@ -237,6 +306,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
     }
 
     final item = _detail!;
+    final castSource = _embedPageSource(item);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -388,6 +458,19 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                       FavoriteButton.fromDetail(detail: item),
                     ],
                   ),
+
+                  if (castSource != null) ...[
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        key: const ValueKey('details-cast-link'),
+                        onPressed: () => _showCastLinkDialog(castSource),
+                        icon: const Icon(Icons.cast_rounded),
+                        label: Text(context.tr('detail.cast_button')),
+                      ),
+                    ),
+                  ],
 
                   const SizedBox(height: 20),
 

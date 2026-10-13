@@ -414,6 +414,11 @@ const _screenTranslations = <String, Map<String, String>>{
     'player.aspect.fill': 'Preencher Tela',
     'player.aspect.fill_help': 'Preenchimento sem bordas pretas',
     'player.reload': 'Recarregar Player',
+    'player.cast': 'Transmitir para CiNey TV',
+    'player.cast.sent':
+        'Solicitação enviada. Deixe o CiNey TV aberto na mesma conta.',
+    'player.cast.failed':
+        'Não foi possível transmitir. Verifique a conexão e a conta da TV.',
     'detail.failed': 'Não foi possível carregar os detalhes do título.',
     'detail.retry': 'Tentar novamente',
     'detail.synopsis': 'Sinopse',
@@ -421,6 +426,14 @@ const _screenTranslations = <String, Map<String, String>>{
     'detail.episodes': 'Episódios',
     'detail.season': 'Temporada {number}',
     'detail.no_episodes': 'Nenhum episódio disponível nesta temporada.',
+    'detail.cast_button': 'Transmitir',
+    'detail.cast_title': 'Link para transmissão',
+    'detail.cast_warning':
+        'Este link abre a página do player EmbedMovies, não um arquivo direto de vídeo. O WebVideoCaster pode não reconhecê-lo ou transmiti-lo.',
+    'detail.cast_copy': 'Copiar link',
+    'detail.cast_close': 'Fechar',
+    'detail.cast_copied': 'Link do player copiado.',
+    'detail.cast_copy_failed': 'Não foi possível copiar o link.',
   },
   'en': {
     'auth.title_login': 'Sign in to CiNey',
@@ -528,6 +541,11 @@ const _screenTranslations = <String, Map<String, String>>{
     'player.aspect.fill': 'Fill Screen',
     'player.aspect.fill_help': 'Fill without black bars',
     'player.reload': 'Reload Player',
+    'player.cast': 'Cast to CiNey TV',
+    'player.cast.sent':
+        'Request sent. Keep CiNey TV open and signed into the same account.',
+    'player.cast.failed':
+        'Could not cast. Check the connection and the TV account.',
     'detail.failed': 'Could not load title details.',
     'detail.retry': 'Try again',
     'detail.synopsis': 'Overview',
@@ -535,6 +553,14 @@ const _screenTranslations = <String, Map<String, String>>{
     'detail.episodes': 'Episodes',
     'detail.season': 'Season {number}',
     'detail.no_episodes': 'No episodes available for this season.',
+    'detail.cast_button': 'Cast',
+    'detail.cast_title': 'Casting link',
+    'detail.cast_warning':
+        'This opens the EmbedMovies player page, not a direct video file. WebVideoCaster may not recognize or cast it.',
+    'detail.cast_copy': 'Copy link',
+    'detail.cast_close': 'Close',
+    'detail.cast_copied': 'Player link copied.',
+    'detail.cast_copy_failed': 'Could not copy the link.',
   },
   'es': {
     'auth.title_login': 'Iniciar sesión en CiNey',
@@ -645,6 +671,11 @@ const _screenTranslations = <String, Map<String, String>>{
     'player.aspect.fill': 'Llenar Pantalla',
     'player.aspect.fill_help': 'Llenar sin bordes negros',
     'player.reload': 'Recargar Reproductor',
+    'player.cast': 'Transmitir a CiNey TV',
+    'player.cast.sent':
+        'Solicitud enviada. Deja CiNey TV abierto con la misma cuenta.',
+    'player.cast.failed':
+        'No se pudo transmitir. Revisa la conexión y la cuenta de la TV.',
     'detail.failed': 'No se pudieron cargar los detalles del título.',
     'detail.retry': 'Intentar de nuevo',
     'detail.synopsis': 'Sinopsis',
@@ -652,6 +683,14 @@ const _screenTranslations = <String, Map<String, String>>{
     'detail.episodes': 'Episodios',
     'detail.season': 'Temporada {number}',
     'detail.no_episodes': 'No hay episodios disponibles en esta temporada.',
+    'detail.cast_button': 'Transmitir',
+    'detail.cast_title': 'Enlace para transmitir',
+    'detail.cast_warning':
+        'Este enlace abre la página del reproductor EmbedMovies, no un archivo de video directo. WebVideoCaster podría no reconocerlo ni transmitirlo.',
+    'detail.cast_copy': 'Copiar enlace',
+    'detail.cast_close': 'Cerrar',
+    'detail.cast_copied': 'Enlace del reproductor copiado.',
+    'detail.cast_copy_failed': 'No se pudo copiar el enlace.',
   },
 };
 
