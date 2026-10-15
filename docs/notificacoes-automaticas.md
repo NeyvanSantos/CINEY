@@ -15,11 +15,12 @@ dentro do aplicativo e sem dependências Firebase.
 - `FIREBASE_SERVICE_ACCOUNT` permanece somente nos segredos das Edge Functions.
   A verificação `health` autenticou no Google e passou pelo FCM com
   `validate_only: true`, sem entregar mensagem.
-- **`NOTIFICATIONS_MODE=off`**: a automação pode consultar fontes e salvar a
-  referência inicial, mas não cria envios gerais nem entrega a fila.
+- **`NOTIFICATIONS_MODE=live`**, ativado em 15/10/2026 após o usuário confirmar
+  o recebimento do aviso de teste. A automação consulta as fontes e entrega
+  os eventos aos aparelhos registrados, respeitando as preferências da conta.
 - Integração incluída na versão mobile 1.0.41. O aparelho será registrado
   depois de atualizar, entrar na conta e permitir notificações. A automação
-  geral permanece desligada; o botão de teste individual está disponível.
+  geral está ligada; o botão de teste individual continua disponível.
 
 ## Comportamento
 
@@ -84,12 +85,10 @@ Os segredos de desenvolvimento estão em arquivo ignorado em
 Git, APK, documentação pública ou conversa. Os arquivos JSON privados de
 Admin SDK também não pertencem ao aplicativo.
 
-Antes de ativar `live`, gerar um APK privado autorizado, entrar normalmente
-na conta, permitir as notificações e usar **Enviar aviso de teste**. Verificar
-a chegada com o app aberto, em segundo plano e encerrado normalmente, além do
-destino ao tocar e da saída/troca de conta. O botão de teste funciona mesmo
-com os disparos gerais desligados. A aprovação para esse teste não equivale
-a publicar um APK ou habilitar envios para todos.
+Para testar um aparelho, entrar na conta, permitir as notificações e usar
+**Enviar aviso de teste**. Esse botão envia somente para o próprio aparelho
+e também funciona quando os disparos gerais estão desligados. O usuário
+confirmou o recebimento e autorizou explicitamente a ativação para todos.
 
 ## Validações
 
@@ -106,7 +105,10 @@ a publicar um APK ou habilitar envios para todos.
   `health` retornou `configured: true`, `mode: off`, `validation_only: true`.
 - Os advisors não apontaram avisos nas novas tabelas/funções de notificações;
   existem avisos de outros objetos e configurações fora desta integração.
-- A entrega física no aparelho ainda depende do APK privado de teste.
+- Após a publicação da 1.0.41, o usuário confirmou o recebimento do aviso de
+  teste no aparelho. A ativação retornou `configured: true`, `mode: live`;
+  uma execução real do worker confirmou `sent: 0`, `claimed: 0`, `mode: live`,
+  sem eventos pendentes naquele momento. Os três agendamentos estavam ativos.
 
 Comandos de teste:
 

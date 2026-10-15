@@ -22,11 +22,17 @@ dentro do aplicativo. As notas públicas estão em
 [mobile](../../releases/notes/1.0.41-mobile.md) e
 [TV](../../releases/notes/1.0.41-tv.md).
 
-**Os disparos automáticos gerais permanecem desligados.** A verificação do
+Na publicação, **os disparos automáticos gerais estavam desligados**. A verificação do
 servidor retornou `configured: true`, `mode: off`, `validation_only: true`
 durante esta publicação. O teste individual pode ser feito no mobile após
 atualizar, entrar na conta e permitir notificações. Não houve teste físico de
-entrega FCM nem de reprodução/transmissão em TV nesta publicação.
+entrega FCM nem de reprodução/transmissão em TV durante a publicação.
+
+Ainda em 15/10/2026, o usuário confirmou o recebimento do aviso e autorizou a
+ativação. O servidor passou a `NOTIFICATIONS_MODE=live`, com credencial validada
+e worker executado com sucesso. As notas públicas foram atualizadas. Não foi
+necessário gerar outro APK; os detalhes estão na
+[documentação de notificações](../notificacoes-automaticas.md).
 
 ## Evidências
 
