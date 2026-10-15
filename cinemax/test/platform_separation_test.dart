@@ -107,6 +107,18 @@ void main() {
           ),
           true,
         );
+        expect(
+          tv.configuration.routes.whereType<GoRoute>().any(
+            (route) => route.path == '/notification-settings',
+          ),
+          false,
+        );
+        expect(
+          mobile.configuration.routes.whereType<GoRoute>().any(
+            (route) => route.path == '/notification-settings',
+          ),
+          true,
+        );
       } finally {
         tv.dispose();
         mobile.dispose();

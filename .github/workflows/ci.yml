@@ -59,3 +59,6 @@ jobs:
       - name: Run embed JavaScript tests
         working-directory: cinemax
         run: node --test test/embed_bridge_test.cjs test/embed_media_observer_test.cjs test/embed_startup_test.cjs
+
+      - name: Run notification server tests
+        run: node --test supabase/tests/notification_policy.test.ts

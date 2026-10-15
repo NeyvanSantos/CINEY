@@ -13,6 +13,7 @@ import 'core/localization/app_localization.dart';
 import 'core/routes/app_router.dart';
 import 'core/services/app_logger.dart';
 import 'core/services/app_notifications.dart';
+import 'core/platform/app_platform_services.dart';
 import 'plugin_engine/runtime/tmdb_service.dart';
 import 'features/player/presentation/tv_cast_listener.dart';
 
@@ -114,11 +115,16 @@ class CinemaxApp extends ConsumerWidget {
       ],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
       routerConfig: router,
-      builder: (context, child) => TvCastListener(
-        isTv: isTv,
-        router: router,
-        child: child ?? const SizedBox.shrink(),
-      ),
+      builder: (context, child) {
+        final content = TvCastListener(
+          isTv: isTv,
+          router: router,
+          child: child ?? const SizedBox.shrink(),
+        );
+        return !isTv && AppPlatformServices.current.appWrapper != null
+            ? AppPlatformServices.current.appWrapper!(context, content)
+            : content;
+      },
     );
   }
 }

@@ -26,6 +26,9 @@ class AppPlatformServices {
     this.frameObserver,
     this.scannerBuilder,
     this.announcements,
+    this.notificationSettingsBuilder,
+    this.appWrapper,
+    this.beforeSignOut,
   });
 
   static AppPlatformServices current = const AppPlatformServices();
@@ -34,6 +37,9 @@ class AppPlatformServices {
   final MediaFrameObserver? frameObserver;
   final WidgetBuilder? scannerBuilder;
   final AnnouncementPresenter? announcements;
+  final WidgetBuilder? notificationSettingsBuilder;
+  final Widget Function(BuildContext context, Widget child)? appWrapper;
+  final Future<void> Function()? beforeSignOut;
 }
 
 class AppFrameObserver {

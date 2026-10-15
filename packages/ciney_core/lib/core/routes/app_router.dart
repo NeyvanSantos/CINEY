@@ -90,6 +90,14 @@ GoRouter createAppRouter({
           builder: (context, state) =>
               AppPlatformServices.current.scannerBuilder!(context),
         ),
+      if (!isTv &&
+          AppPlatformServices.current.notificationSettingsBuilder != null)
+        GoRoute(
+          path: '/notification-settings',
+          parentNavigatorKey: rootNavigatorKey,
+          builder: (context, state) =>
+              AppPlatformServices.current.notificationSettingsBuilder!(context),
+        ),
       // Splash Screen
       GoRoute(
         path: '/splash',
@@ -134,7 +142,9 @@ GoRouter createAppRouter({
             routes: [
               GoRoute(
                 path: '/profile',
-                builder: (context, state) => const ProfileScreen(),
+                builder: (context, state) => ProfileScreen(
+                  checkUpdate: state.uri.queryParameters['checkUpdate'] == '1',
+                ),
               ),
             ],
           ),

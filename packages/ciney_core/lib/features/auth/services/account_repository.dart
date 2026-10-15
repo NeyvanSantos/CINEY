@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/services/app_logger.dart';
+import '../../../core/platform/app_platform_services.dart';
 import '../models/account_user.dart';
 import '../models/tv_pairing_request.dart';
 
@@ -141,6 +142,7 @@ class SupabaseAccountRepository implements AccountRepository {
 
   @override
   Future<void> signOut() async {
+    await AppPlatformServices.current.beforeSignOut?.call();
     try {
       await _client.auth.signOut(scope: SignOutScope.local);
     } on AuthException catch (error) {

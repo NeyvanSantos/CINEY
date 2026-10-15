@@ -25,6 +25,8 @@ try {
     Invoke-TestSql 'supabase/migrations/202610070001_accounts_and_favorites.sql'
     Invoke-TestSql 'supabase/migrations/202610070002_tv_qr_pairing.sql'
     Invoke-TestSql 'supabase/tests/accounts_rls.sql'
+    Invoke-TestSql 'supabase/migrations/20261015175303_automatic_notifications.sql'
+    Invoke-TestSql 'supabase/tests/notifications_rls.sql'
 }
 finally {
     # Remove only the uniquely named container and its disposable anonymous volume.

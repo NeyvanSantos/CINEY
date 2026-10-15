@@ -12,13 +12,15 @@ import '../../../core/config/theme/app_typography.dart';
 import '../../../core/localization/app_localization.dart';
 import '../../../core/services/app_logger.dart';
 import '../../../core/services/app_updater.dart';
+import '../../../core/platform/app_platform_services.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/update_dialog.dart';
 import '../../auth/presentation/account_card.dart';
 import '../services/playback_preferences.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
-  const ProfileScreen({super.key});
+  const ProfileScreen({super.key, this.checkUpdate = false});
+  final bool checkUpdate;
 
   @override
   ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
@@ -32,6 +34,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   void initState() {
     super.initState();
     _loadAppVersion();
+    if (widget.checkUpdate) _scheduleUpdateCheck();
+  }
+
+  @override
+  void didUpdateWidget(covariant ProfileScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.checkUpdate && !oldWidget.checkUpdate) _scheduleUpdateCheck();
+  }
+
+  void _scheduleUpdateCheck() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_checkForUpdates());
+    });
   }
 
   Future<void> _loadAppVersion() async {
@@ -121,6 +136,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           const AccountCard(),
+
+          if (!AppEnvironment.isTv &&
+              AppPlatformServices.current.notificationSettingsBuilder != null)
+            _buildSettingTile(
+              icon: Icons.notifications_outlined,
+              title: 'Notificações',
+              subtitle: 'Filmes, séries, animes, doramas e novidades do CiNey',
+              onTap: () => context.push('/notification-settings'),
+            ),
 
           const SizedBox(height: 24),
           Text(

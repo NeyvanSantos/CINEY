@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "122233388689",
+    "project_id": "ciney-594e2",
+    "storage_bucket": "ciney-594e2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:122233388689:android:b6247251c41fe6b71c4930",
+        "android_client_info": {
+          "package_name": "com.ciney.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD1TAJBNjLofp3OInZzsfEKHyC2hxh0teI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:122233388689:android:e39c1973b67ad1031c4930",
+        "android_client_info": {
+          "package_name": "com.ciney.app.castlite_test"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD1TAJBNjLofp3OInZzsfEKHyC2hxh0teI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
