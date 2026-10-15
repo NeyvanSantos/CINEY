@@ -128,3 +128,18 @@ nem publicação.
 Teste em TV física ainda é necessário para comprovar imagem, som, áudio,
 legendas, desempenho e navegação com o controle do aparelho. Iniciar o app num
 emulador e passar nos testes não substitui essa confirmação.
+
+## Publicação autorizada — 15/10/2026
+
+Após a conclusão da fase local acima, o usuário autorizou a publicação para
+todos. As versões oficiais **1.0.40** mobile e TV foram publicadas pelos
+workflows do repositório, com IDs originais e certificado oficial.
+
+O APK público TV é universal, com ARMv7, ARM64 e x86_64, e tem **60,43 MiB**.
+Os APKs entre 20 e 24 MiB descritos acima pertencem à fase local e são separados
+por arquitetura. O mobile release público tem **87,18 MiB**.
+
+Ambos os canais de atualização e downloads sem autenticação foram conferidos.
+O registro completo, com hashes e links, está na
+[verificação da publicação 1.0.40](historico/publicacao-2026-10-15-v40-tv40.md).
+A validação em TV física permanece pendente.

@@ -101,6 +101,19 @@ nesta seção é posterior ao registro da fase X acima e usa somente pacotes de
 teste. Os critérios físicos de CastLite continuam pendentes; não representam
 uma aprovação automática de transmissão, estabilidade ou faixa de áudio.
 
+## Publicação para todos — 15/10/2026
+
+Após autorização explícita do usuário, foram publicados **v1.0.40** mobile
+(build 37, `com.ciney.app`) e **tv-v1.0.40** TV (build 42, `com.ciney.tv`).
+Os workflows oficiais e a CI passaram. Os APKs baixados tiveram versão,
+arquiteturas, assinatura oficial v2, tamanho e SHA-256 conferidos. Os canais
+públicos apontam para as versões novas; downloads sem autenticação retornaram
+HTTP 200. As cópias locais oficiais ficam em `releases/mobile/` e `releases/tv/`.
+
+O APK TV público é universal, com 60,43 MiB; o mobile release tem 87,18 MiB.
+Consulte a [verificação completa](docs/historico/publicacao-2026-10-15-v40-tv40.md).
+Os testes físicos listados acima continuam pendentes.
+
 ## Referências técnicas
 
 [Canais Flutter/Kotlin](https://docs.flutter.dev/platform-integration/platform-channels), [plugins Flutter](https://docs.flutter.dev/packages-and-plugins/developing-packages), [bibliotecas Android](https://developer.android.com/studio/projects/android-library) e [integração Google Cast](https://developers.google.com/cast/docs/android_sender/integrate), consultados em 14/10/2026.

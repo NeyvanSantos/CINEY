@@ -10,6 +10,7 @@
 - [Retomada da reprodução](retomada-reproducao.md) — persistência e restauração da posição.
 - [Motor do player para TV](tv-player-engine.md) — arquitetura e validação do player Android TV.
 - [Publicação mobile v1.0.20](historico/publicacao-2026-10-08-v20.md) — registro histórico da publicação.
+- [Publicação mobile e TV 1.0.40](historico/publicacao-2026-10-15-v40-tv40.md) — integração CastLite, separação dos hosts e verificação dos APKs oficiais.
 - [Publicação TV v1.0.25](historico/publicacao-2026-10-09-tv25.md) — registro histórico da publicação.
 - [Publicação TV v1.0.26](historico/publicacao-2026-10-09-tv26.md) — registro histórico da publicação.
 - [Publicação mobile v1.0.21 e TV v1.0.24](historico/publicacao-2026-10-09-v21-tv24.md) — registro histórico das publicações.
