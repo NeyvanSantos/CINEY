@@ -183,26 +183,9 @@ void main() {
     expect(find.text('Escolha o Servidor'), findsNothing);
   });
 
-  testWidgets('detalhes copiam URL embed com aviso de compatibilidade', (
+  testWidgets('detalhes TV mostram reprodução sem ações de envio', (
     tester,
   ) async {
-    String? copiedText;
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) async {
-        if (call.method == 'Clipboard.setData') {
-          copiedText = (call.arguments as Map)['text'] as String;
-        }
-        return null;
-      },
-    );
-    addTearDown(
-      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        null,
-      ),
-    );
-
     await pumpDetails(
       tester,
       const ContentDetail(
@@ -212,22 +195,11 @@ void main() {
         type: ContentType.movie,
         pluginId: 'test',
       ),
+      isTv: true,
     );
-
-    final castButton = find.byKey(const ValueKey('details-cast-link'));
-    await tester.ensureVisible(castButton);
-    await tester.tap(castButton);
-    await tester.pumpAndSettle();
-
-    expect(find.text('Link para transmissão'), findsOneWidget);
-    expect(
-      find.textContaining('não um arquivo direto de vídeo'),
-      findsOneWidget,
-    );
-    expect(find.text('https://myembed.biz/filme/969681'), findsOneWidget);
-    await tester.tap(find.text('Copiar link'));
-    await tester.pumpAndSettle();
-    expect(copiedText, 'https://myembed.biz/filme/969681');
-    expect(find.text('Link do player copiado.'), findsOneWidget);
+    expect(find.text('Assistir Agora'), findsOneWidget);
+    expect(find.byKey(const ValueKey('details-cast-link')), findsNothing);
+    expect(find.byTooltip('Compartilhar'), findsNothing);
+    expect(find.text('Copiar link'), findsNothing);
   });
 }

@@ -1,5 +1,5 @@
 <p align="center">
-	<img src="cinemax/assets/images/logo.png" alt="Logo CiNey" width="180">
+	<img src="packages/ciney_core/assets/images/logo.png" alt="Logo CiNey" width="180">
 </p>
 
 <h1 align="center">CiNey</h1>
@@ -25,6 +25,7 @@ A busca aceita sugestões enquanto você digita e permite abrir os detalhes do t
 - **Filmes e séries:** consulte detalhes e, quando disponíveis, temporadas e episódios.
 - **Fontes de reprodução:** escolha entre as fontes externas disponibilizadas para o título.
 - **Diagnóstico integrado:** console de logs com pesquisa e filtros para ajudar a investigar problemas.
+- **Transmissão integrada no Android:** acesso ao motor CastLite pelo próprio CiNey, com seleção de servidor e controles de mídia. Consulte a [integração e os testes em aparelhos](docs/integracao-castlite.md).
 - **Android TV:** navegação lateral adaptada ao controle remoto e teclas de mídia no player.
 - **Contas e favoritos:** cadastro, perfil e lista compartilhada entre celular e TV, após [configurar o Supabase](docs/contas-supabase.md).
 - **Atualizações:** verificação de releases do projeto e validação SHA-256 quando o hash está disponível.
@@ -62,7 +63,7 @@ O console guarda até 500 registros em memória durante a sessão; eles são apa
 As contas e os favoritos usam Supabase. Consulte o [guia de configuração](docs/contas-supabase.md)
 para ativar o banco e os e-mails de confirmação e recuperação.
 
-Requisitos: Flutter com Dart 3.11.4 ou superior e Android SDK configurado.
+Requisitos: Flutter com Dart 3.11.4 ou superior e Android SDK configurado. A integração CastLite requer Android 8 (API 26) ou superior.
 
 App principal:
 

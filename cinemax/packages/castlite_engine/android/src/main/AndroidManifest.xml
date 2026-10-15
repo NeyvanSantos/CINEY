@@ -1,0 +1,23 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <application>
+        <meta-data android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+            android:value="com.example.castlite.CastOptionsProvider" />
+        <activity android:name="com.example.castlite.MainActivity"
+            android:exported="false" android:theme="@style/Theme.CiNey.Cast"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:windowSoftInputMode="adjustResize" />
+        <activity android:name="com.example.castlite.RemoteControlActivity"
+            android:exported="false" android:theme="@style/Theme.CiNey.Cast" />
+        <service android:name="com.example.castlite.CastingService"
+            android:exported="false" android:stopWithTask="false"
+            android:foregroundServiceType="connectedDevice" />
+    </application>
+</manifest>

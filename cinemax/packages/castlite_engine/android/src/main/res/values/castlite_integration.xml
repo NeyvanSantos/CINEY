@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.CiNey.Cast" parent="Theme.CastLite">
+        <item name="colorPrimary">#FF6B00</item>
+        <item name="colorPrimaryVariant">#E65100</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="android:windowBackground">#0A0A0F</item>
+    </style>
+</resources>

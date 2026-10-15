@@ -1,0 +1,15 @@
+name: castlite_engine
+description: Motor Android de transmissão integrado ao CiNey.
+version: 0.1.0
+publish_to: none
+environment:
+  sdk: ^3.11.4
+dependencies:
+  flutter:
+    sdk: flutter
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.ciney.castlite
+        pluginClass: CastLitePlugin

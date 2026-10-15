@@ -16,6 +16,8 @@ build/
 
 # Caches e arquivos gerados
 .gradle/
+.kotlin/
+/.work/dependency-separation/
 __pycache__/
 *.py[cod]
 release-notes-temp.md

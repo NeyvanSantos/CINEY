@@ -5,6 +5,8 @@
 - [Continuidade dos episódios](continuidade-episodios.md) — comportamento de episódios e progresso.
 - [Estrutura do projeto](estrutura.md) — mapa do código-fonte e dos documentos.
 - [Otimização de desempenho](performance-optimization.md) — notas de desempenho.
+- [Comparativo mobile e TV](comparativo-mobile-tv.md) — recursos dispensáveis na TV, tamanho dos APKs e prioridades para uma versão mais leve.
+- [Separação mobile e TV](separacao-mobile-tv.md) — núcleo comum, dependências exclusivas e validação das variantes locais.
 - [Retomada da reprodução](retomada-reproducao.md) — persistência e restauração da posição.
 - [Motor do player para TV](tv-player-engine.md) — arquitetura e validação do player Android TV.
 - [Publicação mobile v1.0.20](historico/publicacao-2026-10-08-v20.md) — registro histórico da publicação.

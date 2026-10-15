@@ -1,10 +1,10 @@
-# Aplica a nova identidade visual do CiNey a partir de cinemax/assets/icon/nova logo.png
+# Aplica a nova identidade visual do CiNey a partir de packages/ciney_core/assets/icon/nova logo.png
 # Gera: logo.png (images/icons), app_icon.png, app_icon.ico e ic_launcher.png (mobile + TV)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 
 $root = 'g:\Filmes e Séries (Criado por Ney)'
-$sourcePath = Join-Path $root 'cinemax\assets\icon\nova logo.png'
+$sourcePath = Join-Path $root 'packages\ciney_core\assets\icon\nova logo.png'
 
 $src = [System.Drawing.Bitmap]::FromFile($sourcePath)
 Write-Host "Fonte: $($src.Width)x$($src.Height)"
@@ -62,9 +62,9 @@ function Save-Resized {
 }
 
 # --- 3. Logos do app (UI) e icone mestre ---
-Save-Resized -Size 512 -Path (Join-Path $root 'cinemax\assets\images\logo.png')
-Save-Resized -Size 512 -Path (Join-Path $root 'cinemax\assets\icons\logo.png')
-Save-Resized -Size 1024 -Path (Join-Path $root 'cinemax\assets\icon\app_icon.png')
+Save-Resized -Size 512 -Path (Join-Path $root 'packages\ciney_core\assets\images\logo.png')
+Save-Resized -Size 512 -Path (Join-Path $root 'packages\ciney_core\assets\icons\logo.png')
+Save-Resized -Size 1024 -Path (Join-Path $root 'packages\ciney_core\assets\icon\app_icon.png')
 
 # --- 4. ic_launcher.png nas densidades Android (mobile + TV) ---
 $densities = @{ 'mdpi' = 48; 'hdpi' = 72; 'xhdpi' = 96; 'xxhdpi' = 144; 'xxxhdpi' = 192 }
@@ -95,7 +95,7 @@ foreach ($size in $icoSizes) {
     $pngBlobs += ,$ms.ToArray()
     $ms.Dispose()
 }
-$icoPath = Join-Path $root 'cinemax\assets\icon\app_icon.ico'
+$icoPath = Join-Path $root 'packages\ciney_core\assets\icon\app_icon.ico'
 $fs = [System.IO.File]::Create($icoPath)
 $bw = New-Object System.IO.BinaryWriter($fs)
 $bw.Write([uint16]0)              # reservado

@@ -1,24 +1,28 @@
 # Estrutura do código-fonte
 
-O CiNey mantém uma base Flutter em `cinemax/` e um host Android TV em
-`cinemax_tv/`. A TV importa a base por dependência local, por isso novas telas,
-serviços, componentes e testes compartilhados devem ficar em `cinemax/`.
+O CiNey mantém um núcleo Flutter em `packages/ciney_core/`, um host mobile em
+`cinemax/` e um host Android TV em `cinemax_tv/`. Os dois hosts dependem do núcleo.
+Novas telas, serviços e componentes compartilhados devem ficar no núcleo. Os
+testes compartilhados permanecem em `cinemax/test/`.
 
 ```text
 .
 ├── cinemax/
 │   ├── lib/
 │   │   ├── main.dart            # Entrada mobile
-│   │   ├── cinemax_app.dart     # Inicialização compartilhada
-│   │   ├── core/               # Configuração, rotas, serviços e widgets
-│   │   ├── features/           # Funcionalidades do aplicativo
-│   │   └── plugin_engine/      # Contratos, modelos, plugins e fontes
-│   ├── assets/                 # Recursos usados pelo aplicativo
+│   │   ├── mobile/             # Adaptadores exclusivos de celular
+│   │   ├── cinemax_app.dart    # Export de compatibilidade do núcleo
+│   │   ├── core/              # Exports de compatibilidade
+│   │   ├── features/          # Exports e scanner do celular
+│   │   └── plugin_engine/     # Exports de compatibilidade
 │   ├── test/                   # Testes Flutter e JavaScript
 │   ├── packages/               # Plugins locais, como o observador de mídia embed
 │   ├── android/                # Host Android mobile
 │   ├── ios/                    # Host iOS
 │   └── regras/                 # Diretrizes comuns às duas variantes
+├── packages/ciney_core/
+│   ├── lib/                    # Implementação compartilhada, fontes e players
+│   └── assets/                 # Imagens e JavaScript dos dois hosts
 ├── cinemax_tv/
 │   ├── lib/main.dart           # Inicializa a base com isTv: true
 │   └── android/                # Host, launcher e recursos Android TV
@@ -50,12 +54,12 @@ serviços, componentes e testes compartilhados devem ficar em `cinemax/`.
 
 | Caminho | Conteúdo |
 | --- | --- |
-| [`core/config/`](../cinemax/lib/core/config/) | Ambiente, tema, cores e tipografia. |
-| [`core/routes/`](../cinemax/lib/core/routes/) | Rotas e navegação. |
-| [`core/services/`](../cinemax/lib/core/services/) | Serviços comuns, como logs e atualizações. |
-| [`core/widgets/`](../cinemax/lib/core/widgets/) | Componentes reutilizáveis e suporte a foco. |
-| [`features/`](../cinemax/lib/features/) | Módulos `auth`, `favorites`, `splash`, `onboarding`, `main_navigation`, `home`, `search`, `details`, `player`, `downloads`, `extensions` e `profile`. |
-| [`plugin_engine/`](../cinemax/lib/plugin_engine/) | Integração com catálogos e provedores de reprodução. |
+| [`core/config/`](../packages/ciney_core/lib/core/config/) | Ambiente, tema, cores e tipografia. |
+| [`core/routes/`](../packages/ciney_core/lib/core/routes/) | Rotas e navegação. |
+| [`core/services/`](../packages/ciney_core/lib/core/services/) | Serviços comuns, como logs e atualizações. |
+| [`core/widgets/`](../packages/ciney_core/lib/core/widgets/) | Componentes reutilizáveis e suporte a foco. |
+| [`features/`](../packages/ciney_core/lib/features/) | Módulos `auth`, `favorites`, `splash`, `onboarding`, `main_navigation`, `home`, `search`, `details`, `player`, `downloads`, `extensions` e `profile`. |
+| [`plugin_engine/`](../packages/ciney_core/lib/plugin_engine/) | Integração com catálogos e provedores de reprodução. |
 | [`test/`](../cinemax/test/) | Verificação da implementação compartilhada, inclusive interações de TV. |
 
 Dentro de cada funcionalidade, as telas ficam em `presentation/`. Serviços e
@@ -78,8 +82,10 @@ serviços usados por vários módulos pertencem a `core/`.
 - [Configuração de contas e favoritos no Supabase](contas-supabase.md)
 - [Organização dos APKs locais](../releases/README.md)
 
-Os scripts de publicação estão em [`scripts/`](../scripts/). Os assets carregados
-pelo app continuam em `cinemax/assets/`.
+Os scripts estão em [`scripts/`](../scripts/). Os assets carregados pelos dois
+apps ficam em `packages/ciney_core/assets/`. O script
+`build-local-mobile-tv.ps1` gera variantes privadas em `outputs/`, separando os
+APKs TV por arquitetura. Consulte a [separação dos hosts](separacao-mobile-tv.md).
 
 As pastas `build/`, `.dart_tool/` e os caches do Gradle são gerados pelas
 ferramentas. As saídas de compilação não fazem parte do código-fonte nem devem

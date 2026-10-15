@@ -1,6 +1,2 @@
-class AccountUser {
-  const AccountUser({required this.id, required this.email});
-
-  final String id;
-  final String email;
-}
+// Compatibilidade para consumidores do host mobile. Implementação no núcleo comum.
+export 'package:ciney_core/features/auth/models/account_user.dart';

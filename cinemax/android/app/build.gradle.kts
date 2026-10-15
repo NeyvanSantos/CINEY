@@ -35,7 +35,8 @@ android {
 
     defaultConfig {
         applicationId = "com.ciney.app"
-        minSdk = flutter.minSdkVersion
+        // O transporte DLNA/Jetty incorporado requer Android 8 ou superior.
+        minSdk = maxOf(flutter.minSdkVersion, 26)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

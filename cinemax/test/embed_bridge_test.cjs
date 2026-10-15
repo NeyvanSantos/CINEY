@@ -3,8 +3,8 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
-const code = fs.readFileSync(path.join(__dirname, '../assets/player/embed_bridge.js'), 'utf8');
-const resumeScript = fs.readFileSync(path.join(__dirname, '../assets/player/playback_resume.js'), 'utf8');
+const code = fs.readFileSync(path.join(__dirname, '../../packages/ciney_core/assets/player/embed_bridge.js'), 'utf8');
+const resumeScript = fs.readFileSync(path.join(__dirname, '../../packages/ciney_core/assets/player/playback_resume.js'), 'utf8');
 
 function setup({ videos = [], frames = [], nativeObserver = false, resume = 0 } = {}) {
   const messages = [], timers = [], intervals = [], listeners = {};

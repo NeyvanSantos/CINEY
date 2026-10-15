@@ -3,8 +3,8 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
-const script = fs.readFileSync(path.join(__dirname, '../assets/player/embed_media_observer.js'), 'utf8');
-const resumeScript = fs.readFileSync(path.join(__dirname, '../assets/player/playback_resume.js'), 'utf8');
+const script = fs.readFileSync(path.join(__dirname, '../../packages/ciney_core/assets/player/embed_media_observer.js'), 'utf8');
+const resumeScript = fs.readFileSync(path.join(__dirname, '../../packages/ciney_core/assets/player/playback_resume.js'), 'utf8');
 
 function setup(videos = [], mainFrame = false, resume = 0, frames = [], expectedDuration = 0) {
   const messages = [], timers = [], documentEvents = {}, windowEvents = {};

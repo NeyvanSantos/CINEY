@@ -1,7 +1,2 @@
-class AppEnvironment {
-  static bool isTv = false;
-
-  static String assetPath(String path) {
-    return isTv ? 'packages/cinemax/$path' : path;
-  }
-}
+// Compatibilidade para consumidores do host mobile. Implementação no núcleo comum.
+export 'package:ciney_core/core/config/app_environment.dart';

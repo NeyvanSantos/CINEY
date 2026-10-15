@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
-const read = name => fs.readFileSync(path.join(__dirname, '../assets/player', name), 'utf8');
+const read = name => fs.readFileSync(path.join(__dirname, '../../packages/ciney_core/assets/player', name), 'utf8');
 const startup = read('embed_startup.js');
 
 function row(text, audio = 'pt-br', hidden = false) {

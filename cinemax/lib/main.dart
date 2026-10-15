@@ -1,3 +1,7 @@
 import 'cinemax_app.dart';
+import 'mobile/mobile_services.dart';
 
-Future<void> main() => runCinemaxApp();
+Future<void> main() {
+  configureMobileServices();
+  return runCinemaxApp();
+}

@@ -1,0 +1,49 @@
+group 'com.ciney.castlite'
+version '0.1.0'
+
+apply plugin: 'com.android.library'
+apply plugin: 'org.jetbrains.kotlin.android'
+
+// O host independente e o CiNey compilam o mesmo motor, sem copiar Kotlin/assets.
+def nativeSources = file('../../../../CastLite/CastLite/app/src')
+if (!nativeSources.isDirectory()) {
+    throw new GradleException('Fontes CastLite ausentes na estrutura do repositório CiNey.')
+}
+
+android {
+    namespace 'com.example.castlite'
+    compileSdk 36
+    defaultConfig { minSdk 26 }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = '17' }
+    buildFeatures { viewBinding = true }
+    sourceSets {
+        main {
+            java.srcDirs += new File(nativeSources, 'main/java')
+            res.srcDirs += new File(nativeSources, 'main/res')
+            assets.srcDirs += new File(nativeSources, 'main/assets')
+        }
+        test { java.srcDirs += new File(nativeSources, 'test/java') }
+    }
+    testOptions { unitTests.all { jvmArgs '-Dfile.encoding=UTF-8' } }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.13.1'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.webkit:webkit:1.15.0'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'androidx.mediarouter:mediarouter:1.7.0'
+    implementation 'com.google.android.gms:play-services-cast-framework:21.5.0'
+    implementation 'org.jupnp:org.jupnp:3.0.2'
+    implementation 'org.jupnp:org.jupnp.support:3.0.2'
+    implementation 'javax.enterprise:cdi-api:1.2'
+    implementation 'org.eclipse.jetty:jetty-server:9.4.54.v20240208'
+    implementation 'org.eclipse.jetty:jetty-servlet:9.4.54.v20240208'
+    implementation 'org.eclipse.jetty:jetty-client:9.4.54.v20240208'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
+    testImplementation 'junit:junit:4.13.2'
+}
