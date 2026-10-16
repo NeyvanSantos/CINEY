@@ -166,9 +166,9 @@ class _MovieCollectionScreenState extends State<MovieCollectionScreen> {
             );
           }
 
+          if (snapshot.hasError) return _buildFailure();
           final collection = snapshot.data;
           if (collection == null) return _buildEmpty();
-          if (snapshot.hasError) return _buildFailure();
           if (collection.movies.isEmpty) return _buildEmpty();
 
           return ListView.separated(

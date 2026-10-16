@@ -1,15 +1,15 @@
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <shape android:shape="rectangle">
-            <gradient
-                android:angle="0"
-                android:startColor="#0A0A1A"
-                android:endColor="#151530" />
+            <size
+                android:width="160dp"
+                android:height="90dp" />
+            <solid android:color="#151530" />
         </shape>
     </item>
     <item
-        android:width="132dp"
-        android:height="132dp"
+        android:width="64dp"
+        android:height="64dp"
         android:gravity="center">
         <bitmap
             android:src="@mipmap/ic_launcher"

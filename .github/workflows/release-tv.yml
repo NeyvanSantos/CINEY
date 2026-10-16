@@ -136,7 +136,7 @@ jobs:
 
       - name: Compilar APK Android TV
         working-directory: cinemax_tv
-        run: flutter build apk --release --no-pub
+        run: flutter build apk --release
 
       - name: Verificar certificado do APK TV
         env:

@@ -663,7 +663,7 @@ class TmdbService {
     final results = await Future.wait(
       collectionIds.map((id) async {
         try {
-          return await getCollection(id, pluginId, client: client ?? _dio);
+          return await getCollection(id, pluginId, client: client);
         } catch (_) {
           return null;
         }
@@ -759,7 +759,9 @@ class TmdbService {
           _collectionCache[cacheKey] = collection;
           return collection;
         })
-        .whenComplete(() => _collectionRequests.remove(cacheKey));
+        .whenComplete(() {
+          _collectionRequests.remove(cacheKey);
+        });
     _collectionRequests[cacheKey] = request;
     return request;
   }

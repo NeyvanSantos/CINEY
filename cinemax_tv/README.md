@@ -16,7 +16,9 @@ flutter run
 
 O launcher registra Leanback e touchscreen opcional. A navegação lateral é
 ativada pelo modo TV do app compartilhado, e o player nativo responde às teclas
-de mídia. O banner fica em `android/app/src/main/res/drawable/tv_banner.xml`.
+de mídia. O banner fica em `android/app/src/main/res/drawable/tv_banner.xml`:
+cartão com fundo escuro `#151530` de 160 × 90 dp (16:9), com a logo de 64 × 64 dp centralizada,
+sem distorção. Em xhdpi, o cartão corresponde a 320 × 180 pixels.
 
 ## Validar
 

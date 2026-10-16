@@ -69,6 +69,11 @@ gradle.beforeProject { project ->
         if ($Offline) { $pubArgs += '--offline' }
         & flutter @pubArgs *> (Join-Path $scratchPath "pub-$buildTarget.log")
         if ($LASTEXITCODE -ne 0) { throw "Falha no pub get de $buildTarget." }
+        if ($buildType -eq 'release') {
+            # Exclui plugins de teste do registro nativo antes do Gradle release.
+            & flutter build apk --release --config-only *> (Join-Path $scratchPath "configure-$buildTarget.log")
+            if ($LASTEXITCODE -ne 0) { throw "Falha na configuracao release de $buildTarget." }
+        }
         Pop-Location
         $pushedLocation = $false
         Push-Location -LiteralPath "$BuildDrive\$hostFolder\android"

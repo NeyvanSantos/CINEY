@@ -134,7 +134,7 @@ jobs:
 
       - name: 🔨 Compilar APK de Release (CineMax)
         working-directory: cinemax
-        run: flutter build apk --release --no-pub
+        run: flutter build apk --release
 
       - name: Verificar certificado do APK
         env:
