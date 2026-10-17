@@ -1,7 +1,7 @@
 name: cinemax_tv
 description: "CiNey TV - Filmes e Séries para Android TV"
 publish_to: 'none'
-version: 1.0.43+45
+version: 1.0.44+46
 
 environment:
   sdk: ^3.11.4

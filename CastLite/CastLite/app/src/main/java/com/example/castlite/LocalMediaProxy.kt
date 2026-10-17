@@ -204,7 +204,10 @@ class LocalMediaProxy(context: Context) : Closeable {
         cookies?.takeIf { it.isNotBlank() }?.let { requestHeaders["Cookie"] = it }
         var source: RelayHttpSource? = null
         try {
-            val opened = RelayHttpSource(resource.url, method, requestHeaders)
+            // Inspect a small prefix for HEAD too, so the receiver sees the same
+            // media type when probing and downloading a mislabeled HLS segment.
+            val inspectHead = method == "HEAD" && hlsSource && !playlistResource
+            val opened = RelayHttpSource(resource.url, if (inspectHead) "GET" else method, requestHeaders)
             source = opened
             val connection = opened.connection
             val code = connection.responseCode
@@ -221,7 +224,7 @@ class LocalMediaProxy(context: Context) : Closeable {
                 browserResponse?.body?.close()
             }
             val statusText = connection.responseMessage?.takeIf { it.isNotBlank() } ?: reasonPhrase(code)
-            val sourceStream = if (code >= 400) connection.errorStream else if (method == "HEAD") null else opened.stream()
+            val sourceStream = if (code >= 400) connection.errorStream else if (method == "HEAD" && !inspectHead) null else opened.stream()
             val contentType = connection.contentType ?: resource.mimeType
             val playlist = HlsPlaylist.isPlaylist(resource.url, contentType, resource.mimeType)
             val isHls = code == HttpURLConnection.HTTP_OK && method == "GET" && playlist
@@ -251,15 +254,21 @@ class LocalMediaProxy(context: Context) : Closeable {
                 responseStarted = true
                 writeResponse(output, code, statusText, forwarded, rewritten, false)
             } else {
+                val mediaStream = sourceStream?.let { BufferedInputStream(it) }
+                val mediaType = if (hlsSource && !playlist && code in 200..299 && mediaStream != null) {
+                    MediaPayload.contentType(mediaStream, contentType.orEmpty()).also {
+                        Log.d("CastLite-Relay", "Media type origin=$contentType forwarded=$it")
+                    }
+                } else contentType
                 val contentLength = connection.getHeaderFieldLong("Content-Length", -1L)
                 val forwarded = responseHeaders(
                     connection,
-                    if (playlist && code == 200) HlsPlaylist.MIME else contentType,
+                    if (playlist && code == 200) HlsPlaylist.MIME else mediaType,
                     contentLength,
                     resource.mimeType
                 )
                 responseStarted = true
-                writeResponse(output, code, statusText, forwarded, sourceStream, method == "HEAD")
+                writeResponse(output, code, statusText, forwarded, mediaStream, method == "HEAD")
                 if (hlsSource && !playlistResource && code in 200..299) {
                     Log.d("CastLite-Relay", "HLS segment transport=direct status=$code bytes=$contentLength elapsedMs=${(System.nanoTime() - requestStartedNanos) / 1_000_000L}")
                 }
@@ -297,11 +306,7 @@ class LocalMediaProxy(context: Context) : Closeable {
                 writeResponse(output, response.status, reasonPhrase(response.status), headers, body, method == "HEAD")
             } else {
                 val buffered = BufferedInputStream(input)
-                buffered.mark(512)
-                val prefix = ByteArray(512)
-                val count = buffered.read(prefix)
-                buffered.reset()
-                headers["Content-Type"] = MediaPayload.contentType(if (count > 0) prefix.copyOf(count) else byteArrayOf(), response.type)
+                headers["Content-Type"] = MediaPayload.contentType(buffered, response.type)
                 Log.d("CastLite-Relay", "Browser stream status=${response.status} startupMs=$elapsedMs")
                 writeResponse(output, response.status, reasonPhrase(response.status), headers, buffered, method == "HEAD")
             }
