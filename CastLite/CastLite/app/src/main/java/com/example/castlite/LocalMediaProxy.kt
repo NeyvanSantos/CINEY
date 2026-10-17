@@ -13,7 +13,6 @@ import java.net.Inet4Address
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.ServerSocket
-import java.net.URL
 import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.util.Collections
@@ -41,12 +40,15 @@ class LocalMediaProxy(context: Context) : Closeable {
         val requestHeaders: Map<String, String>,
         val userAgent: String,
         val economy: Boolean,
+        val audioLanguage: String?,
+        val browserHosts: MutableSet<String> = ConcurrentHashMap.newKeySet(),
         val resources: ConcurrentHashMap<String, Resource> = ConcurrentHashMap(),
+        val resourceIds: ConcurrentHashMap<Resource, String> = ConcurrentHashMap(),
         val lastRequestedVariant: AtomicReference<String?> = AtomicReference(null)
     )
 
     private val appContext = context.applicationContext
-    var economyMode = context.getSharedPreferences("casting", Context.MODE_PRIVATE).getBoolean("economy", true)
+    var economyMode = context.getSharedPreferences("casting", Context.MODE_PRIVATE).getBoolean("economy_opt_in", false)
     private val routes = ConcurrentHashMap<String, Route>()
     private val serverLock = Any()
     @Volatile private var server: ServerSocket? = null
@@ -61,6 +63,7 @@ class LocalMediaProxy(context: Context) : Closeable {
             val route = Route(
                 token = token,
                 economy = economyMode,
+                audioLanguage = video.audioLanguage,
                 host = lanAddress,
                 port = listening.localPort,
                 pageUrl = video.pageUrl,
@@ -165,53 +168,60 @@ class LocalMediaProxy(context: Context) : Closeable {
                 }
             }
         }
-        // Mantém playlists e segmentos HLS no contexto do navegador de origem.
-        if (hlsSource) {
+        // Use the streaming HTTP path first. Browser transport buffers whole
+        // segments and is only required for origins that reject native requests.
+        val resourceHost = runCatching { URI(resource.url).host }.getOrNull()
+        if (hlsSource && resourceHost in route.browserHosts) {
             val range = if (playlistResource) null else receiverHeaders["range"]
             val browserResponse = frameTransport?.fetch(route.pageUrl, resource.url, range)
-            if (browserResponse != null) {
+            if (browserResponse != null && browserResponse.status in 200..299) {
                 responseStarted = true
                 writeFrameResponse(route, resource, browserResponse, method, output,
                     (System.nanoTime() - requestStartedNanos) / 1_000_000L)
                 return
             }
+            browserResponse?.body?.close()
         }
         val uri = try { URI(resource.url) } catch (_: Exception) { null }
         if (uri == null || !uri.scheme.equals("http", true) && !uri.scheme.equals("https", true) || uri.host.isNullOrBlank()) {
             writeResponse(output, 400, "Bad Request", emptyMap(), "Invalid media URL".toByteArray(), method == "HEAD")
             return
         }
-        val connection = (URL(resource.url).openConnection() as? HttpURLConnection)
-            ?: run {
-                writeResponse(output, 502, "Bad Gateway", emptyMap(), "Unsupported media transport".toByteArray(), method == "HEAD")
-                return
-            }
+        val requestHeaders = linkedMapOf("User-Agent" to route.userAgent, "Accept-Encoding" to "identity")
+        listOf("Accept", "Accept-Language", "Origin", "Authorization").forEach { name ->
+            route.requestHeaders.entries.firstOrNull { it.key.equals(name, true) }
+                ?.value?.safeHeaderValue()?.let { requestHeaders[name] = it }
+        }
+        val referer = route.requestHeaders.entries.firstOrNull { it.key.equals("Referer", true) }
+            ?.value?.takeIf { it.isNotBlank() } ?: route.pageUrl
+        referer.safeHeaderValue()?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+            ?.let { requestHeaders["Referer"] = it }
+        receiverHeaders["range"]?.safeHeaderValue()?.let { requestHeaders["Range"] = it }
+        receiverHeaders["if-range"]?.safeHeaderValue()?.let { requestHeaders["If-Range"] = it }
+        val cookies = route.requestHeaders.entries.firstOrNull { it.key.equals("Cookie", true) }
+            ?.value?.safeHeaderValue()
+            ?: runCatching { CookieManager.getInstance().getCookie(resource.url) }.getOrNull()
+        cookies?.takeIf { it.isNotBlank() }?.let { requestHeaders["Cookie"] = it }
+        var source: RelayHttpSource? = null
         try {
-            connection.instanceFollowRedirects = true
-            connection.connectTimeout = 20_000
-            connection.readTimeout = 60_000
-            connection.requestMethod = method
-            connection.setRequestProperty("User-Agent", route.userAgent)
-            connection.setRequestProperty("Accept-Encoding", "identity")
-            listOf("Accept", "Accept-Language", "Origin", "Authorization").forEach { name ->
-                route.requestHeaders.entries.firstOrNull { it.key.equals(name, ignoreCase = true) }
-                    ?.value?.safeHeaderValue()?.let { connection.setRequestProperty(name, it) }
-            }
-            val referer = route.requestHeaders.entries.firstOrNull { it.key.equals("Referer", ignoreCase = true) }
-                ?.value?.takeIf { it.isNotBlank() } ?: route.pageUrl
-            referer.safeHeaderValue()?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
-                ?.let { connection.setRequestProperty("Referer", it) }
-            receiverHeaders["range"]?.safeHeaderValue()?.let { connection.setRequestProperty("Range", it) }
-            receiverHeaders["if-range"]?.safeHeaderValue()?.let { connection.setRequestProperty("If-Range", it) }
-            val cookies = route.requestHeaders.entries.firstOrNull { it.key.equals("Cookie", ignoreCase = true) }
-                ?.value?.safeHeaderValue()
-                ?: try { CookieManager.getInstance().getCookie(resource.url) } catch (_: Exception) { null }
-            cookies?.takeIf { it.isNotBlank() }?.let { connection.setRequestProperty("Cookie", it) }
-            Log.d("CastLite-Relay", "Context headers=${route.requestHeaders.keys.sorted()} cookies=${!cookies.isNullOrBlank()} refererSameHost=${runCatching { URI(referer).host == uri.host }.getOrDefault(false)}")
-
+            val opened = RelayHttpSource(resource.url, method, requestHeaders)
+            source = opened
+            val connection = opened.connection
             val code = connection.responseCode
+            if (hlsSource && code in listOf(401, 403)) {
+                val browserResponse = frameTransport?.fetch(route.pageUrl, resource.url,
+                    if (playlistResource) null else receiverHeaders["range"])
+                if (browserResponse != null && browserResponse.status in 200..299) {
+                    if (resourceHost != null) route.browserHosts.add(resourceHost)
+                    responseStarted = true
+                    writeFrameResponse(route, resource, browserResponse, method, output,
+                        (System.nanoTime() - requestStartedNanos) / 1_000_000L)
+                    return
+                }
+                browserResponse?.body?.close()
+            }
             val statusText = connection.responseMessage?.takeIf { it.isNotBlank() } ?: reasonPhrase(code)
-            val sourceStream = if (code >= 400) connection.errorStream else connection.inputStream
+            val sourceStream = if (code >= 400) connection.errorStream else if (method == "HEAD") null else opened.stream()
             val contentType = connection.contentType ?: resource.mimeType
             val playlist = HlsPlaylist.isPlaylist(resource.url, contentType, resource.mimeType)
             val isHls = code == HttpURLConnection.HTTP_OK && method == "GET" && playlist
@@ -262,7 +272,7 @@ class LocalMediaProxy(context: Context) : Closeable {
             Log.w("CastLite-Relay", "Origin request failed: ${error.javaClass.simpleName}")
             writeResponse(output, 502, "Bad Gateway", emptyMap(), "Unable to fetch origin media".toByteArray(), method == "HEAD")
         } finally {
-            connection.disconnect()
+            source?.close()
         }
     }
 
@@ -274,25 +284,28 @@ class LocalMediaProxy(context: Context) : Closeable {
         output: BufferedOutputStream,
         elapsedMs: Long
     ) {
-        val playlist = HlsPlaylist.isPlaylist(resource.url, response.type, resource.mimeType)
-        val mediaType = MediaPayload.contentType(response.body, response.type)
-        Log.d("CastLite-Relay", "Browser $method status=${response.status} type=$mediaType playlist=$playlist bytes=${response.body.size} elapsedMs=$elapsedMs")
-        val body = if (response.status == 200 && playlist) {
-            runCatching { rewriteHls(response.body.toString(StandardCharsets.UTF_8), response.finalUrl, route)
-                .toByteArray(StandardCharsets.UTF_8) }.getOrNull()
-        } else response.body
-        if (body == null) {
-            writeResponse(output, 502, "Bad Gateway", emptyMap(), "Invalid HLS playlist".toByteArray(), false)
-            return
+        response.body.use { input ->
+            val playlist = HlsPlaylist.isPlaylist(resource.url, response.type, resource.mimeType)
+            val headers = mutableMapOf("Cache-Control" to "no-store")
+            if (response.contentRange.isNotBlank()) headers["Content-Range"] = response.contentRange
+            if (playlist && response.status == 200) {
+                val manifest = readBounded(input, MAX_MANIFEST_BYTES)
+                    ?: throw java.io.IOException("Manifest too large")
+                val body = rewriteHls(manifest.toString(StandardCharsets.UTF_8), response.finalUrl, route)
+                    .toByteArray(StandardCharsets.UTF_8)
+                headers["Content-Type"] = HlsPlaylist.MIME
+                writeResponse(output, response.status, reasonPhrase(response.status), headers, body, method == "HEAD")
+            } else {
+                val buffered = BufferedInputStream(input)
+                buffered.mark(512)
+                val prefix = ByteArray(512)
+                val count = buffered.read(prefix)
+                buffered.reset()
+                headers["Content-Type"] = MediaPayload.contentType(if (count > 0) prefix.copyOf(count) else byteArrayOf(), response.type)
+                Log.d("CastLite-Relay", "Browser stream status=${response.status} startupMs=$elapsedMs")
+                writeResponse(output, response.status, reasonPhrase(response.status), headers, buffered, method == "HEAD")
+            }
         }
-        val headers = mutableMapOf(
-            "Content-Type" to if (playlist && response.status == 200) HlsPlaylist.MIME else response.type,
-            "Cache-Control" to "no-store",
-            "Content-Length" to body.size.toString()
-        )
-        if (!playlist) headers["Content-Type"] = mediaType
-        if (response.contentRange.isNotBlank()) headers["Content-Range"] = response.contentRange
-        writeResponse(output, response.status, reasonPhrase(response.status), headers, body, method == "HEAD")
     }
 
     private fun responseHeaders(
@@ -354,9 +367,11 @@ class LocalMediaProxy(context: Context) : Closeable {
         HlsPlaylist.qualitySummary(manifest)?.let { summary ->
             Log.d("CastLite-HLS", "Quality variants: $summary")
         }
-        return HlsPlaylist.rewrite(if (route.economy) HlsPlaylist.economical(manifest) else manifest, baseUrl) { target, mimeType, variantQuality ->
-            val resourceId = UUID.randomUUID().toString().replace("-", "")
-            route.resources[resourceId] = Resource(target, mimeType, variantQuality)
+        return HlsPlaylist.rewrite(if (route.economy) HlsPlaylist.economical(manifest) else manifest, baseUrl, route.audioLanguage) { target, mimeType, variantQuality ->
+            val resource = Resource(target, mimeType, variantQuality)
+            val resourceId = route.resourceIds.computeIfAbsent(resource) {
+                UUID.randomUUID().toString().replace("-", "").also { route.resources[it] = resource }
+            }
             "http://${route.host}:${route.port}/${route.token}/$resourceId"
         }
     }

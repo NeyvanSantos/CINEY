@@ -71,9 +71,17 @@
         });
     }
 
+    var fetchControllers = Object.create(null);
+
     async function fetchMedia(request) {
         var controller = new AbortController();
-        var timeout = setTimeout(function () { controller.abort(); }, 40000);
+        fetchControllers[request.id] = controller;
+        var timeout;
+        function resetTimeout() {
+            clearTimeout(timeout);
+            timeout = setTimeout(function () { controller.abort(); }, 40000);
+        }
+        resetTimeout();
         function send(kind, extra) {
             bridge.postMessage(JSON.stringify(Object.assign({ kind: kind, id: request.id, pageId: request.pageId }, extra)));
         }
@@ -92,8 +100,9 @@
             while (true) {
                 var part = await reader.read();
                 if (part.done) break;
+                resetTimeout();
                 total += part.value.length;
-                if (total > 16 * 1024 * 1024) { controller.abort(); throw new Error('Resource too large'); }
+                if (total > 128 * 1024 * 1024) { controller.abort(); throw new Error('Resource too large'); }
                 for (var offset = 0; offset < part.value.length; offset += 24000) {
                     var chunk = part.value.subarray(offset, offset + 24000);
                     send('fetchChunk', { data: btoa(String.fromCharCode.apply(null, chunk)) });
@@ -101,7 +110,7 @@
             }
             send('fetchEnd');
         } catch (_) { send('fetchError'); }
-        finally { clearTimeout(timeout); }
+        finally { clearTimeout(timeout); delete fetchControllers[request.id]; }
     }
 
     bridge.onmessage = function (event) {
@@ -114,7 +123,9 @@
                         media.preload = 'none';
                     });
                 }
-                if (active && request.kind === 'fetch') fetchMedia(request);
+                if (request.kind === 'cancelFetch') {
+                    if (fetchControllers[request.id]) fetchControllers[request.id].abort();
+                } else if (active && request.kind === 'fetch') fetchMedia(request);
             } catch (_) {}
             return;
         }

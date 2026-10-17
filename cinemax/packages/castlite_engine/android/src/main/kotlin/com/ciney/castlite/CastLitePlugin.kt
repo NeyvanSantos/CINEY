@@ -58,8 +58,8 @@ class CastLitePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHan
                 "play", "pause", "stop", "seek" -> {
                     val target = CastingService.target ?: error("no_session")
                     when (call.method) {
-                        "play" -> target.play()
-                        "pause" -> target.pause()
+                        "play" -> { CastingService.setUserPaused(false); target.play() }
+                        "pause" -> { CastingService.setUserPaused(true); target.pause() }
                         "stop" -> { target.stop(); context.stopService(Intent(context, CastingService::class.java)) }
                         "seek" -> {
                             val position = call.argument<Number>("positionMs")?.toLong() ?: -1

@@ -24,6 +24,7 @@
     <string name="cast_load_error">A TV não carregou o vídeo (código %1$d). O link pode exigir login, cookies ou um formato incompatível.</string>
     <string name="cast_request_accepted">Pedido recebido pela TV; aguardando a reprodução…</string>
     <string name="cast_playback_not_started">A TV aceitou o pedido, mas não iniciou o vídeo. Verifique o formato/codec, o acesso à mídia e se ela usa DRM.</string>
+    <string name="cast_recovery_exhausted">Não foi possível retomar o filme. Reabra a fonte e tente transmitir novamente.</string>
     <string name="cast_proxy_unavailable">Não foi possível criar o relay local. Celular e Chromecast precisam estar na mesma rede Wi-Fi.</string>
     <string name="cast_command_error">Não foi possível enviar o comando. Verifique a conexão com a TV.</string>
     <string name="control_screen_title">Controles da TV</string>

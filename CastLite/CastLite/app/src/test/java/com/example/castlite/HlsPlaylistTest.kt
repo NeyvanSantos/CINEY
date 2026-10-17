@@ -119,10 +119,11 @@ class HlsPlaylistTest {
             #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="Português",LANGUAGE="pt-BR",DEFAULT=NO,URI="pt.m3u8"
             #EXT-X-STREAM-INF:BANDWIDTH=1000,AUDIO="aud"
             video.m3u8
-        """.trimIndent(), "https://example.com/master.m3u8") { url, _ -> url }
+        """.trimIndent(), "https://example.com/master.m3u8", "pt") { url, _, _ -> url }
         val lines = result.lines()
-        assertTrue(lines[1].contains("DEFAULT=NO"))
-        assertTrue(lines[2].contains("DEFAULT=YES"))
+        assertFalse(result.contains("NAME=\"English\""))
+        assertFalse(result.contains("NAME=\"Original\""))
+        assertTrue(lines[1].contains("DEFAULT=YES"))
     }
 
     @Test fun recognizesAudioTypeWhenAttributeOrderDiffers() {
@@ -132,10 +133,11 @@ class HlsPlaylistTest {
             #EXT-X-MEDIA:GROUP-ID="aud", TYPE = AUDIO, NAME="Dublado",DEFAULT=NO,URI="pt.m3u8"
             #EXT-X-STREAM-INF:BANDWIDTH=1000,AUDIO="aud"
             video.m3u8
-        """.trimIndent(), "https://example.com/master.m3u8") { url, _ -> url }
+        """.trimIndent(), "https://example.com/master.m3u8", "pt") { url, _, _ -> url }
         val lines = result.lines()
-        assertTrue(lines[1].contains("DEFAULT=NO"))
-        assertTrue(lines[2].contains("DEFAULT=YES"))
+        assertFalse(result.contains("NAME=\"English\""))
+        assertFalse(result.contains("NAME=\"Original\""))
+        assertTrue(lines[1].contains("DEFAULT=YES"))
     }
 
     @Test fun prefersDubbedAudioByNameWhenLanguageIsMissing() {
@@ -145,10 +147,11 @@ class HlsPlaylistTest {
             #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="a",NAME="Dublado",URI="pt.m3u8"
             #EXT-X-STREAM-INF:BANDWIDTH=1000,AUDIO="a"
             video.m3u8
-        """.trimIndent(), "https://example.com/master.m3u8") { url, _ -> url }
+        """.trimIndent(), "https://example.com/master.m3u8", "pt") { url, _, _ -> url }
         val lines = result.lines()
-        assertTrue(lines[1].contains("DEFAULT=NO"))
-        assertTrue(lines[2].contains("DEFAULT=YES"))
+        assertFalse(result.contains("NAME=\"English\""))
+        assertFalse(result.contains("NAME=\"Original\""))
+        assertTrue(lines[1].contains("DEFAULT=YES"))
     }
 
     @Test fun keepsSingleAudioTrackUntouched() {

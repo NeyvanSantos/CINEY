@@ -16,7 +16,7 @@ class FrameMediaObserver(
     private val currentPageId: () -> Long,
     private val onVideo: (String, String, String, Long) -> Unit
 ) : Closeable {
-    internal val transport = FrameMediaTransport()
+    internal val transport = FrameMediaTransport(webView.context.cacheDir)
     private var script: ScriptHandler? = null
 
     init {

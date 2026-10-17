@@ -30,6 +30,46 @@ ativa. A notificação permite reproduzir, pausar, voltar dez segundos e parar.
 Ao encerrar a sessão, os recursos são liberados. Após a morte do processo, uma
 fonte temporária precisa ser aberta novamente.
 
+### Continuidade, áudio e qualidade — 17/10/2026
+
+- O relay prioriza HTTP com os cabeçalhos e cookies da fonte. Em respostas
+  401/403, usa o navegador de origem e conserva essa escolha por host na sessão.
+  O transporte do navegador entrega os primeiros bytes antes de terminar o
+  segmento, usando um arquivo temporário por requisição, removido ao fechar.
+  O limite por recurso é 128 MiB, sem acumular segmentos inteiros em RAM.
+- Erros HTTP temporários têm até três tentativas. Respostas com tamanho conhecido
+  interrompidas podem continuar com Range a partir do próximo byte. O servidor
+  precisa confirmar o deslocamento com 206 e manter o validador quando fornecido;
+  uma resposta incompatível encerra a leitura em vez de repetir bytes.
+- A preferência de áudio acompanha a reescrita HLS. Para dublado, somente a faixa
+  portuguesa é anunciada em cada grupo que a oferece. Grupos sem correspondência,
+  legendas e variantes de vídeo são preservados. Sem preferência explícita,
+  permanecem os padrões da fonte. Isso não seleciona faixas internas de MP4.
+- O modo econômico passa a exigir ativação explícita no menu. O padrão preserva
+  todas as variantes, incluindo Full HD/4K, sem transcodificação. O receptor ainda
+  decide a variante adaptativa que consegue reproduzir.
+- Um monitor no serviço tenta recarregar o mesmo vídeo na última posição conhecida
+  após carregamento/buffering sem progresso por 45 segundos ou falha por 8 segundos.
+  São até três recargas, com orçamento renovado após 30 segundos de progresso.
+  Uma desconexão pode aguardar até três minutos pela reconexão do SDK Google Cast.
+  Pausa, parada normal e fim do filme não devem disparar recarga. A sessão mantém
+  um bloqueio Wi-Fi enquanto o serviço está ativo e libera os recursos ao terminar.
+- URLs expiradas, encerramento do processo e limitações do receptor continuam
+  exigindo reabertura da fonte em alguns casos. Não há troca automática para uma
+  fonte de menor qualidade. No Roku, a posição continua sujeita ao seek aproximado
+  do protocolo existente.
+
+Verificação adicional do observador e transporte nativos, a partir da raiz:
+
+```powershell
+node --test CastLite/CastLite/app/src/test/js/media_observer_test.cjs
+```
+
+Os testes JVM incluem servidor HTTP local com resposta truncada, continuação por
+Range, erro temporário, preservação dos bytes, seleção de áudio por grupo e
+recuperação respeitando pausa e término. Esses testes não substituem reprodução
+em uma TV física.
+
 O plugin não inicia descoberta ao abrir o catálogo. A variante Android TV não
 depende do CastLite nem de DLNA/Jetty; mantém seu player e receptor de comandos
 do celular. O mínimo continua **Android 8 / API 26** por decisão existente. O

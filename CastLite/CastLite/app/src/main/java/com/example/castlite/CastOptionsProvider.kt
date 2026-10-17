@@ -14,6 +14,8 @@ class CastOptionsProvider : OptionsProvider {
     override fun getCastOptions(context: Context): CastOptions =
         CastOptions.Builder()
             .setReceiverApplicationId(CastMediaControlIntent.DEFAULT_MEDIA_RECEIVER_APPLICATION_ID)
+            .setEnableReconnectionService(true)
+            .setResumeSavedSession(true)
             // CastingService fornece uma única sessão/notificação para todos os protocolos.
             .setCastMediaOptions(CastMediaOptions.Builder()
                 .setMediaSessionEnabled(false)

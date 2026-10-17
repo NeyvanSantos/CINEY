@@ -7,6 +7,8 @@ import android.media.MediaMetadata
 import android.media.session.MediaSession
 import android.media.session.PlaybackState as AndroidState
 import android.os.*
+import android.net.wifi.WifiManager
+import com.example.castlite.casting.CastProtocol
 import androidx.core.content.ContextCompat
 import com.example.castlite.casting.CastTarget
 import com.example.castlite.casting.PlaybackState
@@ -16,13 +18,36 @@ import com.example.castlite.casting.google.GoogleCastTarget
 class CastingService : Service() {
     private lateinit var session: MediaSession
     private lateinit var wakeLock: PowerManager.WakeLock
+    private var wifiLock: WifiManager.WifiLock? = null
     private val handler = Handler(Looper.getMainLooper())
     private var inactiveSince = 0L
+    private var terminalError: String? = null
     private val refresh = object : Runnable {
         override fun run() {
             val device = target
             if (device == null) { stopSelf(); return }
-            val inactive = !device.isConnected || device.playbackState in listOf(PlaybackState.IDLE, PlaybackState.ERROR)
+            (device as? GoogleCastTarget)?.refreshSession()
+            val state = device.playbackState
+            if (state == PlaybackState.PLAYING && mediaWasAccepted) hasPlayed = true
+            val watchdog = recovery
+            if (watchdog != null && !userPaused) {
+                val action = watchdog.observe(SystemClock.elapsedRealtime(), device.isConnected,
+                    state, if (mediaWasAccepted) device.positionMs else 0L,
+                    if (hasPlayed) device.durationMs else 0L,
+                    device.recoverableIdle, loadFailed, !hasPlayed)
+                when (action) {
+                    PlaybackRecovery.Action.RELOAD -> reloadMedia(device, watchdog.positionMs)
+                    PlaybackRecovery.Action.EXHAUSTED -> {
+                        terminalError = "recovery_exhausted"
+                        if (device.isConnected) device.stop()
+                        stopSelf()
+                        return
+                    }
+                    else -> Unit
+                }
+            }
+            val inactive = device.isConnected && hasPlayed && !device.recoverableIdle &&
+                state == PlaybackState.IDLE && !loadFailed
             if (!inactive) inactiveSince = 0L
             else if (inactiveSince == 0L) inactiveSince = SystemClock.elapsedRealtime()
             else if (SystemClock.elapsedRealtime() - inactiveSince > 60_000L) { stopSelf(); return }
@@ -47,8 +72,8 @@ class CastingService : Service() {
         }
         session = MediaSession(this, "CastLite").apply {
             setCallback(object : MediaSession.Callback() {
-                override fun onPlay() { target?.play() }
-                override fun onPause() { target?.pause() }
+                override fun onPlay() { setUserPaused(false); target?.play() }
+                override fun onPause() { setUserPaused(true); target?.pause() }
                 override fun onSeekTo(pos: Long) { target?.seek(pos.coerceAtLeast(0)) }
                 override fun onStop() { stopCasting() }
             })
@@ -57,6 +82,10 @@ class CastingService : Service() {
         wakeLock = getSystemService(PowerManager::class.java).newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK, "CastLite:relay"
         ).apply { acquire(6 * 60 * 60 * 1000L) }
+        @Suppress("DEPRECATION")
+        wifiLock = applicationContext.getSystemService(WifiManager::class.java)
+            ?.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "CastLite:stream")
+            ?.apply { setReferenceCounted(false); acquire() }
         startForeground(NOTIFICATION_ID, notification())
         handler.post(refresh)
     }
@@ -64,8 +93,8 @@ class CastingService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == null) inactiveSince = 0L
         when (intent?.action) {
-            "pause" -> target?.pause()
-            "play" -> target?.play()
+            "pause" -> { setUserPaused(true); target?.pause() }
+            "play" -> { setUserPaused(false); target?.play() }
             "back" -> target?.let { it.seek((it.positionMs - 10_000).coerceAtLeast(0)) }
             "stop" -> stopCasting()
         }
@@ -74,7 +103,31 @@ class CastingService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun stopCasting() { target?.stop(); stopSelf() }
+    private fun stopCasting() { recovery = null; target?.stop(); stopSelf() }
+
+    private fun reloadMedia(device: CastTarget, position: Long) {
+        val video = media ?: return
+        val relay = proxy ?: return
+        val generation = ++loadGeneration
+        val resumed = video.copy(resumePositionMs = position)
+        mediaWasAccepted = false
+        loadFailed = false
+        pendingSeekMs = if (device.protocol == CastProtocol.GOOGLE_CAST) 0L else position
+        android.util.Log.i("CastLite-Recovery", "Reloading media at positionMs=$position protocol=${device.protocol}")
+        try {
+            device.loadMedia(resumed, relay, userAgent) { success ->
+                handler.post {
+                    if (target === device && generation == loadGeneration) {
+                        mediaWasAccepted = success
+                        loadFailed = !success
+                    }
+                }
+            }
+        } catch (error: Exception) {
+            loadFailed = true
+            android.util.Log.w("CastLite-Recovery", "Reload failed: ${error.javaClass.simpleName}")
+        }
+    }
 
     private fun updateNotification() {
         val device = target ?: return
@@ -120,11 +173,18 @@ class CastingService : Service() {
         handler.removeCallbacksAndMessages(null)
         session.release()
         if (wakeLock.isHeld) wakeLock.release()
+        wifiLock?.let { if (it.isHeld) it.release() }
+        wifiLock = null
+        loadGeneration++
+        recovery = null
+        media = null
+        userAgent = ""
         if (releaseResources != null) (target as? GoogleCastTarget)?.detachClient()
         target = null
         pendingSeekMs = 0L
         mediaWasAccepted = false
         CastSessionEvents.update(null)
+        terminalError?.let { CastSessionEvents.error(it) }
         proxy?.close()
         proxy = null
         releaseResources?.invoke()
@@ -145,25 +205,52 @@ class CastingService : Service() {
         private var releaseResources: (() -> Unit)? = null
         private var pendingSeekMs = 0L
         private var mediaWasAccepted = false
+        private var media: DetectedVideo? = null
+        private var userAgent = ""
+        private var recovery: PlaybackRecovery? = null
+        private var hasPlayed = false
+        private var loadFailed = false
+        private var userPaused = false
+        private var loadGeneration = 0L
 
-        fun mediaAccepted(device: CastTarget) {
-            if (target === device) mediaWasAccepted = true
+        fun setUserPaused(paused: Boolean) {
+            userPaused = paused
+            if (!paused) recovery = PlaybackRecovery(SystemClock.elapsedRealtime(),
+                target?.positionMs ?: recovery?.positionMs ?: 0L)
+        }
+
+        fun mediaFailed(device: CastTarget, generation: Long) {
+            if (target === device && generation == loadGeneration) loadFailed = true
+        }
+
+        fun mediaAccepted(device: CastTarget, generation: Long) {
+            if (target === device && generation == loadGeneration) { mediaWasAccepted = true; loadFailed = false }
         }
 
         fun owns(value: LocalMediaProxy) = proxy === value
+
+        fun isCurrentLoad(device: CastTarget, relay: LocalMediaProxy, generation: Long) =
+            target === device && owns(relay) && loadGeneration == generation
 
         fun retainCleanup(value: LocalMediaProxy, cleanup: () -> Unit) {
             if (owns(value)) releaseResources = cleanup else cleanup()
         }
 
-        fun start(context: Context, device: CastTarget, relay: LocalMediaProxy, mediaTitle: String, resumePositionMs: Long = 0) {
+        fun start(context: Context, device: CastTarget, relay: LocalMediaProxy, video: DetectedVideo, fallbackUserAgent: String, resumePositionMs: Long = 0): Long {
             if (target !== device) (target as? GoogleCastTarget)?.detachClient()
             if (proxy !== relay) { proxy?.close(); releaseResources?.invoke(); releaseResources = null }
             // A limpeza da tela anterior pode ter removido os callbacks deste alvo reutilizado.
             (device as? GoogleCastTarget)?.attachClient()
             target = device
             proxy = relay
-            title = mediaTitle
+            title = video.title
+            media = video
+            userAgent = fallbackUserAgent
+            recovery = PlaybackRecovery(SystemClock.elapsedRealtime(), video.resumePositionMs)
+            loadGeneration++
+            hasPlayed = false
+            loadFailed = false
+            userPaused = false
             pendingSeekMs = resumePositionMs.coerceAtLeast(0)
             mediaWasAccepted = false
             try {
@@ -171,9 +258,13 @@ class CastingService : Service() {
             } catch (error: Exception) {
                 target = null
                 proxy = null
+                recovery = null
+                media = null
+                userAgent = ""
                 pendingSeekMs = 0L
                 throw error
             }
+            return loadGeneration
         }
     }
 }

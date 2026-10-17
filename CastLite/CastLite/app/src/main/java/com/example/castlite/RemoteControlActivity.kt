@@ -27,6 +27,14 @@ class RemoteControlActivity : AppCompatActivity() {
     private var target: CastTarget? = null
     private var durationMs = 0L
     private var userSeeking = false
+    private val sessionListener: (Map<String, Any?>) -> Unit = { state ->
+        if (state["error"] == "recovery_exhausted") runOnUiThread {
+            if (!isFinishing && !isDestroyed) {
+                showToast(getString(R.string.cast_recovery_exhausted))
+                finish()
+            }
+        }
+    }
 
     private val targetListener = object : CastTargetListener {
         override fun onStatusChanged(state: PlaybackState) = runOnUiThread { refreshControls() }
@@ -75,10 +83,13 @@ class RemoteControlActivity : AppCompatActivity() {
         // Get active target from the owning MainActivity instance
         target = CastingService.target ?: lastMainActivity?.activeTarget
         target?.addListener(targetListener)
+        CastSessionEvents.addListener(sessionListener)
+        sessionListener(CastSessionEvents.snapshot())
         refreshControls()
     }
 
     override fun onStop() {
+        CastSessionEvents.removeListener(sessionListener)
         target?.removeListener(targetListener)
         target = null
         super.onStop()
@@ -178,7 +189,9 @@ class RemoteControlActivity : AppCompatActivity() {
 
     private fun togglePlayback() {
         val t = target ?: return
-        if (t.playbackState == PlaybackState.PLAYING) t.pause() else t.play()
+        val pause = t.playbackState == PlaybackState.PLAYING
+        CastingService.setUserPaused(pause)
+        if (pause) t.pause() else t.play()
     }
 
     private fun stopPlayback() {

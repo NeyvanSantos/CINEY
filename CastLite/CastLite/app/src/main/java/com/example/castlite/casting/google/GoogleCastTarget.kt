@@ -31,7 +31,7 @@ import java.util.concurrent.Executors
  */
 class GoogleCastTarget private constructor(
     override val name: String,
-    private val session: CastSession,
+    private var session: CastSession,
     private val appContext: Context
 ) : CastTarget {
 
@@ -41,6 +41,7 @@ class GoogleCastTarget private constructor(
 
     private val listeners = CopyOnWriteArrayList<CastTargetListener>()
     private var observedClient: RemoteMediaClient? = null
+    private var loading = false
 
     private val mediaCallback = object : RemoteMediaClient.Callback() {
         override fun onStatusUpdated() = notifyStatus()
@@ -52,7 +53,20 @@ class GoogleCastTarget private constructor(
 
     override val isConnected: Boolean get() = session.isConnected
 
+    override val recoverableIdle: Boolean
+        get() = session.remoteMediaClient?.mediaStatus?.idleReason == MediaStatus.IDLE_REASON_ERROR
+
     fun matchesSession(value: CastSession): Boolean = session === value
+
+    /** Session restoration must keep working when the browser Activity is gone. */
+    internal fun refreshSession() {
+        val restored = CastContext.getSharedInstance(appContext).sessionManager.currentCastSession ?: return
+        if (restored !== session && restored.isConnected &&
+            restored.castDevice?.deviceId == session.castDevice?.deviceId) {
+            session = restored
+        }
+        if (session.isConnected) attachClient()
+    }
 
     override val playbackState: PlaybackState
         get() {
@@ -61,8 +75,8 @@ class GoogleCastTarget private constructor(
                 MediaStatus.PLAYER_STATE_PLAYING -> PlaybackState.PLAYING
                 MediaStatus.PLAYER_STATE_PAUSED -> PlaybackState.PAUSED
                 MediaStatus.PLAYER_STATE_BUFFERING -> PlaybackState.BUFFERING
-                MediaStatus.PLAYER_STATE_IDLE -> PlaybackState.IDLE
-                else -> PlaybackState.IDLE
+                MediaStatus.PLAYER_STATE_IDLE -> if (loading) PlaybackState.LOADING else PlaybackState.IDLE
+                else -> if (loading) PlaybackState.LOADING else PlaybackState.IDLE
             }
         }
 
@@ -110,12 +124,15 @@ class GoogleCastTarget private constructor(
             .setCurrentTime(video.resumePositionMs.coerceAtLeast(0))
             .build()
         try {
+            loading = true
             client.load(request).setResultCallback { result ->
+                loading = false
                 Log.d("CastLite-Cast", "Load result=${result.status.statusCode}")
                 onResult(result.status.isSuccess)
                 notifyStatus()
             }
         } catch (_: Exception) {
+            loading = false
             onResult(false)
         }
     }

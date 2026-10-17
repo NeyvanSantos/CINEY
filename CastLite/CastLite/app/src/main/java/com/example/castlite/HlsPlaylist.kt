@@ -98,6 +98,10 @@ internal object HlsPlaylist {
         rewrite(text, baseUrl) { target, mimeType, _ -> register(target, mimeType) }
 
     fun rewrite(text: String, baseUrl: String, register: (String, String?, String?) -> String): String {
+        return rewrite(text, baseUrl, null, register)
+    }
+
+    fun rewrite(text: String, baseUrl: String, audioLanguage: String?, register: (String, String?, String?) -> String): String {
         require(text.trimStart('\uFEFF', ' ', '\r', '\n').startsWith("#EXTM3U"))
         fun proxied(reference: String, playlist: Boolean, variantQuality: String? = null): String {
             val target = runCatching { URL(URL(baseUrl), reference).toString() }.getOrNull() ?: return reference
@@ -110,11 +114,24 @@ internal object HlsPlaylist {
         val audioLines = lines.mapIndexedNotNull { index, line ->
             line.trim().takeIf { it.startsWith("#EXT-X-MEDIA:") && isAudioRendition(it) }?.let { index to it }
         }
-        val preferredAudioIndex = audioLines.firstOrNull { isPortugueseRendition(it.second) }?.first
+        // Select independently in each codec/audio group. An unspecified language
+        // preserves the provider's defaults (including original/subtitled sources).
+        val selected = if (audioLanguage.isNullOrBlank()) emptyMap() else audioLines
+            .groupBy { parseAttributes(it.second.substringAfter(':'))["GROUP-ID"] }
+            .mapNotNull { (group, renditions) ->
+                renditions.firstOrNull { matchesLanguage(it.second, audioLanguage) }
+                    ?.let { group to it.first }
+            }.toMap()
         var nextIsPlaylist = false
         var nextVariantQuality: String? = null
-        val rewrittenLines = lines.mapIndexed { index, line ->
+        val rewrittenLines = lines.mapIndexedNotNull { index, line ->
             val trimmed = line.trim()
+            val audioGroup = if (trimmed.startsWith("#EXT-X-MEDIA:") && isAudioRendition(trimmed))
+                parseAttributes(trimmed.substringAfter(':'))["GROUP-ID"] else null
+            val selectedIndex = if (trimmed.startsWith("#EXT-X-MEDIA:") && isAudioRendition(trimmed)) selected[audioGroup] else null
+            // Some receivers ignore DEFAULT. Only advertise the chosen rendition
+            // in groups where the requested language actually exists.
+            if (selectedIndex != null && index != selectedIndex) return@mapIndexedNotNull null
             when {
                 trimmed.isEmpty() -> line
                 trimmed.startsWith("#EXT-X-STREAM-INF:") -> {
@@ -128,8 +145,8 @@ internal object HlsPlaylist {
                     val rewritten = uriAttribute.replace(line) { match ->
                         match.groupValues[1] + proxied(match.groupValues[2], playlist) + match.groupValues[3]
                     }
-                    if (preferredAudioIndex != null && trimmed.startsWith("#EXT-X-MEDIA:") && isAudioRendition(trimmed)) {
-                        setDefault(rewritten, index == preferredAudioIndex)
+                    if (selectedIndex != null) {
+                        setDefault(rewritten, true)
                     } else rewritten
                 }
                 else -> proxied(trimmed, nextIsPlaylist, nextVariantQuality).also {
@@ -141,7 +158,7 @@ internal object HlsPlaylist {
         return rewrittenLines.joinToString("\n")
     }
 
-    private val defaultAttribute = Regex("(?i)(,DEFAULT=)(YES|NO)")
+    private val defaultAttribute = Regex("(?i)(,\\s*DEFAULT\\s*=\\s*)(YES|NO)")
 
     private val typeAttribute = Regex(
         """(?:^|[:,])\s*TYPE\s*=\s*"?([^",\s]+)""",
@@ -153,20 +170,32 @@ internal object HlsPlaylist {
             ?.equals("AUDIO", ignoreCase = true) == true
 
     private fun isPortugueseRendition(attributes: String): Boolean {
-        val language = Regex("(?i)LANGUAGE=\"?([^\",]+)\"?").find(attributes)?.groupValues?.get(1)
-            ?.lowercase()?.replace('_', '-')
+        val parsed = parseAttributes(attributes.substringAfter(':'))
+        val language = parsed["LANGUAGE"]?.lowercase(java.util.Locale.ROOT)?.replace('_', '-')
         if (language != null && (language == "pt" || language.startsWith("pt-") || language == "por")) return true
-        val name = Regex("(?i)NAME=\"([^\"]+)\"").find(attributes)?.groupValues?.get(1)?.lowercase()
+        val name = parsed["NAME"]?.lowercase(java.util.Locale.ROOT)
         return name != null && (name.contains("portugu") || name.contains("dublad"))
+    }
+
+    private fun matchesLanguage(attributes: String, requested: String): Boolean {
+        val preferred = requested.lowercase(java.util.Locale.ROOT).replace('_', '-').substringBefore('-')
+        if (preferred in listOf("pt", "por")) return isPortugueseRendition(attributes)
+        val language = parseAttributes(attributes.substringAfter(':'))["LANGUAGE"]
+            ?.lowercase(java.util.Locale.ROOT)?.replace('_', '-')?.substringBefore('-')
+        return language == preferred
     }
 
     private fun setDefault(line: String, preferred: Boolean): String {
         val value = if (preferred) "YES" else "NO"
-        return if (defaultAttribute.containsMatchIn(line)) {
+        val result = if (defaultAttribute.containsMatchIn(line)) {
             defaultAttribute.replace(line, "$1$value")
         } else if (preferred) {
             line + ",DEFAULT=YES"
         } else line
+        if (!preferred) return result
+        val autoSelect = Regex("(?i)(,\\s*AUTOSELECT\\s*=\\s*)(YES|NO)")
+        return if (autoSelect.containsMatchIn(result)) autoSelect.replace(result, "$1YES")
+            else "$result,AUTOSELECT=YES"
     }
 
     private const val MAX_LOGGED_VARIANTS = 20

@@ -316,7 +316,7 @@ class MainActivity : AppCompatActivity() {
         R.id.action_economy -> {
             mediaProxy.economyMode = !mediaProxy.economyMode
             item.isChecked = mediaProxy.economyMode
-            getSharedPreferences("casting", MODE_PRIVATE).edit().putBoolean("economy", mediaProxy.economyMode).apply()
+            getSharedPreferences("casting", MODE_PRIVATE).edit().putBoolean("economy_opt_in", mediaProxy.economyMode).apply()
             toast("Qualidade alterada para a próxima transmissão")
             true
         }
@@ -434,9 +434,10 @@ class MainActivity : AppCompatActivity() {
         // Android exige iniciar o serviço enquanto a tela ainda está visível.
         if (!started) return
         val requestId = ++castLoadRequestId
+        val loadGeneration: Long
         try {
             val pendingSeek = if (target.protocol == CastProtocol.GOOGLE_CAST) 0L else incomingResumePositionMs
-            CastingService.start(this, target, mediaProxy, video.title, pendingSeek)
+            loadGeneration = CastingService.start(this, target, mediaProxy, video, binding.webView.settings.userAgentString, pendingSeek)
         } catch (_: Exception) {
             CastSessionEvents.error("service_unavailable")
             toast(getString(R.string.cast_load_error, 0))
@@ -444,15 +445,15 @@ class MainActivity : AppCompatActivity() {
         }
         target.loadMedia(video, mediaProxy, binding.webView.settings.userAgentString) { success ->
             runOnUiThread {
-                if (requestId != castLoadRequestId || !CastingService.owns(mediaProxy)) return@runOnUiThread
+                if (requestId != castLoadRequestId || !CastingService.isCurrentLoad(target, mediaProxy, loadGeneration)) return@runOnUiThread
                 if (success) {
-                    CastingService.mediaAccepted(target)
+                    CastingService.mediaAccepted(target, loadGeneration)
                     incomingResumePositionMs = 0L
                     frameMediaObserver?.transport?.pauseLocalPlayback()
                     binding.webView.evaluateJavascript("document.querySelectorAll('video,audio').forEach(function(v){v.pause();});", null)
                 } else {
-                    stopService(Intent(this, CastingService::class.java))
-                    CastSessionEvents.error("load_failed")
+                    CastingService.mediaFailed(target, loadGeneration)
+                    CastSessionEvents.error("load_retrying")
                 }
                 if (isDestroyed || isFinishing) return@runOnUiThread
                 if (success) {
@@ -725,7 +726,9 @@ class MainActivity : AppCompatActivity() {
         binding.videosButton.setOnClickListener { scanPage { showVideosDialog() } }
         binding.playPauseButton.setOnClickListener {
             activeTarget?.let { target ->
-                if (target.playbackState == PlaybackState.PLAYING) target.pause() else target.play()
+                val pause = target.playbackState == PlaybackState.PLAYING
+                CastingService.setUserPaused(pause)
+                if (pause) target.pause() else target.play()
             }
         }
         binding.stopButton.setOnClickListener {

@@ -138,13 +138,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           const AccountCard(),
 
           if (!AppEnvironment.isTv &&
-              AppPlatformServices.current.notificationSettingsBuilder != null)
+              AppPlatformServices.current.notificationSettingsBuilder !=
+                  null) ...[
+            const SizedBox(height: 16),
             _buildSettingTile(
               icon: Icons.notifications_outlined,
               title: 'Notificações',
               subtitle: 'Filmes, séries, animes, doramas e novidades do CiNey',
               onTap: () => context.push('/notification-settings'),
             ),
+          ],
 
           const SizedBox(height: 24),
           Text(

@@ -30,6 +30,9 @@ interface CastTarget {
     /** Stream duration in milliseconds, or 0 if unknown. */
     val durationMs: Long
 
+    /** Only idle caused by a playback failure may be automatically restarted. */
+    val recoverableIdle: Boolean get() = false
+
     /** Connect to the target device. */
     fun connect()
 
