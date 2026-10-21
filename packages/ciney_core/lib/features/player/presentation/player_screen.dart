@@ -481,12 +481,22 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
   void _startHideControlsTimer() {
     _hideControlsTimer?.cancel();
-    if (!_autoHideControls) return;
+    final touchEmbed = !widget.isTv && _webViewController != null;
+    if (!_autoHideControls && !touchEmbed) return;
     _hideControlsTimer = Timer(Duration(seconds: widget.isTv ? 8 : 4), () {
-      if (mounted && _controlsVisible && !_isLoading && !_isDraggingSlider) {
+      if (mounted &&
+          _controlsVisible &&
+          (touchEmbed || !_isLoading) &&
+          !_isDraggingSlider) {
         setState(() => _controlsVisible = false);
       }
     });
+  }
+
+  void _showEmbedControls(PointerUpEvent event) {
+    if (widget.isTv || _webViewController == null || _isScreenLocked) return;
+    if (!_controlsVisible) setState(() => _controlsVisible = true);
+    _startHideControlsTimer();
   }
 
   void _toggleControls() {
@@ -790,7 +800,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       _currentSourceIndex = index;
       _isLoading = true;
       _errorMessage = null;
-      _controlsVisible = true;
+      _controlsVisible = widget.isTv || !source.isEmbed;
       _currentPosition = Duration.zero;
       _totalDuration = Duration.zero;
       _tvPointerEnabled = false;
@@ -1293,15 +1303,22 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }
   }
 
-  Future<void> _initNativePlayer(StreamSource source, int index) async {
+  Future<bool> _initNativePlayer(
+    StreamSource source,
+    int index, {
+    bool fromTvEmbed = false,
+    bool Function()? isRequestCurrent,
+  }) async {
     VideoPlayerController? pendingController;
     try {
       final headers = {
         'User-Agent':
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Accept': '*/*',
-        'Accept-Encoding': 'gzip, deflate',
-        'Connection': 'keep-alive',
+        if (!widget.isTv) ...{
+          'Accept-Encoding': 'gzip, deflate',
+          'Connection': 'keep-alive',
+        },
         ...?source.headers,
       };
 
@@ -1321,9 +1338,39 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         },
       );
 
-      if (!mounted || _videoPlayerController != controller) {
+      if (!mounted ||
+          _videoPlayerController != controller ||
+          isRequestCurrent?.call() == false) {
+        if (_videoPlayerController == controller) _videoPlayerController = null;
         await controller.dispose();
-        return;
+        return false;
+      }
+      if (fromTvEmbed &&
+          controller.value.duration > Duration.zero &&
+          controller.value.duration < const Duration(minutes: 3)) {
+        throw StateError('A mídia detectada é um clipe curto.');
+      }
+      if (widget.isTv && controller.isAudioTrackSupportAvailable()) {
+        try {
+          final tracks = await controller.getAudioTracks();
+          final portuguese = tracks.where(
+            (track) => const [
+              'pt',
+              'por',
+              'pt-br',
+              'pt-pt',
+            ].contains(track.language?.toLowerCase().replaceAll('_', '-')),
+          );
+          if (source.audioType != AudioType.subtitled &&
+              portuguese.isNotEmpty) {
+            await controller.selectAudioTrack(portuguese.first.id);
+          }
+        } on PlatformException {
+          AppLogger.warn(
+            'O dispositivo não permitiu selecionar a faixa de áudio.',
+            tag: 'TV_ENGINE',
+          );
+        }
       }
       final resumePosition = Duration(milliseconds: _resumePositionMs);
       if (_resumePlayback &&
@@ -1331,7 +1378,13 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           resumePosition < controller.value.duration) {
         await controller.seekTo(resumePosition);
       }
-      if (!mounted || _videoPlayerController != controller) return;
+      if (!mounted ||
+          _videoPlayerController != controller ||
+          isRequestCurrent?.call() == false) {
+        if (_videoPlayerController == controller) _videoPlayerController = null;
+        await controller.dispose();
+        return false;
+      }
       _resumePending = false;
       _resumeDurationMs = controller.value.duration.inMilliseconds;
       AppLogger.success(
@@ -1353,7 +1406,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             });
           }
           AppLogger.error(
-            'Erro durante reprodução em ${source.server}: ${controller.value.errorDescription}',
+            'Erro durante reprodução em ${source.server}.',
             tag: 'PLAYER',
           );
         }
@@ -1396,11 +1449,19 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         setState(() {
           _chewieController = chewie;
           _isLoading = false;
+          if (fromTvEmbed) _tvEmbedSource = null;
         });
-        if (widget.isTv) _playerFocusNode.requestFocus();
+        if (widget.isTv) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && _videoPlayerController == controller) {
+              _playerFocusNode.requestFocus();
+            }
+          });
+        }
       }
+      return true;
     } catch (e, stack) {
-      if (!mounted || _videoPlayerController != pendingController) return;
+      if (!mounted || _videoPlayerController != pendingController) return false;
       final controller = pendingController;
       if (controller != null) {
         await controller.dispose();
@@ -1409,11 +1470,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         _videoPlayerController = null;
       }
       AppLogger.error(
-        'Falha ao iniciar ${source.server}: $e',
+        'Falha ao iniciar ${source.server} (${e.runtimeType}).',
         tag: 'PLAYER',
         stackTrace: stack,
       );
-      if (!mounted || _currentSourceIndex != index) return;
+      if (!mounted || _currentSourceIndex != index || fromTvEmbed) return false;
       if (index + 1 < _sources.length) {
         AppLogger.info(
           'Tentando o próximo servidor após falha de ${source.server}.',
@@ -1424,10 +1485,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         if (mounted) {
           setState(() {
             _isLoading = false;
-            _errorMessage = 'Erro ao inicializar o player: $e';
+            _errorMessage =
+                'Não foi possível iniciar o vídeo. Recarregue ou escolha outro servidor.';
           });
         }
       }
+      return false;
     }
   }
 
@@ -1517,6 +1580,20 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         allowExit: _allowExit,
         onExit: () => unawaited(_exitPlayer()),
         onSources: _showServerSelectorModal,
+        onMedia: (media, isCurrent) async {
+          if (!mounted ||
+              _appInBackground ||
+              _closingPlayer ||
+              _tvEmbedSource != tvSource) {
+            return false;
+          }
+          return _initNativePlayer(
+            media,
+            _currentSourceIndex,
+            fromTvEmbed: true,
+            isRequestCurrent: isCurrent,
+          );
+        },
         onNext: _nextEpisode != null && !_advancingEpisode
             ? () => unawaited(_advanceEpisode())
             : null,
@@ -1573,7 +1650,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
             child: Stack(
               children: [
                 // ── Área do Player de Vídeo ──
-                Center(child: _buildPlayerContent()),
+                Listener(
+                  onPointerUp: _showEmbedControls,
+                  child: Center(child: _buildPlayerContent()),
+                ),
 
                 // ── Feedback Visual de Duplo Toque (+10s / -10s) ──
                 if (_showDoubleTapRewind)
@@ -1722,25 +1802,57 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
                 if (!widget.isTv &&
                     _webViewController != null &&
-                    _sources.length > 1 &&
                     !_isScreenLocked)
                   Positioned(
                     top: 12,
+                    left: 12,
                     right: 12,
                     child: SafeArea(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.72),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.white24),
-                        ),
-                        child: IconButton(
-                          icon: const Icon(
-                            Icons.dns_rounded,
-                            color: AppColors.primary,
+                      child: AnimatedOpacity(
+                        opacity: _controlsVisible ? 1 : 0,
+                        duration: const Duration(milliseconds: 250),
+                        child: IgnorePointer(
+                          ignoring: !_controlsVisible,
+                          child: ExcludeFocus(
+                            excluding: !_controlsVisible,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                TextButton.icon(
+                                  onPressed: () => unawaited(_exitPlayer()),
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: Colors.white,
+                                    backgroundColor: Colors.black.withValues(
+                                      alpha: 0.72,
+                                    ),
+                                    side: const BorderSide(
+                                      color: Colors.white24,
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.arrow_back_rounded),
+                                  label: const Text('Voltar'),
+                                ),
+                                if (_sources.length > 1)
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withValues(
+                                        alpha: 0.72,
+                                      ),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: Colors.white24),
+                                    ),
+                                    child: IconButton(
+                                      icon: const Icon(
+                                        Icons.dns_rounded,
+                                        color: AppColors.primary,
+                                      ),
+                                      tooltip: 'Trocar Servidor',
+                                      onPressed: _showServerSelectorModal,
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
-                          tooltip: 'Trocar Servidor',
-                          onPressed: _showServerSelectorModal,
                         ),
                       ),
                     ),

@@ -21,15 +21,22 @@ class TvEngineSource extends StreamSource {
 class TvSourcePolicy {
   static VideoFormat? nativeFormat(StreamSource source) {
     if (source is TvEngineSource) {
-      if (source.mimeType == 'application/dash+xml') return VideoFormat.dash;
+      final mime = source.mimeType.split(';').first.trim().toLowerCase();
+      if (mime == 'application/dash+xml') return VideoFormat.dash;
       if (const [
         'application/vnd.apple.mpegurl',
-        'application/x-mpegURL',
-      ].contains(source.mimeType)) {
+        'application/x-mpegurl',
+        'audio/mpegurl',
+        'audio/x-mpegurl',
+      ].contains(mime)) {
         return VideoFormat.hls;
       }
     }
-    return source.isM3U8 ? VideoFormat.hls : null;
+    return source.isM3U8 ||
+            Uri.tryParse(source.url)?.path.toLowerCase().endsWith('.m3u8') ==
+                true
+        ? VideoFormat.hls
+        : null;
   }
 
   static bool isHttpUrl(String value) {

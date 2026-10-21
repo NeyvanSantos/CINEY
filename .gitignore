@@ -18,6 +18,9 @@ build/
 .gradle/
 .kotlin/
 /.work/dependency-separation/
+/.work/tv-hls-fixture/
+/.work/tv-hls-fixture-repro/
+/.work/scripts/tv-hls-inspect.cjs
 __pycache__/
 *.py[cod]
 release-notes-temp.md

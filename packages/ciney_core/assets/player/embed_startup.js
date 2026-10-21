@@ -25,7 +25,8 @@
     const location = doc.location;
     if (!location || location.pathname !== providerPath) return [];
     const knownHost = location.hostname === providerHost ||
-      (providerHost === 'myembed.biz' && location.hostname === 'playerflix.ink');
+      (providerHost === 'myembed.biz' && location.hostname === 'playerflix.ink') ||
+      (isTv && providerHost === 'superflixapi.quest' && location.hostname === 'superflixapi.fun');
     if (!knownHost || !['myembed.biz', 'superflixapi.quest'].includes(providerHost)) return [];
     // Verified EmbedMovies/PlayerFlix menu: only invoke existing provider controls.
     const rows = Array.from(doc.querySelectorAll('#optionList .option[data-embed][data-audio]'));
@@ -83,6 +84,8 @@
 
   window.__cineyStartPlayback = function (doc) {
     const state = attach(doc);
+    // TV menus must remain selectable with the remote before starting media.
+    if (isTv && window.__cineyTvPrepareMenu && window.__cineyTvPrepareMenu(doc)) return;
     if (!enabled || cancelled || state.cancelled || state.selected ||
         doc.readyState === 'loading' || Date.now() - state.started > 20000) return;
     const rows = providerMenu(doc);

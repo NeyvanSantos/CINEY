@@ -18,7 +18,7 @@ function row(text, audio = 'pt-br', hidden = false) {
 
 function setup({ rows = [], controls = [], labels = [], enabled = true, host = 'playerflix.ink',
   pathname = '/serie/1/1/1', saved = null, selector = null, resume = 300.123,
-  isTv = false, playControl = null } = {}) {
+  isTv = false, playControl = null, providerHost = 'myembed.biz' } = {}) {
   const events = {}, windowEvents = {}, messages = [], timers = [], videos = [];
   const styles = [];
   const stored = new Map(saved ? [['ciney-player-selection-v1', JSON.stringify(saved)]] : []);
@@ -40,7 +40,7 @@ function setup({ rows = [], controls = [], labels = [], enabled = true, host = '
     removeEventListener: name => { delete events[name]; },
   };
   const context = vm.createContext({ document, Date: { now: () => now },
-    __cineyAutoStart: enabled, __cineyIsTv: isTv, __cineyProviderHost: 'myembed.biz',
+    __cineyAutoStart: enabled, __cineyIsTv: isTv, __cineyProviderHost: providerHost,
     __cineyProviderPath: '/serie/1/1/1', __cineyResumePositionSeconds: resume,
     getComputedStyle: element => ({ display: element.hidden ? 'none' : 'block', visibility: 'visible' }),
     localStorage: { getItem: key => stored.get(key) || null, setItem: (key, value) => stored.set(key, value) },
@@ -199,6 +199,19 @@ test('recusa menu em anúncio, fornecedor desconhecido ou outro episódio', () =
     const fixture = setup({ rows: [server], ...options });
     fixture.start();
     assert.equal(server.clicks, 0);
+  }
+});
+
+test('TV reconhece o redirecionamento do SuperFlix sem aceitar outros domínios', () => {
+  for (const [host, isTv, expected] of [
+    ['superflixapi.fun', true, 1],
+    ['superflixapi.fun', false, 0],
+    ['other.test', true, 0],
+  ]) {
+    const server = row('Servidor Principal');
+    const fixture = setup({ rows: [server], host, isTv, providerHost: 'superflixapi.quest' });
+    fixture.start();
+    assert.equal(server.clicks, expected);
   }
 });
 

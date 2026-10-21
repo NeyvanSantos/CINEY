@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:cinemax/features/player/tv/tv_embed_document.dart';
 import 'package:cinemax/features/player/tv/tv_embed_host.dart';
 import 'package:cinemax/features/player/tv/tv_webview_bridge.dart';
@@ -59,6 +61,12 @@ class _Controller extends PlatformWebViewController {
   String? html;
   String? base;
   final requests = <String>[];
+  final channels = <String, JavaScriptChannelParams>{};
+  @override
+  Future<void> addJavaScriptChannel(JavaScriptChannelParams params) async {
+    channels[params.name] = params;
+  }
+
   @override
   Future<void> setJavaScriptMode(JavaScriptMode mode) async {}
   @override
@@ -128,6 +136,11 @@ class _Host extends TvEmbedHost {
   late void Function(Widget, VoidCallback) fullscreen;
   late VoidCallback hideFullscreen;
   @override
+  Future<Map<String, String>> playbackHeaders(String url) async => {
+    'Cookie': 'session=fixture',
+    'User-Agent': 'TV',
+  };
+  @override
   int get viewId => id;
   @override
   Future<void> configure({
@@ -153,7 +166,10 @@ void main() {
     server: 'EmbedMovies',
     isEmbed: true,
   );
-  Future<void> open(WidgetTester tester) async {
+  Future<void> open(
+    WidgetTester tester, {
+    Future<bool> Function(StreamSource, bool Function())? onMedia,
+  }) async {
     await tester.pumpWidget(
       MaterialApp(
         home: TvEmbedPlayer(
@@ -167,6 +183,7 @@ void main() {
           onExit: () => exits++,
           onSources: () => sources++,
           onNext: () => next++,
+          onMedia: onMedia,
         ),
       ),
     );
@@ -185,6 +202,97 @@ void main() {
     platform = _WebPlatform();
     WebViewPlatform.instance = platform;
     exits = sources = next = 0;
+  });
+
+  testWidgets('HLS handoff preserves session and ignores duplicate messages', (
+    tester,
+  ) async {
+    final received = <StreamSource>[];
+    final pending = Completer<bool>();
+    await open(
+      tester,
+      onMedia: (source, isCurrent) {
+        received.add(source);
+        return pending.future;
+      },
+    );
+    final channel = platform.controllers.single.channels['TvMediaBridge']!;
+    final message = JavaScriptMessage(
+      message: jsonEncode({
+        'event': 'hls',
+        'url': 'https://media.test/master',
+        'referer': 'https://provider.test/frame',
+      }),
+    );
+    channel.onMessageReceived(message);
+    channel.onMessageReceived(message);
+    await tester.pump();
+    expect(received, hasLength(1));
+    expect(received.single.isM3U8, true);
+    expect(received.single.headers?['Cookie'], 'session=fixture');
+    pending.complete(false);
+    await tester.pump();
+    expect(find.textContaining('vídeo deste servidor'), findsOneWidget);
+    expect(find.byKey(const ValueKey('provider-view')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    channel.onMessageReceived(message);
+    await tester.pump();
+    expect(received, hasLength(1));
+  });
+
+  testWidgets('reloading invalidates a pending native handoff', (tester) async {
+    late bool Function() isCurrent;
+    final pending = Completer<bool>();
+    await open(
+      tester,
+      onMedia: (_, current) {
+        isCurrent = current;
+        return pending.future;
+      },
+    );
+    platform.controllers.single.channels['TvMediaBridge']!.onMessageReceived(
+      JavaScriptMessage(
+        message: jsonEncode({
+          'event': 'hls',
+          'url': 'https://media.test/film.m3u8',
+          'referer': 'https://provider.test/frame',
+        }),
+      ),
+    );
+    await tester.pump();
+    expect(isCurrent(), true);
+    await tester.tap(find.text('Recarregar'));
+    await tester.pump();
+    expect(isCurrent(), false);
+    pending.complete(false);
+    await tester.pump();
+    expect(find.textContaining('vídeo deste servidor'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('provider choice gets remote focus and waits for a selection', (
+    tester,
+  ) async {
+    await open(tester, onMedia: (_, _) async => false);
+    final channel = platform.controllers.single.channels['TvMediaBridge']!;
+    channel.onMessageReceived(
+      JavaScriptMessage(
+        message: jsonEncode({'event': 'remoteMenu', 'action': 'ready'}),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('Ir ao player'), findsNothing);
+    expect(calls.where((call) => call.method == 'focus'), hasLength(1));
+    await tester.pump(const Duration(seconds: 26));
+    expect(find.textContaining('não concluiu'), findsNothing);
+    channel.onMessageReceived(
+      JavaScriptMessage(
+        message: jsonEncode({'event': 'remoteMenu', 'action': 'selected'}),
+      ),
+    );
+    await tester.pump();
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets(

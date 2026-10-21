@@ -121,6 +121,14 @@ class AppUpdater {
       AppLogger.info('Verificando atualizações no GitHub...', tag: 'UPDATER');
 
       final packageInfo = await PackageInfo.fromPlatform();
+      if (AppEnvironment.isTv &&
+          packageInfo.packageName == 'com.ciney.tv.local') {
+        AppLogger.info(
+          'Versão local de teste usa instalação manual.',
+          tag: 'UPDATER',
+        );
+        return null;
+      }
       final currentVersion = packageInfo.version;
       final isTvApp = AppEnvironment.isTv;
 

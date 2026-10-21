@@ -7,6 +7,7 @@ import '../../../core/services/app_logger.dart';
 import '../../../plugin_engine/models/stream_source.dart';
 import 'tv_embed_document.dart';
 import 'tv_webview_bridge.dart';
+import 'tv_hls_candidate.dart';
 
 /// One visible WebView. The provider owns playback, progress and media controls.
 class TvEmbedPlayer extends StatefulWidget {
@@ -19,6 +20,7 @@ class TvEmbedPlayer extends StatefulWidget {
     this.onNext,
     this.allowExit = false,
     this.createHost = TvEmbedHost.new,
+    this.onMedia,
   });
   final StreamSource source;
   final String title;
@@ -27,6 +29,9 @@ class TvEmbedPlayer extends StatefulWidget {
   final VoidCallback? onNext;
   final bool allowExit;
   final TvEmbedHost Function() createHost;
+
+  /// Keeps the provider available if native initialization fails.
+  final Future<bool> Function(StreamSource, bool Function())? onMedia;
 
   @override
   State<TvEmbedPlayer> createState() => _TvEmbedPlayerState();
@@ -41,6 +46,8 @@ class _TvEmbedPlayerState extends State<TvEmbedPlayer>
   bool _loading = true;
   bool _menu = true;
   bool _suspended = false;
+  bool _resolvingMedia = false;
+  final _attemptedMedia = <String>{};
   String? _message;
   Widget? _fullscreen;
   VoidCallback? _hideFullscreen;
@@ -85,6 +92,7 @@ class _TvEmbedPlayerState extends State<TvEmbedPlayer>
 
   Future<void> _open() async {
     final generation = ++_generation;
+    final documentBaseUrl = tvEmbedBaseUrlFor(widget.source.url);
     await _release();
     if (!_current(generation)) return;
     setState(() {
@@ -92,6 +100,8 @@ class _TvEmbedPlayerState extends State<TvEmbedPlayer>
       _menu = true;
       _message = null;
       _suspended = false;
+      _resolvingMedia = false;
+      _attemptedMedia.clear();
     });
     _deadline = Timer(const Duration(seconds: 25), () {
       if (!_current(generation)) return;
@@ -116,7 +126,7 @@ class _TvEmbedPlayerState extends State<TvEmbedPlayer>
             final uri = Uri.tryParse(request.url);
             // The provider remains inside its frame; do not launch external apps/popups.
             if (request.isMainFrame &&
-                request.url != tvEmbedBaseUrl &&
+                request.url != documentBaseUrl &&
                 request.url != 'about:blank' &&
                 uri?.scheme != 'data') {
               return NavigationDecision.prevent;
@@ -133,8 +143,10 @@ class _TvEmbedPlayerState extends State<TvEmbedPlayer>
           },
           onPageFinished: (_) {
             if (!_current(generation) || _suspended || _message != null) return;
-            _deadline?.cancel();
-            setState(() => _loading = false);
+            if (widget.onMedia == null) {
+              _deadline?.cancel();
+              setState(() => _loading = false);
+            }
             AppLogger.info(
               'Documento do provedor aberto; reprodução depende do player original.',
               tag: 'TV_ENGINE',
@@ -149,7 +161,7 @@ class _TvEmbedPlayerState extends State<TvEmbedPlayer>
           },
           onHttpError: (error) {
             // Subresource failures can be ads/telemetry, not a playback failure.
-            if ((error.request?.uri.toString() == tvEmbedBaseUrl ||
+            if ((error.request?.uri.toString() == documentBaseUrl ||
                     error.request?.uri.toString() == widget.source.url) &&
                 _current(generation)) {
               _fail(
@@ -184,14 +196,45 @@ class _TvEmbedPlayerState extends State<TvEmbedPlayer>
         },
       );
       if (!_current(generation)) return;
+      if (widget.onMedia != null) {
+        final observing = await host.observeHls(
+          widget.source,
+          (candidate) => unawaited(_openMedia(candidate, generation, host)),
+          onMenuState: (action) {
+            if (!_current(generation) || _suspended || _resolvingMedia) return;
+            _deadline?.cancel();
+            setState(() {
+              _loading = action == 'selected';
+              _message = null;
+            });
+            if (action == 'ready') _focusProvider();
+            if (action == 'selected') {
+              _deadline = Timer(const Duration(seconds: 25), () {
+                if (_current(generation) && !_resolvingMedia) {
+                  _fail(
+                    'O servidor não iniciou o vídeo. Recarregue ou escolha outro servidor.',
+                  );
+                }
+              });
+            }
+          },
+        );
+        if (!_current(generation)) return;
+        AppLogger.info(
+          observing
+              ? 'Aguardando playlist HLS do servidor.'
+              : 'WebView sem observação HLS; use os controles do servidor.',
+          tag: 'TV_ENGINE',
+        );
+      }
       setState(() {});
       await controller.loadHtmlString(
         buildTvEmbedDocument(widget.source.url),
-        baseUrl: tvEmbedBaseUrl,
+        baseUrl: documentBaseUrl,
       );
       if (_current(generation)) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_current(generation)) _menuFocus.requestFocus();
+          if (_current(generation) && _menu) _menuFocus.requestFocus();
         });
       }
     } catch (error) {
@@ -203,6 +246,58 @@ class _TvEmbedPlayerState extends State<TvEmbedPlayer>
       _fail(
         'Não foi possível iniciar o player. Recarregue ou escolha outro servidor.',
       );
+    }
+  }
+
+  Future<void> _openMedia(
+    TvHlsCandidate candidate,
+    int generation,
+    TvEmbedHost host,
+  ) async {
+    if (!_current(generation) ||
+        _suspended ||
+        _resolvingMedia ||
+        _attemptedMedia.contains(candidate.url)) {
+      return;
+    }
+    _attemptedMedia.add(candidate.url);
+    _resolvingMedia = true;
+    _deadline?.cancel();
+    setState(() {
+      _loading = true;
+      _message = null;
+    });
+    try {
+      final headers = await host.playbackHeaders(candidate.url);
+      if (!_current(generation) || _suspended) return;
+      AppLogger.info(
+        'Playlist HLS encontrada; preparando vídeo.',
+        tag: 'TV_ENGINE',
+      );
+      final playing = await widget.onMedia!(
+        candidate.toSource(widget.source, headers),
+        () => _current(generation) && !_suspended,
+      );
+      if (!_current(generation) || _suspended) return;
+      if (playing) {
+        await _release();
+      } else {
+        _fail(
+          'Não foi possível reproduzir o vídeo deste servidor. '
+          'Recarregue ou escolha outro servidor.',
+        );
+      }
+    } catch (error) {
+      if (!_current(generation) || _suspended) return;
+      AppLogger.warn(
+        'Falha ao preparar HLS (${error.runtimeType}).',
+        tag: 'TV_ENGINE',
+      );
+      _fail(
+        'Não foi possível preparar o vídeo. Recarregue ou troque de servidor.',
+      );
+    } finally {
+      if (_current(generation)) _resolvingMedia = false;
     }
   }
 
@@ -372,10 +467,11 @@ class _TvEmbedPlayerState extends State<TvEmbedPlayer>
                                     : 'Ir ao player',
                               ),
                             ),
-                            OutlinedButton(
-                              onPressed: () => unawaited(_open()),
-                              child: const Text('Recarregar'),
-                            ),
+                            if (!_suspended && _controller != null)
+                              OutlinedButton(
+                                onPressed: () => unawaited(_open()),
+                                child: const Text('Recarregar'),
+                              ),
                             OutlinedButton(
                               onPressed: widget.onSources,
                               child: const Text('Servidores'),

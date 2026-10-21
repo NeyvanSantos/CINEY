@@ -2,6 +2,8 @@ package com.ciney.embedmedia;
 
 import android.view.KeyEvent;
 import android.webkit.WebView;
+import android.webkit.CookieManager;
+import android.net.Uri;
 import io.flutter.embedding.engine.FlutterEngine;
 import io.flutter.plugin.common.BinaryMessenger;
 import io.flutter.plugin.common.MethodCall;
@@ -39,6 +41,21 @@ final class TvWebViewHandler implements MethodChannel.MethodCallHandler {
             WebView view = WebViewFlutterAndroidExternalApi.getWebView(engine, id);
             if (view == null) { result.success(false); return; }
             switch (call.method) {
+                case "playbackHeaders":
+                    String mediaUrl = call.argument("url");
+                    Uri mediaUri = mediaUrl == null ? null : Uri.parse(mediaUrl);
+                    if (!attached.containsKey(id) || mediaUri == null ||
+                        !("https".equals(mediaUri.getScheme()) || "http".equals(mediaUri.getScheme())) ||
+                        mediaUri.getHost() == null || mediaUri.getUserInfo() != null) {
+                        result.error("invalid_media", "Invalid media URL", null);
+                        return;
+                    }
+                    Map<String, String> headers = new HashMap<>();
+                    headers.put("User-Agent", view.getSettings().getUserAgentString());
+                    String cookie = CookieManager.getInstance().getCookie(mediaUrl);
+                    if (cookie != null && !cookie.isEmpty()) headers.put("Cookie", cookie);
+                    result.success(headers);
+                    return;
                 case "attach":
                     attached.put(id, view);
                     view.setFocusable(true);
@@ -58,6 +75,7 @@ final class TvWebViewHandler implements MethodChannel.MethodCallHandler {
                 case "key":
                     Number key = call.argument("keyCode");
                     if (key == null || !allowedKey(key.intValue())) { result.success(false); return; }
+                    view.requestFocus();
                     view.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, key.intValue()));
                     view.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, key.intValue()));
                     break;

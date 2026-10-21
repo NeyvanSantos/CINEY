@@ -6,11 +6,11 @@ do repositório.
 
 | Variante | Pasta | Último lançamento mantido nesta organização |
 | --- | --- | --- |
-| Mobile | `mobile/` | `CiNey-v1.0.43.apk` |
-| Android TV | `tv/` | `CiNey-v1.0.43-TV.apk` |
+| Mobile | `mobile/` | `CiNey-v1.0.45.apk` |
+| Android TV | `tv/` | `CiNey-v1.0.45-TV.apk` |
 
 Os APKs anteriores foram substituídos após conferir os novos downloads, hashes
-e assinatura oficial. Consulte a [verificação mobile e TV 1.0.43](../docs/historico/publicacao-2026-10-17-v43-tv43.md).
+e assinatura oficial. Consulte a [verificação mobile e TV 1.0.45](../docs/historico/publicacao-2026-10-20-v45-tv45.md).
 
 Ao guardar uma nova versão publicada, substitua apenas o APK anterior da mesma
 variante e atualize a tabela. Mantenha um único APK em cada pasta, com o nome

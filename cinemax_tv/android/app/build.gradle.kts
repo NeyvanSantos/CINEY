@@ -40,6 +40,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["appLabel"] = "CiNey TV"
     }
 
     signingConfigs {
@@ -54,6 +55,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".local"
+            versionNameSuffix = "-local"
+            manifestPlaceholders["appLabel"] = "CiNey TV Local"
+        }
         release {
             signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
