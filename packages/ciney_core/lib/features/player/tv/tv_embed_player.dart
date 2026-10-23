@@ -44,7 +44,7 @@ class _TvEmbedPlayerState extends State<TvEmbedPlayer>
   int? _viewId;
   int _generation = 0;
   bool _loading = true;
-  bool _menu = true;
+  bool _menu = false;
   bool _suspended = false;
   bool _resolvingMedia = false;
   final _attemptedMedia = <String>{};
@@ -97,7 +97,7 @@ class _TvEmbedPlayerState extends State<TvEmbedPlayer>
     if (!_current(generation)) return;
     setState(() {
       _loading = true;
-      _menu = true;
+      _menu = false;
       _message = null;
       _suspended = false;
       _resolvingMedia = false;
@@ -234,7 +234,7 @@ class _TvEmbedPlayerState extends State<TvEmbedPlayer>
       );
       if (_current(generation)) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_current(generation) && _menu) _menuFocus.requestFocus();
+          if (_current(generation) && !_menu) _focusProvider();
         });
       }
     } catch (error) {

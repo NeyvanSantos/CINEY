@@ -261,6 +261,8 @@ void main() {
     );
     await tester.pump();
     expect(isCurrent(), true);
+    await tester.binding.handlePopRoute();
+    await tester.pump();
     await tester.tap(find.text('Recarregar'));
     await tester.pump();
     expect(isCurrent(), false);
@@ -366,7 +368,6 @@ void main() {
     'Dpad OK play pause go to the platform view without pointer clicks',
     (tester) async {
       await open(tester);
-      await tester.tap(find.text('Ir ao player'));
       await tester.pump();
       for (final key in [
         LogicalKeyboardKey.arrowRight,
@@ -397,7 +398,6 @@ void main() {
     controller.navigation.finished(tvEmbedBaseUrl);
     await tester.pump();
     expect(find.byType(LinearProgressIndicator), findsNothing);
-    await tester.tap(find.text('Ir ao player'));
     await tester.pump();
     expect(find.text('Servidores'), findsNothing);
     expect(find.byKey(const ValueKey('provider-view')), findsOneWidget);
@@ -432,7 +432,6 @@ void main() {
 
   testWidgets('back opens recovery menu before exiting', (tester) async {
     await open(tester);
-    await tester.tap(find.text('Ir ao player'));
     await tester.pump();
     await tester.binding.handlePopRoute();
     await tester.pump();
