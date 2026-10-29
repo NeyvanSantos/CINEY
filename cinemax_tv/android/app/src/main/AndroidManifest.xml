@@ -59,6 +59,12 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <activity android:name=".NativeTvPlayerActivity" android:exported="false"
+          android:theme="@android:style/Theme.Material.NoActionBar"
+          android:configChanges="orientation|screenSize|keyboardHidden" />
+        <activity android:name=".BrowserSessionTvPlayerActivity" android:exported="false"
+          android:theme="@style/BrowserSessionPlayerTheme"
+          android:configChanges="orientation|screenSize|keyboardHidden" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

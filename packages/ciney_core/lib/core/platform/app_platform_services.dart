@@ -23,6 +23,7 @@ abstract interface class AnnouncementPresenter {
 class AppPlatformServices {
   const AppPlatformServices({
     this.casting,
+    this.tvPlayback,
     this.frameObserver,
     this.scannerBuilder,
     this.announcements,
@@ -33,6 +34,11 @@ class AppPlatformServices {
 
   static AppPlatformServices current = const AppPlatformServices();
 
+  final Future<Map<String, Object?>?> Function(
+    Map<String, Object?> request,
+    VoidCallback onReady,
+  )?
+  tvPlayback;
   final CastingSender? casting;
   final MediaFrameObserver? frameObserver;
   final WidgetBuilder? scannerBuilder;

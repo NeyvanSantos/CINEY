@@ -49,7 +49,7 @@ class TvSourcePolicy {
 
   static TvSourceKind classify(StreamSource source) {
     if (!isHttpUrl(source.url)) return TvSourceKind.unsupported;
-    final host = Uri.parse(source.url).host;
+    final host = Uri.parse(source.url).host.toLowerCase();
     if (source.isEmbed ||
         const [
           'myembed.biz',
@@ -58,6 +58,13 @@ class TvSourcePolicy {
         ].any((domain) => host == domain || host.endsWith('.$domain'))) {
       return TvSourceKind.embed;
     }
-    return source.isDirect ? TvSourceKind.native : TvSourceKind.unsupported;
+    final path = Uri.tryParse(source.url)?.path.toLowerCase() ?? '';
+    final isDirectMedia = source.isDirect ||
+        source.isM3U8 ||
+        path.endsWith('.m3u8') ||
+        path.endsWith('.mp4') ||
+        path.endsWith('.mpd') ||
+        path.endsWith('.mkv');
+    return isDirectMedia ? TvSourceKind.native : TvSourceKind.unsupported;
   }
 }

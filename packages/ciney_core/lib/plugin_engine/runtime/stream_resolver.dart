@@ -27,7 +27,7 @@ class StreamResolverService {
         ? '/$season/$episode'
         : '';
 
-    // ── Prioridade 1: SuperFlix (Dublado PT-BR / Full HD) ──
+    // ── Prioridade 1: SuperFlix (Dublado PT-BR) ──
     // Servidor brasileiro focado em conteúdo dublado em português.
     final superFlixUrl = isTv
         ? 'https://superflixapi.quest/serie/$tmdbId$episodePath'
@@ -43,7 +43,7 @@ class StreamResolverService {
       // 🇧🇷 Servidores Dublados PT-BR (prioridade máxima)
       StreamSource(
         url: superFlixUrl,
-        quality: '1080p Full HD',
+        quality: 'Conforme a fonte',
         server: 'SuperFlix',
         isEmbed: true,
         isDirect: false,

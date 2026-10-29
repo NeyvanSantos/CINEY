@@ -37,10 +37,38 @@ class TvEmbedHost {
             final event = jsonDecode(message.message);
             if (event is Map &&
                 event['event'] == 'remoteMenu' &&
+                event['action'] == 'activate' &&
+                const [
+                  'Dublado',
+                  'Legendado',
+                  'Servidor Principal',
+                  'Servidor Alternativo',
+                ].contains(event['label'])) {
+              final x = event['x'], y = event['y'];
+              final id = viewId;
+              if (id != null &&
+                  x is num &&
+                  y is num &&
+                  x.isFinite &&
+                  y.isFinite &&
+                  x >= 0 &&
+                  x <= 1 &&
+                  y >= 0 &&
+                  y <= 1) {
+                TvWebViewBridge.channel.invokeMethod<bool>('tap', {
+                  'webViewId': id,
+                  'x': x.toDouble(),
+                  'y': y.toDouble(),
+                });
+              }
+            }
+            if (event is Map &&
+                event['event'] == 'remoteMenu' &&
                 const [
                   'ready',
                   'selected',
                   'audio',
+                  'playing',
                 ].contains(event['action'])) {
               onMenuState?.call(event['action'] as String);
             }
@@ -53,23 +81,30 @@ class TvEmbedHost {
     final id = viewId;
     if (id == null) return false;
     final uri = Uri.parse(provider.url);
-    final startup = await rootBundle.loadString(
-      'packages/ciney_core/assets/player/embed_startup.js',
-    );
-    final observer = await rootBundle.loadString(
-      'packages/ciney_core/assets/player/tv_hls_observer.js',
-    );
-    final navigation = await rootBundle.loadString(
-      'packages/ciney_core/assets/player/tv_remote_navigation.js',
-    );
+    final scripts = await Future.wait([
+      rootBundle.loadString(
+        'packages/ciney_core/assets/player/embed_startup.js',
+      ),
+      rootBundle.loadString(
+        'packages/ciney_core/assets/player/tv_hls_observer.js',
+      ),
+      rootBundle.loadString(
+        'packages/ciney_core/assets/player/tv_remote_navigation.js',
+      ),
+      rootBundle.loadString(
+        'packages/ciney_core/assets/player/tv_browser_transport.js',
+      ),
+    ]);
+    final startup = scripts[0], observer = scripts[1], navigation = scripts[2];
     if (_released) return false;
     final installed = await AppFrameObserver.install(
       id,
+      'if (!/(^|\\.)challenges\\.cloudflare\\.com\$/i.test(location.hostname)) {\n'
       'window.__cineyAutoStart = true;\n'
       'window.__cineyIsTv = true;\n'
       'window.__cineyProviderHost = ${jsonEncode(uri.host)};\n'
       'window.__cineyProviderPath = ${jsonEncode(uri.path)};\n'
-      '$navigation\n$startup\n$observer',
+      '${scripts[3]}\n$navigation\n$startup\n$observer\n}',
     );
     if (_released) await AppFrameObserver.remove(id);
     return installed && !_released;

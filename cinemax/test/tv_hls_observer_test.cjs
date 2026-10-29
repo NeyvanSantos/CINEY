@@ -6,12 +6,16 @@ const path = require('node:path');
 const script = fs.readFileSync(path.join(__dirname,
   '../../packages/ciney_core/assets/player/tv_hls_observer.js'), 'utf8');
 
-function setup(videos = [{ duration: NaN, currentSrc: 'blob:media' }]) {
+function setup(videos = [{ duration: NaN, currentSrc: 'blob:media' }], page = {}) {
   const messages = [], timers = [], events = {};
   let response;
+  class Xhr {
+    open() {} setRequestHeader() {} send() {}
+    addEventListener(name, fn) { this.loaded = fn; }
+  }
   const context = vm.createContext({
-    URL, Headers, TextDecoder,
-    location: { href: 'https://provider.test/player/1' },
+    URL, Headers, TextDecoder, Uint8Array, XMLHttpRequest: Xhr,
+    location: { href: 'https://provider.test/player/1', ...page },
     document: { querySelectorAll: () => videos },
     TvMediaBridge: { postMessage: message => messages.push(JSON.parse(message)) },
     fetch: async () => response,
@@ -23,7 +27,14 @@ function setup(videos = [{ duration: NaN, currentSrc: 'blob:media' }]) {
   context.top = {};
   vm.runInContext(script, context);
   return {
-    messages, timers, events,
+    messages, timers, events, context,
+    binary(url, text) {
+      const xhr = new context.XMLHttpRequest();
+      xhr.open('GET', url); xhr.responseURL = url;
+      xhr.responseType = 'arraybuffer';
+      xhr.response = new TextEncoder().encode(text).buffer;
+      xhr.send(); xhr.loaded();
+    },
     async load(url, text, type = 'application/vnd.apple.mpegurl') {
       response = { url, headers: new Headers({ 'content-type': type }),
         clone: () => new Response(text) };
@@ -66,4 +77,38 @@ test('supports direct video HLS and stops reporting after pagehide', async () =>
   await f.load('https://cdn.test/next.m3u8', master);
   f.timers[0]();
   assert.equal(f.messages.length, 1);
+});
+
+ test('playing content stops menu scans and announces playback once', () => {
+  const f = setup([{ duration: 600, paused: false, ended: false, currentSrc: 'blob:film' }]);
+  f.timers[0](); f.timers[0]();
+  assert.equal(f.messages.length, 1);
+  assert.equal(f.messages[0].action, 'playing');
+ });
+
+test('binary XHR master.txt preserves HLS and rejects binary segments', () => {
+  const f = setup();
+  f.binary('https://cdn.test/segment', 'not a manifest');
+  f.timers[0](); assert.equal(f.messages.length, 0);
+  f.binary('https://cdn.test/master.txt', master);
+  f.timers[0]();
+  assert.equal(f.messages[0].url, 'https://cdn.test/master.txt');
+});
+
+test('challenge frames receive no media hooks or polling', () => {
+  const f = setup([], { hostname: 'challenges.cloudflare.com' });
+  assert.equal(f.timers.length, 0);
+  assert.equal(f.context.__cineyTvHlsObserver, undefined);
+});
+
+test('JW declared HLS master.txt is detected when network runs in a worker', () => {
+  const f = setup([{duration:600, currentSrc:'blob:film'}]);
+  f.context.jwplayer = () => ({getPlaylistItem: () => ({sources:[
+    {file:'https://cdn.test/master.txt',type:'hls'}
+  ]})});
+  f.timers[0]();
+  assert.equal(f.messages[0].url, 'https://cdn.test/master.txt');
+  const short = setup([{duration:30,currentSrc:'blob:ad'}]);
+  short.context.jwplayer = f.context.jwplayer;
+  short.timers[0](); assert.equal(short.messages.length,0);
 });

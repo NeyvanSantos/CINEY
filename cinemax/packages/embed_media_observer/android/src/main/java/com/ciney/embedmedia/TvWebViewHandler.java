@@ -1,6 +1,10 @@
 package com.ciney.embedmedia;
 
 import android.view.KeyEvent;
+import android.view.MotionEvent;
+import android.os.SystemClock;
+import android.os.Handler;
+import android.os.Looper;
 import android.webkit.WebView;
 import android.webkit.CookieManager;
 import android.net.Uri;
@@ -17,6 +21,7 @@ final class TvWebViewHandler implements MethodChannel.MethodCallHandler {
     private final FlutterEngine engine;
     private final MethodChannel channel;
     private final Map<Long, WebView> attached = new HashMap<>();
+    private final Map<Long, Long> confirms = new HashMap<>();
 
     TvWebViewHandler(FlutterEngine engine, BinaryMessenger messenger) {
         this.engine = engine;
@@ -58,9 +63,22 @@ final class TvWebViewHandler implements MethodChannel.MethodCallHandler {
                     return;
                 case "attach":
                     attached.put(id, view);
+                    BrowserMediaTransport.attach(view);
+                    view.getSettings().setDomStorageEnabled(true);
+                    CookieManager.getInstance().setAcceptCookie(true);
                     view.setFocusable(true);
                     view.setFocusableInTouchMode(true);
                     view.setOnKeyListener((v, code, event) -> {
+                        if ((code == KeyEvent.KEYCODE_DPAD_CENTER || code == KeyEvent.KEYCODE_ENTER)
+                                && event.getAction() == KeyEvent.ACTION_DOWN) {
+                            confirms.put(id, SystemClock.uptimeMillis());
+                        }
+                        if (code == KeyEvent.KEYCODE_DPAD_CENTER) {
+                            // Chromium consistently exposes Enter to provider scripts.
+                            return view.dispatchKeyEvent(new KeyEvent(
+                                event.getDownTime(), event.getEventTime(), event.getAction(),
+                                KeyEvent.KEYCODE_ENTER, event.getRepeatCount(), event.getMetaState()));
+                        }
                         if (code != KeyEvent.KEYCODE_MENU && code != KeyEvent.KEYCODE_BACK) return false;
                         if (event.getAction() == KeyEvent.ACTION_UP) {
                             Map<String, Object> args = new HashMap<>();
@@ -72,9 +90,33 @@ final class TvWebViewHandler implements MethodChannel.MethodCallHandler {
                     break;
                 case "focus": view.onResume(); view.requestFocus(); break;
                 case "blur": view.clearFocus(); break;
+                case "tap":
+                    Number nx = call.argument("x"), ny = call.argument("y");
+                    Long confirmed = confirms.remove(id);
+                    boolean recentConfirm = BrowserMediaTransport.consumeConfirm(view) ||
+                        (confirmed != null && SystemClock.uptimeMillis() - confirmed <= 1500);
+                    android.util.Log.i("CINEY_REMOTE", "tap confirmed="+recentConfirm+" size="+view.getWidth()+"x"+view.getHeight());
+                    if (!recentConfirm ||
+                        nx == null || ny == null || !Double.isFinite(nx.doubleValue()) ||
+                        !Double.isFinite(ny.doubleValue()) || nx.doubleValue() < 0 ||
+                        nx.doubleValue() > 1 || ny.doubleValue() < 0 || ny.doubleValue() > 1) {
+                        result.success(false); return;
+                    }
+                    float x = (float)(nx.doubleValue() * view.getWidth());
+                    float y = (float)(ny.doubleValue() * view.getHeight());
+                    long downTime = SystemClock.uptimeMillis();
+                    MotionEvent down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0);
+                    view.dispatchTouchEvent(down); down.recycle();
+                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                        if (!view.isAttachedToWindow()) { result.success(false); return; }
+                        MotionEvent up = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y, 0);
+                        boolean handled = view.dispatchTouchEvent(up); up.recycle(); result.success(handled);
+                    }, 70);
+                    return;
                 case "key":
                     Number key = call.argument("keyCode");
                     if (key == null || !allowedKey(key.intValue())) { result.success(false); return; }
+                    if (key.intValue() == 23 || key.intValue() == 66) BrowserMediaTransport.recordConfirm(view);
                     view.requestFocus();
                     view.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, key.intValue()));
                     view.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, key.intValue()));
@@ -93,8 +135,10 @@ final class TvWebViewHandler implements MethodChannel.MethodCallHandler {
     }
 
     private void release(long id) {
+        confirms.remove(id);
         WebView view = attached.remove(id);
         if (view == null) return;
+        BrowserMediaTransport.detach(view);
         view.setOnKeyListener(null);
         view.stopLoading();
         view.loadUrl("about:blank");

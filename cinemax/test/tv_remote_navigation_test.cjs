@@ -19,10 +19,10 @@ function setup(disableSubtitles = false) {
     focus() {}, scrollIntoView() {}, click() { this.clicks++; },
   }));
   const document = { querySelectorAll: () => controls,
-    createElement: () => ({}), head: { appendChild: style => styles.push(style) },
+    createElement: () => ({style:{}, setAttribute() {}}), body: {appendChild() {}}, head: { appendChild: style => styles.push(style) },
     addEventListener: (name, fn) => { events[name] = fn; }, removeEventListener() {} };
-  const context = vm.createContext({ document, location: { hostname: 'superflixapi.fun', pathname: '/filme/1' },
-    __cineyProviderPath: '/filme/1',
+  const context = vm.createContext({ document, location: { hostname: 'myembed.biz', pathname: '/filme/1' },
+    __cineyProviderPath: '/filme/1', innerWidth:1280, innerHeight:720,
     getComputedStyle: () => ({ display: 'block', visibility: 'visible' }),
     TvMediaBridge: { postMessage: message => messages.push(JSON.parse(message)) },
     addEventListener() {} });
@@ -67,4 +67,36 @@ test('OK activates the nested provider control while highlighting the whole card
   assert.equal(inner.clicks, 1);
   assert.equal(f.controls[2].clicks, 0);
   assert.equal(f.focused(), 'Servidor Principal');
+});
+
+test('SuperFlix OK requests a pointer click on the highlighted server', () => {
+  const f = setup(); f.context.location.hostname = 'superflixapi.fun';
+  f.prepare(); f.key('Enter'); f.key('Enter', true);
+  assert.equal(f.controls[2].clicks, 0);
+  const taps = f.messages.filter(m => m.action === 'activate');
+  assert.equal(taps.length, 1);
+  assert.equal(taps[0].label, 'Servidor Principal');
+  assert.equal(taps[0].x, 300/1280);
+  assert.equal(taps[0].y, 135/720);
+});
+
+test('SuperFlix cursor moves freely and disappears outside the server screen', () => {
+  const f = setup(); f.context.location.hostname = 'superflixapi.fun';
+  f.prepare(); f.key('ArrowRight'); f.key('ArrowDown'); f.key('Enter');
+  const tap = f.messages.find(m => m.action === 'activate');
+  assert.equal(tap.x, 318/1280); assert.equal(tap.y, 153/720);
+  f.context.location.pathname = '/player';
+  assert.equal(f.prepare(), false);
+  f.key('Enter');
+  assert.equal(f.messages.filter(m => m.action === 'activate').length, 1);
+});
+
+test('SuperFlix stops intercepting keys when a player covers the menu', () => {
+  const f = setup(); f.context.location.hostname = 'superflixapi.fun';
+  f.prepare();
+  f.context.document.elementFromPoint = () => ({tagName:'IFRAME'});
+  f.controls.forEach(c => c.contains = () => false);
+  assert.equal(f.prepare(), false);
+  f.key('Enter');
+  assert.equal(f.messages.filter(m => m.action === 'activate').length, 0);
 });

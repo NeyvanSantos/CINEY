@@ -25,9 +25,10 @@
     const location = doc.location;
     if (!location || location.pathname !== providerPath) return [];
     const knownHost = location.hostname === providerHost ||
-      (providerHost === 'myembed.biz' && location.hostname === 'playerflix.ink') ||
-      (isTv && providerHost === 'superflixapi.quest' && location.hostname === 'superflixapi.fun');
-    if (!knownHost || !['myembed.biz', 'superflixapi.quest'].includes(providerHost)) return [];
+      location.hostname.endsWith('.' + providerHost) ||
+      (providerHost === 'myembed.biz' && /playerflix/i.test(location.hostname)) ||
+      (isTv && /superflix/i.test(providerHost) && /superflix/i.test(location.hostname));
+    if (!knownHost || (!['myembed.biz', 'superflixapi.quest'].includes(providerHost) && !/superflix|myembed/i.test(providerHost))) return [];
     // Verified EmbedMovies/PlayerFlix menu: only invoke existing provider controls.
     const rows = Array.from(doc.querySelectorAll('#optionList .option[data-embed][data-audio]'));
     if (rows.length) return rows;

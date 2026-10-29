@@ -29,3 +29,10 @@ release-notes-temp.md
 *.log
 .env
 supabase/.temp/
+
+/.work/
+/outputs/
+/artifacts/
+/CastLite/CastLite/.work/
+/CastLite/CastLite/gradle-8.11.1/
+/CastLite/CastLite/manual-tests/

@@ -353,7 +353,7 @@ class _ServerSelectionSheetState extends State<ServerSelectionSheet> {
     final isSuperFlix = source.server.contains('SuperFlix');
     final badgeText = isEmbedMovies
         ? 'Recomendado PT-BR'
-        : (isSuperFlix ? 'Dublado 1080p' : source.quality);
+        : (isSuperFlix ? 'Dublado PT-BR' : source.quality);
     final badgeColor = isEmbedMovies || isSuperFlix
         ? const Color(0xFF10B981)
         : AppColors.primary;
@@ -453,7 +453,7 @@ class _ServerSelectionSheetState extends State<ServerSelectionSheet> {
                       isEmbedMovies
                           ? 'Dublado e Legendado • Player Adaptativo'
                           : (isSuperFlix
-                                ? 'Dublado PT-BR • Full HD 1080p'
+                                ? 'Dublado PT-BR • Conforme a fonte'
                                 : '${source.quality} • ${source.isEmbed ? "Embed" : "Direto"}'),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,

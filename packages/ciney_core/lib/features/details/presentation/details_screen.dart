@@ -1,12 +1,14 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/config/theme/app_colors.dart';
 import '../../../core/config/theme/app_typography.dart';
 import '../../../core/localization/app_localization.dart';
+import '../../../core/widgets/focusable_surface.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/gradient_poster.dart';
 import '../../../plugin_engine/manager/plugin_manager.dart';
@@ -43,12 +45,65 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
   bool _isLoadingEpisodes = false;
   int _episodeRequestId = 0;
 
+  FocusNode? _watchButtonFocusNode;
+  final Map<int, FocusNode> _seasonFocusNodes = {};
+  final List<FocusNode> _episodeFocusNodes = [];
+
+  FocusNode _getSeasonFocusNode(int season) {
+    return _seasonFocusNodes.putIfAbsent(
+      season,
+      () => FocusNode(debugLabel: 'season_$season'),
+    );
+  }
+
+  void _syncEpisodeFocusNodes(int count) {
+    while (_episodeFocusNodes.length < count) {
+      _episodeFocusNodes.add(
+        FocusNode(debugLabel: 'episode_${_episodeFocusNodes.length}'),
+      );
+    }
+    while (_episodeFocusNodes.length > count) {
+      _episodeFocusNodes.removeLast().dispose();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    if (widget.isTv) {
+      _watchButtonFocusNode = FocusNode(
+        debugLabel: 'watch_button',
+        onKeyEvent: (node, event) {
+          if (event is KeyDownEvent &&
+              event.logicalKey == LogicalKeyboardKey.arrowDown) {
+            final target = _seasonFocusNodes[_selectedSeason];
+            if (target != null && target.canRequestFocus) {
+              target.requestFocus();
+              return KeyEventResult.handled;
+            } else if (_episodeFocusNodes.isNotEmpty) {
+              _episodeFocusNodes.first.requestFocus();
+              return KeyEventResult.handled;
+            }
+          }
+          return KeyEventResult.ignored;
+        },
+      );
+    }
     _detail = widget.initialDetail;
     _isLoading = _detail == null;
     _loadDetails();
+  }
+
+  @override
+  void dispose() {
+    _watchButtonFocusNode?.dispose();
+    for (final node in _seasonFocusNodes.values) {
+      node.dispose();
+    }
+    for (final node in _episodeFocusNodes) {
+      node.dispose();
+    }
+    super.dispose();
   }
 
   Future<void> _loadDetails() async {
@@ -87,6 +142,9 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
           .read(pluginManagerProvider.notifier)
           .getEpisodes(widget.contentId, widget.pluginId, season);
       if (mounted && requestId == _episodeRequestId) {
+        if (widget.isTv) {
+          _syncEpisodeFocusNodes(episodes.length);
+        }
         setState(() {
           _isLoadingEpisodes = false;
           _episodes = episodes;
@@ -94,6 +152,9 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
       }
     } catch (_) {
       if (mounted && requestId == _episodeRequestId) {
+        if (widget.isTv) {
+          _syncEpisodeFocusNodes(0);
+        }
         setState(() => _isLoadingEpisodes = false);
       }
     }
@@ -319,7 +380,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
         slivers: [
           // Backdrop Header
           SliverAppBar(
-            expandedHeight: 300,
+            expandedHeight: widget.isTv ? 180 : 300,
             pinned: true,
             backgroundColor: AppColors.background,
             actions: [
@@ -339,6 +400,13 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                   if (item.backdropUrl != null)
                     CachedNetworkImage(
                       imageUrl: item.backdropUrl!,
+                      // Decode to the physical display width instead of the
+                      // original backdrop resolution on TV.
+                      memCacheWidth: widget.isTv
+                          ? (MediaQuery.sizeOf(context).width *
+                                    MediaQuery.devicePixelRatioOf(context))
+                                .ceil()
+                          : null,
                       fit: BoxFit.cover,
                       errorWidget: (context, url, error) =>
                           Container(color: AppColors.surface),
@@ -439,6 +507,8 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                     children: [
                       Expanded(
                         child: ElevatedButton.icon(
+                          focusNode: _watchButtonFocusNode,
+                          autofocus: widget.isTv,
                           onPressed: () => _playContent(item: item),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.primary,
@@ -535,6 +605,8 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                         color: Colors.white70,
                         height: 1.6,
                       ),
+                      maxLines: widget.isTv ? 2 : null,
+                      overflow: widget.isTv ? TextOverflow.ellipsis : null,
                     ),
                     const SizedBox(height: 24),
                   ],
@@ -588,39 +660,94 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
 
                   // Seletor de Temporadas e Lista de Episódios (Para Séries / Animes / Doramas)
                   if (item.type != ContentType.movie) ...[
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          context.tr('detail.episodes'),
-                          style: AppTypography.headlineMedium,
-                        ),
-                        if (item.seasons != null && item.seasons!.isNotEmpty)
-                          DropdownButton<int>(
-                            value: _selectedSeason,
-                            dropdownColor: AppColors.surfaceLight,
-                            items: item.seasons!
-                                .map(
-                                  (s) => DropdownMenuItem(
-                                    value: s.number,
-                                    child: Text(
-                                      context
-                                          .tr('detail.season')
-                                          .replaceAll(
-                                            '{number}',
-                                            '${s.number}',
-                                          ),
-                                    ),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (val) {
-                              if (val != null) _loadEpisodes(val);
-                            },
-                          ),
-                      ],
+                    Text(
+                      context.tr('detail.episodes'),
+                      style: AppTypography.headlineMedium,
                     ),
                     const SizedBox(height: 12),
+                    if (item.seasons != null && item.seasons!.isNotEmpty) ...[
+                      SizedBox(
+                        height: 42,
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          physics: const BouncingScrollPhysics(),
+                          child: Row(
+                            children: item.seasons!.map((s) {
+                              final isSelected = s.number == _selectedSeason;
+                              final label = context
+                                  .tr('detail.season')
+                                  .replaceAll('{number}', '${s.number}');
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: FocusableSurface(
+                                  focusNode: widget.isTv
+                                      ? _getSeasonFocusNode(s.number)
+                                      : null,
+                                  onKey: widget.isTv
+                                      ? (node, event) {
+                                          if (event is KeyDownEvent) {
+                                            if (event.logicalKey ==
+                                                LogicalKeyboardKey.arrowDown) {
+                                              if (_episodeFocusNodes.isNotEmpty) {
+                                                _episodeFocusNodes.first
+                                                    .requestFocus();
+                                                return KeyEventResult.handled;
+                                              }
+                                            } else if (event.logicalKey ==
+                                                LogicalKeyboardKey.arrowUp) {
+                                              _watchButtonFocusNode
+                                                  ?.requestFocus();
+                                              return KeyEventResult.handled;
+                                            }
+                                          }
+                                          return KeyEventResult.ignored;
+                                        }
+                                      : null,
+                                  borderRadius: BorderRadius.circular(21),
+                                  onTap: () {
+                                    if (!isSelected) {
+                                      _loadEpisodes(s.number);
+                                    }
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 8,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: isSelected
+                                          ? AppColors.primary
+                                          : AppColors.surfaceLight,
+                                      borderRadius: BorderRadius.circular(21),
+                                      border: Border.all(
+                                        color: isSelected
+                                            ? AppColors.primary
+                                            : AppColors.glassBorder,
+                                        width: 1.2,
+                                      ),
+                                    ),
+                                    alignment: Alignment.center,
+                                    child: Text(
+                                      label,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: isSelected
+                                            ? FontWeight.bold
+                                            : FontWeight.normal,
+                                        color: isSelected
+                                            ? Colors.white
+                                            : Colors.white70,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
                     if (_isLoadingEpisodes)
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 20),
@@ -660,88 +787,127 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                         ),
                       )
                     else
-                      ListView.separated(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _episodes.length,
-                        separatorBuilder: (context, index) =>
-                            const SizedBox(height: 10),
-                        itemBuilder: (context, index) {
-                          final ep = _episodes[index];
-                          final episodeNumber = ep.episodeNumber ?? index + 1;
-                          return GlassCard(
-                            padding: const EdgeInsets.all(12),
-                            onTap: () {
-                              _playContent(
-                                item: item,
-                                season: _selectedSeason,
-                                episode: episodeNumber,
-                                episodeTitle: ep.title,
-                              );
-                            },
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 50,
-                                  height: 50,
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primarySurface,
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Icon(
-                                    Icons.play_arrow_rounded,
-                                    color: AppColors.primary,
-                                  ),
+                      Column(
+                        children: [
+                          for (var index = 0;
+                              index < _episodes.length;
+                              index++) ...[
+                            if (index > 0) const SizedBox(height: 10),
+                            () {
+                              final ep = _episodes[index];
+                              final episodeNumber =
+                                  ep.episodeNumber ?? index + 1;
+                              return GlassCard(
+                                key: ValueKey(
+                                  'episode-card-$_selectedSeason-$episodeNumber',
                                 ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        ep.title,
-                                        style: AppTypography.labelLarge,
+                                focusNode: (widget.isTv &&
+                                        index < _episodeFocusNodes.length)
+                                    ? _episodeFocusNodes[index]
+                                    : null,
+                                onKey: widget.isTv
+                                    ? (node, event) {
+                                        if (event is KeyDownEvent) {
+                                          if (event.logicalKey ==
+                                              LogicalKeyboardKey.arrowUp) {
+                                            if (index > 0 &&
+                                                index - 1 <
+                                                    _episodeFocusNodes.length) {
+                                              _episodeFocusNodes[index - 1]
+                                                  .requestFocus();
+                                            } else {
+                                              _getSeasonFocusNode(_selectedSeason)
+                                                  .requestFocus();
+                                            }
+                                            return KeyEventResult.handled;
+                                          } else if (event.logicalKey ==
+                                              LogicalKeyboardKey.arrowDown) {
+                                            if (index + 1 <
+                                                _episodeFocusNodes.length) {
+                                              _episodeFocusNodes[index + 1]
+                                                  .requestFocus();
+                                              return KeyEventResult.handled;
+                                            }
+                                          }
+                                        }
+                                        return KeyEventResult.ignored;
+                                      }
+                                    : null,
+                                padding: const EdgeInsets.all(12),
+                                onTap: () {
+                                  _playContent(
+                                    item: item,
+                                    season: _selectedSeason,
+                                    episode: episodeNumber,
+                                    episodeTitle: ep.title,
+                                  );
+                                },
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 50,
+                                      height: 50,
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primarySurface,
+                                        borderRadius: BorderRadius.circular(8),
                                       ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        ep.overview ?? 'Clique para reproduzir',
-                                        style: const TextStyle(
-                                          fontSize: 11,
-                                          color: AppColors.textTertiary,
+                                      child: const Icon(
+                                        Icons.play_arrow_rounded,
+                                        color: AppColors.primary,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            ep.title,
+                                            style: AppTypography.labelLarge,
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            ep.overview ??
+                                                'Clique para reproduzir',
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              color: AppColors.textTertiary,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (!widget.isTv)
+                                      IconButton(
+                                        key: ValueKey(
+                                          'cast-episode-$episodeNumber',
                                         ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
+                                        tooltip:
+                                            'Transmitir episódio $episodeNumber',
+                                        icon: const Icon(
+                                          Icons.cast_rounded,
+                                          color: AppColors.primary,
+                                        ),
+                                        onPressed: () => _onCastPressed(
+                                          item,
+                                          episode: episodeNumber,
+                                          episodeTitle: ep.title,
+                                        ),
                                       ),
-                                    ],
-                                  ),
+                                    const Icon(
+                                      Icons.arrow_forward_ios_rounded,
+                                      size: 14,
+                                      color: AppColors.textTertiary,
+                                    ),
+                                  ],
                                 ),
-                                if (!widget.isTv)
-                                  IconButton(
-                                    key: ValueKey(
-                                      'cast-episode-$episodeNumber',
-                                    ),
-                                    tooltip:
-                                        'Transmitir episódio $episodeNumber',
-                                    icon: const Icon(
-                                      Icons.cast_rounded,
-                                      color: AppColors.primary,
-                                    ),
-                                    onPressed: () => _onCastPressed(
-                                      item,
-                                      episode: episodeNumber,
-                                      episodeTitle: ep.title,
-                                    ),
-                                  ),
-                                const Icon(
-                                  Icons.arrow_forward_ios_rounded,
-                                  size: 14,
-                                  color: AppColors.textTertiary,
-                                ),
-                              ],
-                            ),
-                          );
-                        },
+                              );
+                            }(),
+                          ],
+                        ],
                       ),
                     const SizedBox(height: 24),
                   ],

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import '../../../core/widgets/focusable_surface.dart';
 
 import 'package:chewie/chewie.dart';
 import '../../../core/platform/app_platform_services.dart';
@@ -161,6 +162,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   bool _closingPlayer = false;
   bool _allowExit = false;
   bool _appInBackground = false;
+  bool _dedicatedTvActive = false;
   Completer<void>? _progressSample;
   String? _progressRequestId;
   int _progressRequestSequence = 0;
@@ -232,6 +234,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   @override
   void initState() {
     super.initState();
+    if (widget.isTv) {
+      // Evict reusable artwork; live images remain owned by their widgets.
+      PaintingBinding.instance.imageCache.clear();
+    }
     _selectedSubtitle = switch (ref.read(appLocaleProvider).languageCode) {
       'en' => SubtitleOption.english,
       'es' => SubtitleOption.spanish,
@@ -393,6 +399,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _appInBackground = state != AppLifecycleState.resumed;
+    if (_dedicatedTvActive) return;
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
@@ -810,7 +817,12 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
 
     _disposeCurrentPlayer();
     _playbackServer = source.server;
-    await _recordSelectedServer(source.server);
+    // Persist in order without delaying the TV WebView startup.
+    if (widget.isTv) {
+      unawaited(_recordSelectedServer(source.server));
+    } else {
+      await _recordSelectedServer(source.server);
+    }
     if (!mounted || _currentSourceIndex != index) return;
     _resumePending = _resumePlayback && _resumePositionMs > 0;
 
@@ -1128,6 +1140,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       return KeyEventResult.ignored;
     }
 
+    // Visible controls own D-pad navigation and OK activation.
+    if (_controlsVisible &&
+        {
+          LogicalKeyboardKey.select,
+          LogicalKeyboardKey.enter,
+          LogicalKeyboardKey.arrowLeft,
+          LogicalKeyboardKey.arrowRight,
+          LogicalKeyboardKey.arrowUp,
+          LogicalKeyboardKey.arrowDown,
+        }.contains(event.logicalKey)) {
+      return KeyEventResult.ignored;
+    }
     switch (event.logicalKey) {
       case LogicalKeyboardKey.mediaPlayPause:
       case LogicalKeyboardKey.select:
@@ -1415,11 +1439,21 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           if (!mounted || _videoPlayerController != controller) return;
           final value = controller.value;
           final wasPlaying = _isPlaying;
-          setState(() {
+          void updateProgress() {
             _currentPosition = value.position;
             _totalDuration = value.duration;
             _isPlaying = value.isPlaying;
-          });
+          }
+
+          if (!widget.isTv ||
+              _controlsVisible ||
+              wasPlaying != value.isPlaying ||
+              value.isCompleted) {
+            setState(updateProgress);
+          } else {
+            // Hidden TV controls need fresh values, not a screen rebuild.
+            updateProgress();
+          }
           unawaited(
             _saveWatchProgress(
               position: value.position,
@@ -1586,6 +1620,77 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               _closingPlayer ||
               _tvEmbedSource != tvSource) {
             return false;
+          }
+          final dedicated = AppPlatformServices.current.tvPlayback;
+          if (dedicated != null) {
+            final browserSession = media.server.toLowerCase().contains('superflix');
+            _dedicatedTvActive = true;
+            var ready = false;
+            try {
+              final result = await dedicated(
+                {
+                  'url': media.url,
+                  'pageUrl': media.headers?['Referer'],
+                  'browserSession': browserSession,
+                  'headers': media.headers ?? <String, String>{},
+                  'title': _title,
+                  'positionMs': _resumePlayback ? _resumePositionMs : 0,
+                  'portuguese': media.audioType != AudioType.subtitled,
+                },
+                () {
+                  ready = true;
+                  // Browser transport still needs this widget's WebView for
+                  // every HLS segment and seek. Dispose it only on return.
+                  if (mounted && !browserSession) {
+                    setState(() {
+                      _tvEmbedSource = null;
+                      _isLoading = true;
+                    });
+                  }
+                },
+              );
+              if (!mounted) return true;
+              final position = (result?['positionMs'] as num?)?.toInt() ?? 0;
+              final duration = (result?['durationMs'] as num?)?.toInt() ?? 0;
+              if (position > 0) _resumePositionMs = position;
+              if (duration > 0) {
+                await _saveWatchProgress(
+                  position: Duration(milliseconds: position),
+                  duration: Duration(milliseconds: duration),
+                  completed: result?['completed'] == true,
+                  force: true,
+                );
+              }
+              if (!mounted) return true;
+              if (result == null || result['error'] == true) {
+                if (ready) {
+                  setState(() {
+                    _tvEmbedSource = tvSource;
+                    _tvEmbedGeneration++;
+                    _isLoading = false;
+                  });
+                }
+                return false;
+              }
+              if (result['sources'] == true) {
+                setState(() {
+                  // Do not start the old provider behind the source dialog.
+                  _tvEmbedSource = null;
+                  _isLoading = false;
+                  _controlsVisible = true;
+                });
+                _showServerSelectorModal();
+              } else if (result['completed'] == true && _hasEpisode) {
+                await _onPlaybackEnded();
+              } else {
+                await _exitPlayer();
+              }
+              return true;
+            } on PlatformException {
+              return false;
+            } finally {
+              _dedicatedTvActive = false;
+            }
           }
           return _initNativePlayer(
             media,
@@ -2386,7 +2491,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     required String label,
     required VoidCallback onTap,
   }) {
-    return InkWell(
+    return FocusableSurface(
       onTap: () {
         _startHideControlsTimer();
         onTap();

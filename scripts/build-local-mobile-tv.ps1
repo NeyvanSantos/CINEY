@@ -1,7 +1,8 @@
 param(
     [ValidateSet('mobile', 'tv', 'both')][string]$Target = 'both',
     [ValidatePattern('^[A-Za-z]:$')][string]$BuildDrive = 'X:',
-    [switch]$Offline
+    [switch]$Offline,
+    [switch]$NativeTests
 )
 
 $ErrorActionPreference = 'Stop'
@@ -88,6 +89,7 @@ gradle.beforeProject { project ->
         )
         if ($Offline) { $gradleArgs += '--offline' }
         if ($buildTarget -eq 'tv') {
+            if ($NativeTests) { $gradleArgs += ':app:testReleaseUnitTest' }
             $gradleArgs += @('-Psplit-per-abi=true', '-Ptree-shake-icons=true', ':app:assembleRelease')
         } else {
             $gradleArgs += @('-Ptrack-widget-creation=true', '-Ptree-shake-icons=false', ':app:assembleDebug')

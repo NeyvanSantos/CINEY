@@ -18,6 +18,9 @@ class GlassCard extends StatelessWidget {
   final double borderOpacity;
   final BoxBorder? border;
   final VoidCallback? onTap;
+  final FocusNode? focusNode;
+  final bool autofocus;
+  final FocusOnKeyEventCallback? onKey;
 
   const GlassCard({
     super.key,
@@ -32,6 +35,9 @@ class GlassCard extends StatelessWidget {
     this.borderOpacity = 0.08,
     this.border,
     this.onTap,
+    this.focusNode,
+    this.autofocus = false,
+    this.onKey,
   });
 
   @override
@@ -40,7 +46,10 @@ class GlassCard extends StatelessWidget {
       return Container(
         margin: margin,
         child: FocusableSurface(
+          focusNode: focusNode,
+          autofocus: autofocus,
           onTap: onTap,
+          onKey: onKey,
           borderRadius: BorderRadius.circular(borderRadius),
           child: Container(
             padding: padding ?? const EdgeInsets.all(16),
@@ -68,7 +77,10 @@ class GlassCard extends StatelessWidget {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
           child: FocusableSurface(
+            focusNode: focusNode,
+            autofocus: autofocus,
             onTap: onTap,
+            onKey: onKey,
             borderRadius: BorderRadius.circular(borderRadius),
             child: Container(
               padding: padding ?? const EdgeInsets.all(16),

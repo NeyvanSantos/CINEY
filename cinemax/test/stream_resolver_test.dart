@@ -57,7 +57,7 @@ void main() {
       expect(sources[0].isEmbed, isTrue);
       expect(sources[0].priority, 1);
       expect(sources[0].server, 'SuperFlix');
-      expect(sources[0].quality, '1080p Full HD');
+      expect(sources[0].quality, 'Conforme a fonte');
     });
 
     test(
