@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/services/app_logger.dart';
 import '../contracts/plugin_interface.dart';
@@ -22,11 +25,14 @@ class PluginState {
   PluginState copyWith({
     List<PluginInterface>? installedPlugins,
     PluginInterface? activePlugin,
+    bool clearActivePlugin = false,
     bool? isLoading,
   }) {
     return PluginState(
       installedPlugins: installedPlugins ?? this.installedPlugins,
-      activePlugin: activePlugin ?? this.activePlugin,
+      activePlugin: clearActivePlugin
+          ? null
+          : activePlugin ?? this.activePlugin,
       isLoading: isLoading ?? this.isLoading,
     );
   }
@@ -35,25 +41,103 @@ class PluginState {
 /// Provider do PluginManager
 final pluginManagerProvider = StateNotifierProvider<PluginManager, PluginState>(
   (ref) {
-    return PluginManager();
+    return PluginManager(preferencesLoader: SharedPreferences.getInstance);
   },
 );
 
 class PluginManager extends StateNotifier<PluginState> {
-  PluginManager() : super(const PluginState()) {
+  PluginManager({
+    Future<SharedPreferences> Function()? preferencesLoader,
+    Dio? catalogClient,
+  }) : _preferencesLoader = preferencesLoader,
+       _catalogClient = catalogClient,
+       super(const PluginState()) {
     _initializeDefaultPlugins();
+    ready = preferencesLoader == null
+        ? Future.value()
+        : _restoreConfiguration();
   }
+
+  final Future<SharedPreferences> Function()? _preferencesLoader;
+  final Dio? _catalogClient;
+  late final Future<void> ready;
+  Future<void> _configurationWrites = Future.value();
+  int _configurationGeneration = 0;
+  static const _installedKey = 'installed-plugins-v1';
+  static const _activeKey = 'active-plugin-v1';
+
+  Future<void> _restoreConfiguration() async {
+    final generation = _configurationGeneration;
+    try {
+      final preferences = await _preferencesLoader!();
+      if (!mounted || generation != _configurationGeneration) return;
+      final ids = preferences.getStringList(_installedKey);
+      if (ids == null) return;
+      final plugins = allAvailablePlugins
+          .where((p) => ids.contains(p.manifest.id))
+          .toList();
+      final activeId = preferences.getString(_activeKey);
+      final active =
+          plugins.where((p) => p.manifest.id == activeId).firstOrNull ??
+          plugins.firstOrNull;
+      state = state.copyWith(
+        installedPlugins: plugins,
+        activePlugin: active,
+        clearActivePlugin: active == null,
+      );
+      _invalidateHomeCache();
+    } catch (error) {
+      AppLogger.warn(
+        'Falha ao restaurar extensões (${error.runtimeType}).',
+        tag: 'PLUGIN',
+      );
+    }
+  }
+
+  void _saveConfiguration() {
+    _configurationGeneration++;
+    if (_preferencesLoader == null) return;
+    final ids = state.installedPlugins.map((p) => p.manifest.id).toList();
+    final activeId = state.activePlugin?.manifest.id;
+    _configurationWrites = _configurationWrites
+        .then((_) async {
+          await ready;
+          final preferences = await _preferencesLoader();
+          await preferences.setStringList(_installedKey, ids);
+          if (activeId == null) {
+            await preferences.remove(_activeKey);
+          } else {
+            await preferences.setString(_activeKey, activeId);
+          }
+        })
+        .catchError((Object error) {
+          AppLogger.warn(
+            'Falha ao salvar extensões (${error.runtimeType}).',
+            tag: 'PLUGIN',
+          );
+        });
+  }
+
+  Future<void> flushConfiguration() => _configurationWrites;
 
   List<ContentCategory>? _homeCache;
   DateTime? _homeCacheAt;
   Future<List<ContentCategory>>? _homeRequest;
   final Map<String, ContentDetail> _detailCache = {};
   final Map<String, Future<ContentDetail?>> _detailRequests = {};
+  final Map<String, String> _resolvedCatalogIds = {};
 
   void _invalidateHomeCache() {
     _homeCache = null;
     _homeCacheAt = null;
+    _homeRequest = null;
+    _detailCache.clear();
+    _detailRequests.clear();
+    _resolvedCatalogIds.clear();
+    _catalogGeneration++;
   }
+
+  int _catalogGeneration = 0;
 
   /// Lista de todos os plugins disponíveis no ecossistema
   static List<PluginInterface> get allAvailablePlugins => [
@@ -98,12 +182,13 @@ class PluginManager extends StateNotifier<PluginState> {
     final list = allAvailablePlugins
         .where((p) => selectedIds.contains(p.manifest.id))
         .toList();
-    final finalList = list.isNotEmpty ? list : allAvailablePlugins;
     state = state.copyWith(
-      installedPlugins: finalList,
-      activePlugin: finalList.first,
+      installedPlugins: list,
+      activePlugin: list.firstOrNull,
+      clearActivePlugin: list.isEmpty,
     );
     _invalidateHomeCache();
+    _saveConfiguration();
   }
 
   /// Instala todas as extensões disponíveis
@@ -113,20 +198,25 @@ class PluginManager extends StateNotifier<PluginState> {
       activePlugin: allAvailablePlugins.first,
     );
     _invalidateHomeCache();
+    _saveConfiguration();
   }
 
   /// Define o plugin ativo atual
   void setActivePlugin(PluginInterface plugin) {
+    if (!state.installedPlugins.contains(plugin)) return;
     state = state.copyWith(activePlugin: plugin);
+    _saveConfiguration();
   }
 
   /// Define o plugin ativo por ID
   void setActivePluginById(String id) {
+    if (state.installedPlugins.isEmpty) return;
     final found = state.installedPlugins.firstWhere(
       (p) => p.manifest.id == id,
       orElse: () => state.installedPlugins.first,
     );
     state = state.copyWith(activePlugin: found);
+    _saveConfiguration();
   }
 
   /// Remove/Desinstala um plugin
@@ -138,8 +228,13 @@ class PluginManager extends StateNotifier<PluginState> {
         ? (updated.isNotEmpty ? updated.first : null)
         : state.activePlugin;
 
-    state = state.copyWith(installedPlugins: updated, activePlugin: newActive);
+    state = state.copyWith(
+      installedPlugins: updated,
+      activePlugin: newActive,
+      clearActivePlugin: newActive == null,
+    );
     _invalidateHomeCache();
+    _saveConfiguration();
   }
 
   /// Instala um novo plugin
@@ -150,12 +245,17 @@ class PluginManager extends StateNotifier<PluginState> {
       return; // Já instalado
     }
     final updated = [...state.installedPlugins, plugin];
-    state = state.copyWith(installedPlugins: updated);
+    state = state.copyWith(
+      installedPlugins: updated,
+      activePlugin: state.activePlugin ?? plugin,
+    );
     _invalidateHomeCache();
+    _saveConfiguration();
   }
 
   /// Busca em todos os plugins instalados e no TMDB simultaneamente
   Future<List<ContentItem>> searchAll(String query) async {
+    await ready;
     if (query.trim().isEmpty) return [];
 
     AppLogger.info('Iniciando busca: "$query"', tag: 'SEARCH');
@@ -163,10 +263,16 @@ class PluginManager extends StateNotifier<PluginState> {
     final results = <ContentItem>[];
     final seenTitles = <String>{};
 
-    final liveResultsFuture = TmdbService.search(query).catchError((error) {
-      AppLogger.error('Erro na busca TMDB: $error', tag: 'SEARCH');
-      return <ContentItem>[];
-    });
+    var catalogFailed = false;
+    final liveResultsFuture = TmdbService.search(query, client: _catalogClient)
+        .catchError((error) {
+          catalogFailed = true;
+          AppLogger.error(
+            'Erro na busca TMDB (${error.runtimeType}).',
+            tag: 'SEARCH',
+          );
+          return <ContentItem>[];
+        });
     final pluginResultsFuture = Future.wait(
       state.installedPlugins.map((plugin) async {
         try {
@@ -190,20 +296,25 @@ class PluginManager extends StateNotifier<PluginState> {
 
     final liveResults = await liveResultsFuture;
     for (final item in liveResults) {
-      final key = item.title.toLowerCase().trim();
+      final key = _searchContentKey(item);
       if (seenTitles.add(key)) results.add(item);
     }
-    AppLogger.success(
-      'TMDB retornou ${liveResults.length} resultado(s) para "$query"',
-      tag: 'SEARCH',
-    );
+    if (!catalogFailed) {
+      AppLogger.success(
+        'TMDB retornou ${liveResults.length} resultado(s) para "$query"',
+        tag: 'SEARCH',
+      );
+    }
     for (final items in await pluginResultsFuture) {
       for (final item in items) {
-        final key = item.title.toLowerCase().trim();
+        final key = _searchContentKey(item);
         if (seenTitles.add(key)) results.add(item);
       }
     }
 
+    if (catalogFailed && results.isEmpty) {
+      throw StateError('Não foi possível consultar o catálogo.');
+    }
     AppLogger.info(
       'Busca concluída: ${results.length} título(s) no total para "$query"',
       tag: 'SEARCH',
@@ -213,6 +324,7 @@ class PluginManager extends StateNotifier<PluginState> {
 
   /// Retorna as seções UNIFICADAS de TODAS as bibliotecas/plugins juntos
   Future<List<ContentCategory>> getAllHomeSections() async {
+    await ready;
     final cached = _homeCache;
     final cacheAge = _homeCacheAt == null
         ? null
@@ -229,8 +341,10 @@ class PluginManager extends StateNotifier<PluginState> {
     _homeRequest = request;
     try {
       final sections = await request;
-      _homeCache = sections;
-      _homeCacheAt = DateTime.now();
+      if (identical(_homeRequest, request)) {
+        _homeCache = sections;
+        _homeCacheAt = DateTime.now();
+      }
       return sections;
     } finally {
       if (identical(_homeRequest, request)) _homeRequest = null;
@@ -245,7 +359,12 @@ class PluginManager extends StateNotifier<PluginState> {
       state.installedPlugins.map((plugin) async {
         try {
           return await plugin.getHome();
-        } catch (_) {
+        } catch (error, stack) {
+          AppLogger.error(
+            'Falha no catálogo ${plugin.manifest.id} (${error.runtimeType}).',
+            tag: 'PLUGIN',
+            stackTrace: stack,
+          );
           return <ContentCategory>[];
         }
       }),
@@ -254,7 +373,7 @@ class PluginManager extends StateNotifier<PluginState> {
       for (final section in pluginResult) {
         final cleanItems = <ContentItem>[];
         for (final item in section.items) {
-          final key = item.title.toLowerCase().trim();
+          final key = _contentKey(item);
           if (seenTitles.add(key)) {
             cleanItems.add(item);
           }
@@ -274,6 +393,8 @@ class PluginManager extends StateNotifier<PluginState> {
 
   /// Retorna detalhes do título buscando com exatidão pelo ID
   Future<ContentDetail?> getDetail(String contentId, String pluginId) async {
+    await ready;
+    final generation = _catalogGeneration;
     final cacheKey = '$contentId:$pluginId';
     final cached = _detailCache[cacheKey];
     if (cached != null) return cached;
@@ -284,86 +405,71 @@ class PluginManager extends StateNotifier<PluginState> {
     _detailRequests[cacheKey] = request;
     try {
       final detail = await request;
-      if (detail != null) _detailCache[cacheKey] = detail;
+      if (generation != _catalogGeneration) return null;
+      if (detail != null) {
+        if (detail.id != contentId &&
+            StreamResolverService.catalogIdFor(detail.id) !=
+                (_resolvedCatalogIds[contentId] ??
+                    StreamResolverService.catalogIdFor(contentId))) {
+          return null;
+        }
+        _detailCache[cacheKey] = detail;
+      }
       return detail;
     } finally {
-      _detailRequests.remove(cacheKey);
+      if (identical(_detailRequests[cacheKey], request)) {
+        _detailRequests.remove(cacheKey);
+      }
     }
   }
 
   Future<ContentDetail?> _loadDetail(String contentId, String pluginId) async {
-    // 1. Se for ID do TMDB
-    if (contentId.startsWith('tmdb_')) {
-      final liveDetail = await TmdbService.getDetail(contentId, pluginId);
-      if (liveDetail != null) return liveDetail;
+    final catalogId = await _catalogIdFor(contentId);
+    if (catalogId.startsWith('tmdb_')) {
+      final detail = await TmdbService.getDetail(
+        catalogId,
+        pluginId,
+        client: _catalogClient,
+      );
+      if (detail == null || contentId == catalogId) return detail;
+      // Preserve favorites/history keys while loading metadata by canonical ID.
+      return ContentDetail(
+        id: contentId,
+        title: detail.title,
+        posterUrl: detail.posterUrl,
+        backdropUrl: detail.backdropUrl,
+        overview: detail.overview,
+        year: detail.year,
+        duration: detail.duration,
+        rating: detail.rating,
+        type: detail.type,
+        pluginId: pluginId,
+        genres: detail.genres,
+        cast: detail.cast,
+        trailerUrl: detail.trailerUrl,
+        totalSeasons: detail.totalSeasons,
+        seasons: detail.seasons,
+        collectionId: detail.collectionId,
+        collectionName: detail.collectionName,
+        similar: detail.similar,
+      );
     }
-
-    // 2. Busca nos itens internos
     final internal = findInternalItemById(contentId);
     if (internal != null) {
-      final isSeries =
-          internal.type == ContentType.series ||
-          internal.type == ContentType.anime ||
-          internal.type == ContentType.dorama;
-      final localDetail = ContentDetail(
+      return ContentDetail(
         id: internal.id,
         title: internal.title,
         posterUrl: internal.posterUrl,
         backdropUrl: internal.backdropUrl,
         overview: internal.overview,
-        year: internal.year ?? '2024',
-        duration: isSeries ? 'Temporadas Completas' : '2h 15m',
-        rating: internal.rating ?? 8.5,
+        year: internal.year,
+        rating: internal.rating,
         type: internal.type,
-        pluginId: pluginId.isNotEmpty ? pluginId : internal.pluginId,
-        genres: [internal.type.displayName, 'Ação', 'Drama'],
-        totalSeasons: isSeries ? 4 : null,
-        seasons: isSeries
-            ? const [
-                Season(number: 1, name: 'Temporada 1', episodeCount: 8),
-                Season(number: 2, name: 'Temporada 2', episodeCount: 8),
-              ]
-            : null,
+        pluginId: internal.pluginId,
       );
-      if (localDetail.posterUrl.isNotEmpty &&
-          localDetail.overview?.isNotEmpty == true) {
-        return localDetail;
-      }
-
-      try {
-        final matches = await TmdbService.search(internal.title);
-        final match = matches.cast<ContentItem?>().firstWhere(
-          (item) =>
-              item != null &&
-              (internal.year == null || item.year == internal.year),
-          orElse: () => matches.isEmpty ? null : matches.first,
-        );
-        if (match != null) {
-          return ContentDetail(
-            id: internal.id,
-            title: localDetail.title,
-            posterUrl: localDetail.posterUrl.isNotEmpty
-                ? localDetail.posterUrl
-                : match.posterUrl,
-            backdropUrl: localDetail.backdropUrl ?? match.backdropUrl,
-            overview: localDetail.overview?.isNotEmpty == true
-                ? localDetail.overview
-                : match.overview,
-            year: localDetail.year ?? match.year,
-            duration: localDetail.duration,
-            rating: localDetail.rating ?? match.rating,
-            type: localDetail.type,
-            pluginId: localDetail.pluginId,
-            genres: localDetail.genres,
-            totalSeasons: localDetail.totalSeasons,
-            seasons: localDetail.seasons,
-          );
-        }
-      } catch (_) {}
-      return localDetail;
     }
-
-    // 3. Busca no plugin alvo
+    // Plugins sem correspondência não podem substituir o título solicitado.
+    if (state.installedPlugins.isEmpty) return null;
     final target = state.installedPlugins.firstWhere(
       (p) => p.manifest.id == pluginId,
       orElse: () => state.activePlugin ?? state.installedPlugins.first,
@@ -383,21 +489,16 @@ class PluginManager extends StateNotifier<PluginState> {
     String pluginId,
     int season,
   ) async {
-    if (contentId.startsWith('tmdb_')) {
-      final liveEpisodes = await TmdbService.getEpisodes(
-        contentId,
+    await ready;
+    final catalogId = await _catalogIdFor(contentId);
+    if (catalogId.startsWith('tmdb_')) {
+      return TmdbService.getEpisodes(
+        catalogId,
         season,
         pluginId: pluginId,
+        client: _catalogClient,
       );
-      if (liveEpisodes.isNotEmpty) {
-        AppLogger.success(
-          '${liveEpisodes.length} episódio(s) carregado(s) do TMDB para $contentId, temporada $season.',
-          tag: 'EPISODES',
-        );
-        return liveEpisodes;
-      }
     }
-
     PluginInterface? target;
     for (final plugin in state.installedPlugins) {
       if (plugin.manifest.id == pluginId) {
@@ -420,18 +521,38 @@ class PluginManager extends StateNotifier<PluginState> {
     }
   }
 
-  /// Usa exclusivamente EmbedMovies. IDs locais mapeados são resolvidos
-  /// diretamente; os demais títulos conhecidos são identificados via TMDB.
+  /// Prioriza fontes próprias do plugin e usa o resolvedor comum como fallback.
   Future<List<StreamSource>> getStreams(
     String contentId,
     String pluginId, {
     int? season,
     int? episode,
   }) async {
+    await ready;
     AppLogger.info(
       'Solicitando fontes para $contentId, plugin $pluginId.',
       tag: 'STREAM',
     );
+    // Provider-owned media takes precedence; built-in embed catalogs can still
+    // use the common resolver when their own implementation has no match.
+    for (final plugin in state.installedPlugins) {
+      if (plugin.manifest.id != pluginId) continue;
+      try {
+        final ownSources = await plugin.getStreams(
+          contentId,
+          season: season,
+          episode: episode,
+        );
+        if (ownSources.isNotEmpty) return ownSources;
+      } catch (error, stack) {
+        AppLogger.error(
+          'Falha nas fontes de $pluginId (${error.runtimeType}).',
+          tag: 'STREAM',
+          stackTrace: stack,
+        );
+      }
+      break;
+    }
     final sources = StreamResolverService.resolveFromContentId(
       contentId,
       season: season,
@@ -444,57 +565,99 @@ class PluginManager extends StateNotifier<PluginState> {
       );
       return sources;
     }
-    // Títulos locais sem mapeamento também usam apenas EmbedMovies.
-    final internalItem = findInternalItemById(contentId);
-    if (internalItem != null) {
-      try {
-        final searchResults = await TmdbService.search(internalItem.title);
-        if (searchResults.isNotEmpty) {
-          final normalizedTitle = internalItem.title.toLowerCase().trim();
-          final rankedResults = [...searchResults]
-            ..sort((a, b) {
-              int score(ContentItem item) {
-                var value = 0;
-                if (item.title.toLowerCase().trim() == normalizedTitle) {
-                  value += 4;
-                }
-                if (item.type == internalItem.type) value += 2;
-                if (internalItem.year != null &&
-                    item.year == internalItem.year) {
-                  value += 1;
-                }
-                return value;
-              }
-
-              return score(b).compareTo(score(a));
-            });
-          final tmdbContentId = rankedResults.first.id;
-          final sources = StreamResolverService.resolveFromContentId(
-            tmdbContentId,
-            season: season,
-            episode: episode,
-          );
-          if (sources.isNotEmpty) {
-            AppLogger.success(
-              '${sources.length} fonte(s) resolvida(s) via TMDB para $contentId.',
-              tag: 'STREAM',
-            );
-            return sources;
-          }
-        }
-      } catch (error, stack) {
-        AppLogger.error(
-          'Falha ao resolver $contentId via TMDB: $error',
-          tag: 'STREAM',
-          stackTrace: stack,
-        );
-      }
+    final verifiedId = await _catalogIdFor(contentId);
+    if (verifiedId != contentId) {
+      return StreamResolverService.resolveFromContentId(
+        verifiedId,
+        season: season,
+        episode: episode,
+      );
     }
-
     AppLogger.warn(
       'Não foi possível identificar $contentId no EmbedMovies.',
       tag: 'STREAM',
     );
     return const [];
+  }
+
+  Future<String> _catalogIdFor(String contentId) async {
+    final known =
+        _resolvedCatalogIds[contentId] ??
+        StreamResolverService.catalogIdFor(contentId);
+    if (known != contentId || known.startsWith('tmdb_')) return known;
+    final local = findInternalItemById(contentId);
+    if (local == null || local.pluginId == 'org.archive.publicdomain') {
+      return contentId;
+    }
+    final generation = _catalogGeneration;
+    try {
+      final results = await TmdbService.search(
+        local.title,
+        client: _catalogClient,
+      );
+      final titles = _titleKeys(local.title);
+      final matches = results
+          .where(
+            (item) =>
+                (item.type == ContentType.movie) ==
+                    (local.type == ContentType.movie) &&
+                local.year != null &&
+                item.year == local.year &&
+                _titleKeys(item.title).any(titles.contains),
+          )
+          .map((item) => item.id)
+          .toSet();
+      if (matches.length == 1 && generation == _catalogGeneration) {
+        _resolvedCatalogIds[contentId] = matches.single;
+        return matches.single;
+      }
+    } catch (error) {
+      AppLogger.warn(
+        'Identificação do catálogo indisponível (${error.runtimeType}).',
+        tag: 'PLUGIN',
+      );
+    }
+    return contentId;
+  }
+
+  static Set<String> _titleKeys(String title) {
+    final variants = [
+      title.replaceAll(RegExp(r'\([^)]*\)'), ''),
+      ...RegExp(r'\(([^)]*)\)').allMatches(title).map((m) => m.group(1)!),
+    ];
+    String normalize(String value) {
+      var result = value.toLowerCase();
+      const accents = {
+        'á': 'a',
+        'à': 'a',
+        'ã': 'a',
+        'â': 'a',
+        'é': 'e',
+        'ê': 'e',
+        'í': 'i',
+        'ó': 'o',
+        'ô': 'o',
+        'õ': 'o',
+        'ú': 'u',
+        'ü': 'u',
+        'ç': 'c',
+      };
+      accents.forEach((from, to) => result = result.replaceAll(from, to));
+      return result.replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+    }
+
+    return variants
+        .expand((v) => [v, v.split(':').first])
+        .map(normalize)
+        .where((v) => v.isNotEmpty)
+        .toSet();
+  }
+
+  static String _contentKey(ContentItem item) =>
+      '${item.pluginId}:${item.type.value}:${item.id}';
+
+  static String _searchContentKey(ContentItem item) {
+    final canonical = StreamResolverService.catalogIdFor(item.id);
+    return canonical.startsWith('tmdb_') ? canonical : _contentKey(item);
   }
 }

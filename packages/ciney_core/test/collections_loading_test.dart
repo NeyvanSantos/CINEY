@@ -10,9 +10,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets(
+  test(
     'conclui consultas, reutiliza a Home e permite repetir uma falha',
-    (tester) async {
+    () async {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       final requests = <String, int>{};
       server.listen((request) async {

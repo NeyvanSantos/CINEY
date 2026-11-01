@@ -2,9 +2,9 @@ package com.cinemax.cinemax
 
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** Loader threads record authentication needs before the playback thread signals ready. */
+/** Authentication can be required by later segments or seeks, after first frame. */
 internal class TvBrowserSessionState {
-    private val required = AtomicBoolean(false)
+    private val required = AtomicBoolean(true)
     fun requireBrowser() { required.set(true) }
     fun canReleaseBrowser(firstFrame: Boolean, playbackReady: Boolean): Boolean =
         firstFrame && playbackReady && !required.get()

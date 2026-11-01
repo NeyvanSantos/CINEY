@@ -11,6 +11,7 @@ import '../../../core/localization/app_localization.dart';
 import '../../../core/widgets/focusable_surface.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/gradient_poster.dart';
+import '../../../core/services/app_logger.dart';
 import '../../../plugin_engine/manager/plugin_manager.dart';
 import '../../../plugin_engine/models/content_item.dart';
 import '../../../plugin_engine/models/stream_source.dart';
@@ -44,6 +45,7 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
   List<ContentItem> _episodes = [];
   bool _isLoadingEpisodes = false;
   int _episodeRequestId = 0;
+  int _sourceRequestId = 0;
 
   FocusNode? _watchButtonFocusNode;
   final Map<int, FocusNode> _seasonFocusNodes = {};
@@ -182,12 +184,13 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
     return '/details/${item.id}/${item.pluginId}?${Uri(queryParameters: params).query}';
   }
 
-  void _playContent({
+  Future<void> _playContent({
     required ContentDetail item,
     int? season,
     int? episode,
     String? episodeTitle,
-  }) {
+  }) async {
+    final request = ++_sourceRequestId;
     final effectiveSeason = item.type == ContentType.movie
         ? null
         : (season ?? _selectedSeason);
@@ -198,11 +201,16 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
         ? '${item.title} - $episodeTitle'
         : item.title;
 
-    final sources = StreamResolverService.resolveFromContentId(
-      item.id,
-      season: effectiveSeason,
-      episode: effectiveEpisode,
+    final sources = await _resolveSources(
+      item,
+      effectiveSeason,
+      effectiveEpisode,
     );
+    if (!mounted || request != _sourceRequestId) return;
+    if (sources.isEmpty) {
+      _sourcesUnavailable();
+      return;
+    }
 
     void navigateToPlayer(int serverIndex) {
       if (!mounted) return;
@@ -269,12 +277,13 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
     );
   }
 
-  void _onCastPressed(
+  Future<void> _onCastPressed(
     ContentDetail item, {
     int? episode,
     String? episodeTitle,
-  }) {
+  }) async {
     if (widget.isTv) return;
+    final request = ++_sourceRequestId;
 
     final effectiveSeason = item.type == ContentType.movie
         ? null
@@ -285,11 +294,12 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
               (_episodes.isNotEmpty ? _episodes.first.episodeNumber : null) ??
               1);
 
-    final sources = StreamResolverService.resolveFromContentId(
-      item.id,
-      season: effectiveSeason,
-      episode: effectiveEpisode,
+    final sources = await _resolveSources(
+      item,
+      effectiveSeason,
+      effectiveEpisode,
     );
+    if (!mounted || request != _sourceRequestId) return;
 
     if (sources.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -332,6 +342,37 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
     } else {
       doCast(0);
     }
+  }
+
+  Future<List<StreamSource>> _resolveSources(
+    ContentDetail item,
+    int? season,
+    int? episode,
+  ) async {
+    try {
+      final sources = await ref
+          .read(pluginManagerProvider.notifier)
+          .getStreams(item.id, item.pluginId, season: season, episode: episode);
+      return List<StreamSource>.of(sources)
+        ..sort((a, b) => a.priority.compareTo(b.priority));
+    } catch (error, stack) {
+      AppLogger.error(
+        'Falha ao consultar fontes (${error.runtimeType}).',
+        tag: 'STREAM',
+        stackTrace: stack,
+      );
+      return const [];
+    }
+  }
+
+  void _sourcesUnavailable() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Não foi possível obter uma fonte de vídeo. Tente novamente.',
+        ),
+      ),
+    );
   }
 
   @override
@@ -688,7 +729,8 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                                           if (event is KeyDownEvent) {
                                             if (event.logicalKey ==
                                                 LogicalKeyboardKey.arrowDown) {
-                                              if (_episodeFocusNodes.isNotEmpty) {
+                                              if (_episodeFocusNodes
+                                                  .isNotEmpty) {
                                                 _episodeFocusNodes.first
                                                     .requestFocus();
                                                 return KeyEventResult.handled;
@@ -789,9 +831,11 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                     else
                       Column(
                         children: [
-                          for (var index = 0;
-                              index < _episodes.length;
-                              index++) ...[
+                          for (
+                            var index = 0;
+                            index < _episodes.length;
+                            index++
+                          ) ...[
                             if (index > 0) const SizedBox(height: 10),
                             () {
                               final ep = _episodes[index];
@@ -801,7 +845,8 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                                 key: ValueKey(
                                   'episode-card-$_selectedSeason-$episodeNumber',
                                 ),
-                                focusNode: (widget.isTv &&
+                                focusNode:
+                                    (widget.isTv &&
                                         index < _episodeFocusNodes.length)
                                     ? _episodeFocusNodes[index]
                                     : null,
@@ -816,8 +861,9 @@ class _DetailsScreenState extends ConsumerState<DetailsScreen> {
                                               _episodeFocusNodes[index - 1]
                                                   .requestFocus();
                                             } else {
-                                              _getSeasonFocusNode(_selectedSeason)
-                                                  .requestFocus();
+                                              _getSeasonFocusNode(
+                                                _selectedSeason,
+                                              ).requestFocus();
                                             }
                                             return KeyEventResult.handled;
                                           } else if (event.logicalKey ==

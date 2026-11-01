@@ -225,43 +225,12 @@ class MegaFlixPlugin extends BaseScraperPlugin {
 
   @override
   Future<ContentDetail> getDetail(String contentId) async {
-    if (contentId.startsWith('tmdb_')) {
-      final liveDetail = await TmdbService.getDetail(contentId, manifest.id);
-      if (liveDetail != null) return liveDetail;
+    final canonical = StreamResolverService.catalogIdFor(contentId);
+    final detail = await TmdbService.getDetail(canonical, manifest.id);
+    if (detail == null) {
+      throw StateError('Detalhes indisponíveis para este título.');
     }
-
-    final match = movies.where((i) => i.id == contentId);
-    final item = match.isNotEmpty ? match.first : movies.first;
-
-    return ContentDetail(
-      id: item.id,
-      title: item.title,
-      posterUrl: item.posterUrl,
-      backdropUrl: item.backdropUrl,
-      overview:
-          item.overview ??
-          'Filme emocionante com qualidade master e áudio multicanal.',
-      year: item.year ?? '2024',
-      duration: '2h 20m',
-      rating: item.rating ?? 8.5,
-      type: item.type,
-      pluginId: manifest.id,
-      genres: const ['Ação', 'Ficção Científica', 'Aventura'],
-      cast: const [
-        CastMember(
-          name: 'Ator Principal',
-          character: 'Protagonista',
-          photoUrl:
-              'https://image.tmdb.org/t/p/w200/BE2sdjpgsa2rNTFa66f7upkaOP.jpg',
-        ),
-        CastMember(
-          name: 'Atriz Principal',
-          character: 'Co-protagonista',
-          photoUrl:
-              'https://image.tmdb.org/t/p/w200/r3A7evZyTGaNuQBT5vGz093Zezr.jpg',
-        ),
-      ],
-    );
+    return detail;
   }
 
   @override
@@ -432,53 +401,20 @@ class SuperCinePlugin extends BaseScraperPlugin {
 
   @override
   Future<ContentDetail> getDetail(String contentId) async {
-    if (contentId.startsWith('tmdb_')) {
-      final liveDetail = await TmdbService.getDetail(contentId, manifest.id);
-      if (liveDetail != null) return liveDetail;
+    final canonical = StreamResolverService.catalogIdFor(contentId);
+    final detail = await TmdbService.getDetail(canonical, manifest.id);
+    if (detail == null) {
+      throw StateError('Detalhes indisponíveis para este título.');
     }
-
-    final match = seriesList.where((i) => i.id == contentId);
-    final item = match.isNotEmpty ? match.first : seriesList.first;
-
-    return ContentDetail(
-      id: item.id,
-      title: item.title,
-      posterUrl: item.posterUrl,
-      backdropUrl: item.backdropUrl,
-      overview:
-          item.overview ??
-          'Série aclamada internacionalmente com temporadas completas.',
-      year: item.year ?? '2024',
-      duration: '4 Temporadas',
-      rating: item.rating ?? 8.7,
-      type: ContentType.series,
-      pluginId: manifest.id,
-      genres: const ['Drama', 'Ficção Científica', 'Mistério'],
-      totalSeasons: 4,
-      seasons: const [
-        Season(number: 1, name: 'Temporada 1', episodeCount: 8),
-        Season(number: 2, name: 'Temporada 2', episodeCount: 9),
-        Season(number: 3, name: 'Temporada 3', episodeCount: 8),
-        Season(number: 4, name: 'Temporada 4', episodeCount: 9),
-      ],
-    );
+    return detail;
   }
 
   @override
   Future<List<ContentItem>> getEpisodes(String seriesId, int season) async {
-    return List.generate(
-      8,
-      (index) => ContentItem(
-        id: 'ep_${seriesId}_${season}_${index + 1}',
-        title: 'Episódio ${index + 1} - Temporada $season',
-        posterUrl:
-            'https://image.tmdb.org/t/p/w500/49WJfeN0moxb9IPfGn8AIqMGskD.jpg',
-        year: '2024',
-        type: ContentType.series,
-        pluginId: manifest.id,
-        overview:
-            'Episódio completo em alta definição com legendas e dublagem em português.',
-      ),
+    return TmdbService.getEpisodes(
+      StreamResolverService.catalogIdFor(seriesId),
+      season,
+      pluginId: manifest.id,
     );
   }
 }
@@ -631,46 +567,20 @@ class AnimesCloudPlugin extends BaseScraperPlugin {
 
   @override
   Future<ContentDetail> getDetail(String contentId) async {
-    if (contentId.startsWith('tmdb_')) {
-      final liveDetail = await TmdbService.getDetail(contentId, manifest.id);
-      if (liveDetail != null) return liveDetail;
+    final canonical = StreamResolverService.catalogIdFor(contentId);
+    final detail = await TmdbService.getDetail(canonical, manifest.id);
+    if (detail == null) {
+      throw StateError('Detalhes indisponíveis para este título.');
     }
-
-    final match = animesList.where((i) => i.id == contentId);
-    final item = match.isNotEmpty ? match.first : animesList.first;
-
-    return ContentDetail(
-      id: item.id,
-      title: item.title,
-      posterUrl: item.posterUrl,
-      backdropUrl: item.backdropUrl,
-      overview:
-          item.overview ??
-          'Anime de sucesso absoluto com episódios dublados e legendados.',
-      year: item.year ?? '2024',
-      duration: '4 Temporadas',
-      rating: item.rating ?? 8.8,
-      type: ContentType.anime,
-      pluginId: manifest.id,
-      genres: const ['Anime', 'Ação', 'Fantasia', 'Sobrenatural'],
-      totalSeasons: 4,
-    );
+    return detail;
   }
 
   @override
   Future<List<ContentItem>> getEpisodes(String seriesId, int season) async {
-    return List.generate(
-      12,
-      (i) => ContentItem(
-        id: 'ac_ep_${seriesId}_${season}_${i + 1}',
-        title: 'Episódio ${i + 1}',
-        posterUrl:
-            'https://image.tmdb.org/t/p/w500/xUfRZu2mi8jH6SzQEJGP6tjBuYj.jpg',
-        type: ContentType.anime,
-        pluginId: manifest.id,
-        overview:
-            'Episódio completo em Full HD com áudio original em japonês e dublagem PT-BR.',
-      ),
+    return TmdbService.getEpisodes(
+      StreamResolverService.catalogIdFor(seriesId),
+      season,
+      pluginId: manifest.id,
     );
   }
 }
@@ -780,43 +690,20 @@ class DoramasPlugin extends BaseScraperPlugin {
 
   @override
   Future<ContentDetail> getDetail(String contentId) async {
-    if (contentId.startsWith('tmdb_')) {
-      final liveDetail = await TmdbService.getDetail(contentId, manifest.id);
-      if (liveDetail != null) return liveDetail;
+    final canonical = StreamResolverService.catalogIdFor(contentId);
+    final detail = await TmdbService.getDetail(canonical, manifest.id);
+    if (detail == null) {
+      throw StateError('Detalhes indisponíveis para este título.');
     }
-
-    final match = doramasList.where((i) => i.id == contentId);
-    final item = match.isNotEmpty ? match.first : doramasList.first;
-
-    return ContentDetail(
-      id: item.id,
-      title: item.title,
-      posterUrl: item.posterUrl,
-      backdropUrl: item.backdropUrl,
-      overview:
-          item.overview ?? 'Dorama emocionante com atuações de grande sucesso.',
-      year: item.year ?? '2024',
-      duration: '16 Episódios',
-      rating: item.rating ?? 8.8,
-      type: ContentType.dorama,
-      pluginId: manifest.id,
-      genres: const ['Romance', 'Drama', 'Fantasia'],
-      totalSeasons: 1,
-    );
+    return detail;
   }
 
   @override
   Future<List<ContentItem>> getEpisodes(String seriesId, int season) async {
-    return List.generate(
-      16,
-      (i) => ContentItem(
-        id: 'dr_ep_${seriesId}_${season}_${i + 1}',
-        title: 'Episódio ${i + 1}',
-        posterUrl:
-            'https://image.tmdb.org/t/p/w500/jFEPOKMfBTvhIGIo7YNJ5FaZSQs.jpg',
-        type: ContentType.dorama,
-        pluginId: manifest.id,
-      ),
+    return TmdbService.getEpisodes(
+      StreamResolverService.catalogIdFor(seriesId),
+      season,
+      pluginId: manifest.id,
     );
   }
 }
@@ -925,24 +812,12 @@ class AmenicTVPlugin extends BaseScraperPlugin {
 
   @override
   Future<ContentDetail> getDetail(String contentId) async {
-    if (contentId.startsWith('tmdb_')) {
-      final live = await TmdbService.getDetail(contentId, manifest.id);
-      if (live != null) return live;
+    final canonical = StreamResolverService.catalogIdFor(contentId);
+    final detail = await TmdbService.getDetail(canonical, manifest.id);
+    if (detail == null) {
+      throw StateError('Detalhes indisponíveis para este título.');
     }
-    final match = animationsList.where((i) => i.id == contentId);
-    final item = match.isNotEmpty ? match.first : animationsList.first;
-    return ContentDetail(
-      id: item.id,
-      title: item.title,
-      posterUrl: item.posterUrl,
-      backdropUrl: item.backdropUrl,
-      overview: item.overview,
-      year: item.year,
-      rating: item.rating,
-      type: item.type,
-      pluginId: manifest.id,
-      genres: const ['Animação', 'Aventura', 'Comédia', 'Família'],
-    );
+    return detail;
   }
 
   @override
@@ -1035,24 +910,12 @@ class ProbreFlixPlugin extends BaseScraperPlugin {
 
   @override
   Future<ContentDetail> getDetail(String contentId) async {
-    if (contentId.startsWith('tmdb_')) {
-      final live = await TmdbService.getDetail(contentId, manifest.id);
-      if (live != null) return live;
+    final canonical = StreamResolverService.catalogIdFor(contentId);
+    final detail = await TmdbService.getDetail(canonical, manifest.id);
+    if (detail == null) {
+      throw StateError('Detalhes indisponíveis para este título.');
     }
-    final match = probreList.where((i) => i.id == contentId);
-    final item = match.isNotEmpty ? match.first : probreList.first;
-    return ContentDetail(
-      id: item.id,
-      title: item.title,
-      posterUrl: item.posterUrl,
-      backdropUrl: item.backdropUrl,
-      overview: item.overview,
-      year: item.year,
-      rating: item.rating,
-      type: item.type,
-      pluginId: manifest.id,
-      genres: const ['Ficção Científica', 'Ação'],
-    );
+    return detail;
   }
 
   @override
@@ -1144,24 +1007,12 @@ class StreamberryPlugin extends BaseScraperPlugin {
 
   @override
   Future<ContentDetail> getDetail(String contentId) async {
-    if (contentId.startsWith('tmdb_')) {
-      final live = await TmdbService.getDetail(contentId, manifest.id);
-      if (live != null) return live;
+    final canonical = StreamResolverService.catalogIdFor(contentId);
+    final detail = await TmdbService.getDetail(canonical, manifest.id);
+    if (detail == null) {
+      throw StateError('Detalhes indisponíveis para este título.');
     }
-    final match = horrorList.where((i) => i.id == contentId);
-    final item = match.isNotEmpty ? match.first : horrorList.first;
-    return ContentDetail(
-      id: item.id,
-      title: item.title,
-      posterUrl: item.posterUrl,
-      backdropUrl: item.backdropUrl,
-      overview: item.overview,
-      year: item.year,
-      rating: item.rating,
-      type: item.type,
-      pluginId: manifest.id,
-      genres: const ['Terror', 'Suspense', 'Mistério'],
-    );
+    return detail;
   }
 
   @override
@@ -1269,7 +1120,7 @@ class PublicDomainPlugin implements PluginInterface {
   Future<ContentDetail> getDetail(String contentId) async {
     final item = movies.firstWhere(
       (movie) => movie.id == contentId,
-      orElse: () => movies.first,
+      orElse: () => throw StateError('Título não encontrado neste catálogo.'),
     );
     return ContentDetail(
       id: item.id,

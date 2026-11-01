@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -47,6 +48,9 @@ internal class TvPlayerControls(
     private val rail = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }
     private val panel = ScrollView(activity).apply { visibility = GONE; isFillViewport = false }
     private val ui = Handler(Looper.getMainLooper())
+    private val autoHide = TvControlsAutoHide(
+        { task, delay -> ui.postDelayed(task, delay) }, ui::removeCallbacks, ::hideForInactivity,
+    )
     private var player: ExoPlayer? = null
     private var renditions = emptyList<TvVideoRendition>()
     private var chosenHeight: Int? = null
@@ -88,6 +92,13 @@ internal class TvPlayerControls(
             setMargins(dp(16), dp(16), dp(16), dp(100))
         })
         playerView.setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility ->
+            if (visibility != VISIBLE) {
+                panelKind = null
+                panel.visibility = GONE
+                autoHide.onHidden()
+            } else {
+                autoHide.onInteraction()
+            }
             rail.visibility = if (panelKind == null) visibility else GONE
         })
     }
@@ -123,10 +134,38 @@ internal class TvPlayerControls(
         panelKind = null
         panel.visibility = GONE
         rail.visibility = VISIBLE
-        playerView.controllerShowTimeoutMs = 5000
+        playerView.controllerShowTimeoutMs = TvControlsAutoHide.TIMEOUT_MS
         playerView.showController()
         (if (previous == "quality") qualityButton else brightnessButton).requestFocus()
+        autoHide.onInteraction()
         return true
+    }
+
+    fun onUserInteraction() {
+        autoHide.onInteraction()
+        if (panelKind == null && playerView.isControllerFullyVisible) {
+            playerView.controllerShowTimeoutMs = TvControlsAutoHide.TIMEOUT_MS
+            playerView.showController()
+        }
+    }
+
+    fun onTouchObserved(event: MotionEvent) {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> autoHide.onTouchStarted()
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> autoHide.onTouchFinished()
+        }
+    }
+
+    private fun hideForInactivity() {
+        val previousPanel = panelKind
+        panelKind = null
+        panel.visibility = GONE
+        panel.clearFocus()
+        rail.clearFocus()
+        playerView.hideController()
+        rail.visibility = GONE
+        playerView.requestFocus()
+        Log.i("CINEY_NATIVE", "controls=hidden reason=inactivity panel=$previousPanel paused=${player?.playWhenReady == false}")
     }
 
     fun handleKey(event: KeyEvent): Boolean {
@@ -150,6 +189,7 @@ internal class TvPlayerControls(
     }
 
     fun release() {
+        autoHide.release()
         pendingBrightness?.let(ui::removeCallbacks)
         pendingBrightness = null
         bind(null)
@@ -231,6 +271,7 @@ internal class TvPlayerControls(
             override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
                 if (!fromUser) return
                 setBrightness(progress)
+                autoHide.onInteraction()
                 value.text = if (progress == 0) "Original" else "+$progress"
                 pendingBrightness?.let(ui::removeCallbacks)
                 pendingBrightness = Runnable { changeBrightness(progress) }.also { ui.postDelayed(it, 150) }
@@ -255,6 +296,8 @@ internal class TvPlayerControls(
         panelKind = kind
         rail.visibility = GONE
         playerView.controllerShowTimeoutMs = 0
+        // The shared deadline closes panels too, including while playback is paused.
+        autoHide.onInteraction()
         panel.visibility = VISIBLE
         panel.background = shape(false)
         panel.removeAllViews()
@@ -289,10 +332,9 @@ internal class TvPlayerControls(
         background = shape(false)
         setOnFocusChangeListener { _, focused ->
             background = shape(focused)
-            if (focused) playerView.controllerShowTimeoutMs = 0
-            else if (panelKind == null && !rail.hasFocus()) playerView.controllerShowTimeoutMs = 5000
+            if (focused) autoHide.onInteraction()
         }
-        setOnClickListener { action() }
+        setOnClickListener { autoHide.onInteraction(); action() }
     }
 
     private fun shape(focused: Boolean) = GradientDrawable().apply {

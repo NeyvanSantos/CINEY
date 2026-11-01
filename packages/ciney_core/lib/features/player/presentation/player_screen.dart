@@ -201,6 +201,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   // Lista de fontes e estado
   List<StreamSource> _sources = [];
   int _currentSourceIndex = 0;
+  final Set<int> _attemptedSources = {};
   String? _savedServer;
   // Keep the old media's provider until its pending progress has been captured.
   String? _playbackServer;
@@ -226,9 +227,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   Timer? _hideControlsTimer;
 
   // Configurações Selecionadas
-  VideoQuality _selectedQuality = VideoQuality.auto;
-  AudioTrack _selectedAudio = AudioTrack.ptBrDubbed;
-  SubtitleOption _selectedSubtitle = SubtitleOption.ptBr;
   AspectRatioMode _selectedAspectRatio = AspectRatioMode.standard;
 
   @override
@@ -238,11 +236,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       // Evict reusable artwork; live images remain owned by their widgets.
       PaintingBinding.instance.imageCache.clear();
     }
-    _selectedSubtitle = switch (ref.read(appLocaleProvider).languageCode) {
-      'en' => SubtitleOption.english,
-      'es' => SubtitleOption.spanish,
-      _ => SubtitleOption.ptBr,
-    };
     _season = widget.season;
     _episode = widget.episode;
     _title = widget.title;
@@ -772,8 +765,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }
   }
 
-  Future<void> _initPlayerWithIndex(int index) async {
+  Future<void> _initPlayerWithIndex(int index, {bool newAttempt = true}) async {
     if (!mounted) return;
+    if (newAttempt) _attemptedSources.clear();
     if (index >= _sources.length) {
       if (mounted) {
         setState(() {
@@ -786,6 +780,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     }
 
     final source = _sources[index];
+    _attemptedSources.add(index);
     // Preserve the current point when switching servers for the same title.
     final oldNative = _videoPlayerController?.value;
     final oldEmbed = _embedSession;
@@ -1279,8 +1274,11 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       'Falha no servidor ${_currentSourceIndex + 1}: $reason',
       tag: 'PLAYER',
     );
-    final next = _currentSourceIndex + 1;
-    if (next < _sources.length) {
+    final next = List.generate(
+      _sources.length,
+      (offset) => (_currentSourceIndex + 1 + offset) % _sources.length,
+    ).where((index) => !_attemptedSources.contains(index)).firstOrNull;
+    if (next != null) {
       final nextSource = _sources[next];
       AppLogger.info(
         'Alternando automaticamente para ${nextSource.server}.',
@@ -1313,7 +1311,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           margin: const EdgeInsets.all(16),
         ),
       );
-      _initPlayerWithIndex(next);
+      _initPlayerWithIndex(next, newAttempt: false);
     } else {
       AppLogger.error(
         'Todos os ${_sources.length} servidores falharam. $reason',
@@ -1498,32 +1496,24 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       if (!mounted || _videoPlayerController != pendingController) return false;
       final controller = pendingController;
       if (controller != null) {
-        await controller.dispose();
+        try {
+          await controller.dispose().timeout(const Duration(seconds: 2));
+        } catch (disposeError) {
+          AppLogger.warn(
+            'Encerramento do player falhou (${disposeError.runtimeType}).',
+            tag: 'PLAYER',
+          );
+        }
       }
-      if (_videoPlayerController == controller) {
-        _videoPlayerController = null;
-      }
+      if (_videoPlayerController != controller) return false;
+      _videoPlayerController = null;
       AppLogger.error(
         'Falha ao iniciar ${source.server} (${e.runtimeType}).',
         tag: 'PLAYER',
         stackTrace: stack,
       );
       if (!mounted || _currentSourceIndex != index || fromTvEmbed) return false;
-      if (index + 1 < _sources.length) {
-        AppLogger.info(
-          'Tentando o próximo servidor após falha de ${source.server}.',
-          tag: 'PLAYER',
-        );
-        await _initPlayerWithIndex(index + 1);
-      } else {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-            _errorMessage =
-                'Não foi possível iniciar o vídeo. Recarregue ou escolha outro servidor.';
-          });
-        }
-      }
+      _tryNextSource('Não foi possível iniciar o vídeo.');
       return false;
     }
   }
@@ -1623,7 +1613,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           }
           final dedicated = AppPlatformServices.current.tvPlayback;
           if (dedicated != null) {
-            final browserSession = media.server.toLowerCase().contains('superflix');
+            final browserSession = media.headers?['Referer'] != null;
             _dedicatedTvActive = true;
             var ready = false;
             try {
@@ -1679,7 +1669,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
                   _isLoading = false;
                   _controlsVisible = true;
                 });
-                _showServerSelectorModal();
+                await _showServerSelectorModal(restoreOnCancel: true);
               } else if (result['completed'] == true && _hasEpisode) {
                 await _onPlaybackEnded();
               } else {
@@ -2414,34 +2404,16 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
               Row(
                 children: [
                   _buildPillBadge(
-                    icon: _selectedQuality.icon,
-                    label: context.tr(
-                      'player.quality.${_selectedQuality.name}',
-                    ),
+                    icon: Icons.high_quality_rounded,
+                    label: 'Qualidade',
                     onTap: _showQualityModal,
                   ),
                   const SizedBox(width: 8),
-                  _buildPillBadge(
-                    label:
-                        '${_selectedAudio.flag} ${context.tr('player.audio.${_selectedAudio.name}').split(' ').first}',
-                    onTap: _showAudioModal,
-                  ),
+                  _buildPillBadge(label: 'Áudio', onTap: _showAudioModal),
                   const SizedBox(width: 8),
                   _buildPillBadge(
-                    icon: _selectedSubtitle.icon,
-                    label: _selectedSubtitle == SubtitleOption.off
-                        ? context.tr('player.subtitle.badge_off')
-                        : context
-                              .tr('player.subtitle.badge')
-                              .replaceAll(
-                                '{value}',
-                                context
-                                    .tr(
-                                      'player.subtitle.${_selectedSubtitle.name}',
-                                    )
-                                    .split(' ')
-                                    .first,
-                              ),
+                    icon: Icons.subtitles_rounded,
+                    label: 'Legendas',
                     onTap: _showSubtitleModal,
                   ),
                 ],
@@ -2810,7 +2782,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         _buildSettingsItem(
           icon: Icons.hd_rounded,
           title: context.tr('player.quality.title'),
-          subtitle: context.tr('player.quality.${_selectedQuality.name}'),
+          subtitle: 'Qualidade disponível por servidor',
           onTap: () {
             Navigator.pop(context);
             _showQualityModal();
@@ -2819,8 +2791,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         _buildSettingsItem(
           icon: Icons.audiotrack_rounded,
           title: context.tr('player.audio.title'),
-          subtitle:
-              '${_selectedAudio.flag} ${context.tr('player.audio.${_selectedAudio.name}')}',
+          subtitle: 'Consultar faixas disponíveis',
           onTap: () {
             Navigator.pop(context);
             _showAudioModal();
@@ -2829,7 +2800,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         _buildSettingsItem(
           icon: Icons.subtitles_rounded,
           title: context.tr('player.subtitle.title'),
-          subtitle: context.tr('player.subtitle.${_selectedSubtitle.name}'),
+          subtitle: 'Disponibilidade conforme o provedor',
           onTap: () {
             Navigator.pop(context);
             _showSubtitleModal();
@@ -2862,103 +2833,90 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   void _showQualityModal() {
     _showAppModal(
       title: context.tr('player.quality.modal'),
-      subtitle: context.tr('player.quality.help'),
-      children: VideoQuality.values.map((q) {
-        final isSelected = _selectedQuality == q;
-        return _buildSelectableTile(
-          icon: q.icon,
-          title: context.tr('player.quality.${q.name}'),
-          subtitle: context.tr('player.quality.${q.name}_help'),
-          isSelected: isSelected,
-          onTap: () {
-            setState(() => _selectedQuality = q);
-            Navigator.pop(context);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  context
-                      .tr('player.quality.set')
-                      .replaceAll(
-                        '{value}',
-                        context.tr('player.quality.${q.name}'),
-                      ),
-                ),
-                duration: const Duration(seconds: 2),
-                backgroundColor: AppColors.surface,
-              ),
-            );
-          },
-        );
-      }).toList(),
+      subtitle:
+          'A qualidade depende da fonte. Selecione um servidor para trocar a transmissão.',
+      children: [
+        for (var i = 0; i < _sources.length; i++)
+          _buildSelectableTile(
+            title: '${_sources[i].server} • ${_sources[i].quality}',
+            subtitle: 'Qualidade informada pelo servidor',
+            isSelected: i == _currentSourceIndex,
+            onTap: () {
+              Navigator.pop(context);
+              _initPlayerWithIndex(i);
+            },
+          ),
+      ],
     );
   }
 
-  void _showAudioModal() {
-    _showAppModal(
-      title: context.tr('player.audio.modal'),
-      subtitle: context.tr('player.audio.help'),
-      children: AudioTrack.values.map((a) {
-        final isSelected = _selectedAudio == a;
-        return _buildSelectableTile(
-          customLeading: Text(a.flag, style: const TextStyle(fontSize: 22)),
-          title: context.tr('player.audio.${a.name}'),
-          subtitle: context.tr('player.audio.${a.name}_help'),
-          isSelected: isSelected,
-          onTap: () {
-            setState(() => _selectedAudio = a);
-            Navigator.pop(context);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  context
-                      .tr('player.audio.set')
-                      .replaceAll(
-                        '{value}',
-                        context.tr('player.audio.${a.name}'),
-                      ),
-                ),
-                duration: const Duration(seconds: 2),
-                backgroundColor: AppColors.surface,
-              ),
-            );
-          },
+  Future<void> _showAudioModal() async {
+    final controller = _videoPlayerController;
+    if (controller == null || !controller.isAudioTrackSupportAvailable()) {
+      _showCapabilityHelp(
+        'Áudio',
+        'Use os controles do provedor quando disponíveis. Esta fonte não expõe faixas de áudio ao aplicativo.',
+      );
+      return;
+    }
+    try {
+      final tracks = await controller.getAudioTracks();
+      if (!mounted || controller != _videoPlayerController) return;
+      if (tracks.isEmpty) {
+        _showCapabilityHelp(
+          'Áudio',
+          'Nenhuma faixa alternativa foi informada pelo player.',
         );
-      }).toList(),
-    );
+        return;
+      }
+      await _showAppModal(
+        title: 'Áudio',
+        subtitle: 'Faixas disponíveis nesta transmissão',
+        children: tracks
+            .map(
+              (track) => _buildSelectableTile(
+                title: track.label ?? track.language ?? track.id,
+                subtitle: track.language ?? '',
+                isSelected: track.isSelected,
+                onTap: () async {
+                  Navigator.pop(context);
+                  try {
+                    await controller.selectAudioTrack(track.id);
+                    if (mounted && controller == _videoPlayerController) {
+                      setState(() {});
+                    }
+                  } catch (_) {
+                    if (mounted) {
+                      _showCapabilityHelp(
+                        'Áudio',
+                        'Não foi possível mudar a faixa de áudio.',
+                      );
+                    }
+                  }
+                },
+              ),
+            )
+            .toList(),
+      );
+    } catch (_) {
+      if (mounted) {
+        _showCapabilityHelp(
+          'Áudio',
+          'Não foi possível consultar as faixas de áudio.',
+        );
+      }
+    }
   }
 
   void _showSubtitleModal() {
-    _showAppModal(
-      title: context.tr('player.subtitle.title'),
-      subtitle: context.tr('player.subtitle.help'),
-      children: SubtitleOption.values.map((s) {
-        final isSelected = _selectedSubtitle == s;
-        return _buildSelectableTile(
-          icon: s.icon,
-          title: context.tr('player.subtitle.${s.name}'),
-          subtitle: context.tr('player.subtitle.${s.name}_help'),
-          isSelected: isSelected,
-          onTap: () {
-            setState(() => _selectedSubtitle = s);
-            Navigator.pop(context);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  context
-                      .tr('player.subtitle.set')
-                      .replaceAll(
-                        '{value}',
-                        context.tr('player.subtitle.${s.name}'),
-                      ),
-                ),
-                duration: const Duration(seconds: 2),
-                backgroundColor: AppColors.surface,
-              ),
-            );
-          },
-        );
-      }).toList(),
+    _showCapabilityHelp(
+      'Legendas',
+      'Use o seletor de legendas do provedor quando disponível. Esta integração não permite selecionar legendas pelo aplicativo.',
     );
+  }
+
+  void _showCapabilityHelp(String title, String message) {
+    _showAppModal(title: title, subtitle: message, children: const []);
   }
 
   void _showAspectRatioModal() {
@@ -2985,7 +2943,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     );
   }
 
-  void _showServerSelectorModal() {
+  Future<void> _showServerSelectorModal({bool restoreOnCancel = false}) async {
+    var selected = false;
     // Determina a cor e ícone baseado no tipo de áudio do servidor
     Color badgeColorFor(AudioType type) {
       switch (type) {
@@ -3027,7 +2986,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       }
     }
 
-    _showAppModal(
+    await _showAppModal(
       title: context.tr('player.server.modal'),
       subtitle: '🇧🇷 ${context.tr('player.server.help')}',
       children: _sources.asMap().entries.map((entry) {
@@ -3044,24 +3003,28 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
           badge: '${source.audioType.icon} ${source.audioType.label}',
           badgeColor: badgeColor,
           onTap: () {
+            selected = true;
             Navigator.pop(context);
             _initPlayerWithIndex(index);
           },
         );
       }).toList(),
     );
+    if (restoreOnCancel && !selected && mounted && !_closingPlayer) {
+      await _initPlayerWithIndex(_currentSourceIndex);
+    }
   }
 
   // ══════════════════════════════════════════════
   // Helpers de Componentes Visuais do Modal
   // ══════════════════════════════════════════════
 
-  void _showAppModal({
+  Future<void> _showAppModal({
     required String title,
     required String subtitle,
     required List<Widget> children,
   }) {
-    showModalBottomSheet(
+    return showModalBottomSheet<void>(
       context: context,
       backgroundColor: AppColors.surface,
       isScrollControlled: true,

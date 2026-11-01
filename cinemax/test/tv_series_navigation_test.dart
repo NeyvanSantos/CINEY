@@ -2,6 +2,7 @@ import 'package:cinemax/features/auth/services/account_repository.dart';
 import 'package:cinemax/features/details/presentation/details_screen.dart';
 import 'package:cinemax/plugin_engine/manager/plugin_manager.dart';
 import 'package:cinemax/plugin_engine/models/content_item.dart';
+import 'package:cinemax/plugin_engine/models/stream_source.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,6 +15,19 @@ import 'support/fake_accounts.dart';
 class _FakeTvSeriesCatalog extends PluginManager {
   _FakeTvSeriesCatalog(this.detail);
   final ContentDetail detail;
+  @override
+  Future<List<StreamSource>> getStreams(
+    String contentId,
+    String pluginId, {
+    int? season,
+    int? episode,
+  }) async => const [
+    StreamSource(
+      url: 'https://media.test/episode.mp4',
+      quality: 'HD',
+      server: 'Teste',
+    ),
+  ];
 
   @override
   Future<ContentDetail?> getDetail(String contentId, String pluginId) async =>
@@ -116,11 +130,7 @@ void main() {
     posterUrl: '',
     type: ContentType.series,
     pluginId: 'superflix',
-    seasons: [
-      Season(number: 1),
-      Season(number: 2),
-      Season(number: 3),
-    ],
+    seasons: [Season(number: 1), Season(number: 2), Season(number: 3)],
   );
 
   testWidgets(
@@ -165,30 +175,29 @@ void main() {
     },
   );
 
-  testWidgets(
-    'Android TV: tecla Select/Enter ativa chip de temporada focado',
-    (tester) async {
-      await pumpTvSeries(tester, seriesDetail);
+  testWidgets('Android TV: tecla Select/Enter ativa chip de temporada focado', (
+    tester,
+  ) async {
+    await pumpTvSeries(tester, seriesDetail);
 
-      // Temporada 1 ativa inicialmente
-      expect(find.text('T1 E1 - Piloto da Temporada 1'), findsOneWidget);
+    // Temporada 1 ativa inicialmente
+    expect(find.text('T1 E1 - Piloto da Temporada 1'), findsOneWidget);
 
-      // Localizar e focar o chip da Temporada 3
-      final season3Finder = find.text('Temporada 3');
-      expect(season3Finder, findsOneWidget);
-      await tester.ensureVisible(season3Finder);
-      await tester.pumpAndSettle();
+    // Localizar e focar o chip da Temporada 3
+    final season3Finder = find.text('Temporada 3');
+    expect(season3Finder, findsOneWidget);
+    await tester.ensureVisible(season3Finder);
+    await tester.pumpAndSettle();
 
-      // Tap para dar foco + ativar
-      await tester.tap(season3Finder);
-      await tester.pumpAndSettle();
+    // Tap para dar foco + ativar
+    await tester.tap(season3Finder);
+    await tester.pumpAndSettle();
 
-      // Deve exibir episódios da Temporada 3
-      expect(find.text('T3 E1 - Piloto da Temporada 3'), findsOneWidget);
-      // Temporada 1 não mais visível
-      expect(find.text('T1 E1 - Piloto da Temporada 1'), findsNothing);
-    },
-  );
+    // Deve exibir episódios da Temporada 3
+    expect(find.text('T3 E1 - Piloto da Temporada 3'), findsOneWidget);
+    // Temporada 1 não mais visível
+    expect(find.text('T1 E1 - Piloto da Temporada 1'), findsNothing);
+  });
 
   testWidgets(
     'Android TV: tecla Select no episódio abre player com dados corretos',
@@ -259,6 +268,7 @@ void main() {
             }
             el.visitChildren(visit);
           }
+
           visit(child);
         });
         return 'Node(${node.debugLabel}) texts: $texts';
@@ -282,32 +292,31 @@ void main() {
     },
   );
 
-  testWidgets(
-    'Android TV: retorno à tela anterior preserva contexto',
-    (tester) async {
-      await pumpTvSeries(tester, seriesDetail);
+  testWidgets('Android TV: retorno à tela anterior preserva contexto', (
+    tester,
+  ) async {
+    await pumpTvSeries(tester, seriesDetail);
 
-      // Mudar para Temporada 2
-      final season2 = find.text('Temporada 2');
-      await tester.ensureVisible(season2);
-      await tester.tap(season2);
+    // Mudar para Temporada 2
+    final season2 = find.text('Temporada 2');
+    await tester.ensureVisible(season2);
+    await tester.tap(season2);
+    await tester.pumpAndSettle();
+
+    expect(find.text('T2 E1 - Piloto da Temporada 2'), findsOneWidget);
+
+    // Abrir episódio e voltar
+    final ep = find.text('T2 E1 - Piloto da Temporada 2');
+    await tester.ensureVisible(ep);
+    await tester.tap(ep);
+    await tester.pumpAndSettle();
+
+    // Tratar seleção de servidor
+    if (find.text('Escolha o Servidor').evaluate().isNotEmpty) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
       await tester.pumpAndSettle();
+    }
 
-      expect(find.text('T2 E1 - Piloto da Temporada 2'), findsOneWidget);
-
-      // Abrir episódio e voltar
-      final ep = find.text('T2 E1 - Piloto da Temporada 2');
-      await tester.ensureVisible(ep);
-      await tester.tap(ep);
-      await tester.pumpAndSettle();
-
-      // Tratar seleção de servidor
-      if (find.text('Escolha o Servidor').evaluate().isNotEmpty) {
-        await tester.sendKeyEvent(LogicalKeyboardKey.select);
-        await tester.pumpAndSettle();
-      }
-
-      expect(find.text('Player aberto na TV'), findsOneWidget);
-    },
-  );
+    expect(find.text('Player aberto na TV'), findsOneWidget);
+  });
 }

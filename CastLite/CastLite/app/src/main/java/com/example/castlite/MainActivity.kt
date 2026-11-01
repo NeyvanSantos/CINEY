@@ -290,7 +290,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.main_menu, menu)
-        menu.findItem(R.id.action_economy).isChecked = mediaProxy.economyMode
         menu.findItem(R.id.action_servers).isVisible = (incomingRequest?.sources?.size ?: 0) > 1
         return true
     }
@@ -307,17 +306,11 @@ class MainActivity : AppCompatActivity() {
                 AlertDialog.Builder(this).setTitle(R.string.cast_choose_server)
                     .setSingleChoiceItems(request.sources.map { it.server }.toTypedArray(), request.sourceIndex) { dialog, index ->
                         dialog.dismiss()
-                        openInternalRequest(request.copy(sourceIndex = index,
-                            positionMs = activeTarget?.positionMs ?: request.positionMs))
+                        val position = CastingService.sourceRequest()?.takeIf { it.requestId == request.requestId }?.positionMs
+                            ?: activeTarget?.positionMs?.takeIf { it > 0 } ?: request.positionMs
+                        openInternalRequest(request.copy(sourceIndex = index, positionMs = position))
                     }.setNegativeButton(R.string.close, null).show()
             }
-            true
-        }
-        R.id.action_economy -> {
-            mediaProxy.economyMode = !mediaProxy.economyMode
-            item.isChecked = mediaProxy.economyMode
-            getSharedPreferences("casting", MODE_PRIVATE).edit().putBoolean("economy_opt_in", mediaProxy.economyMode).apply()
-            toast("Qualidade alterada para a próxima transmissão")
             true
         }
         R.id.action_back -> { if (binding.webView.canGoBack()) binding.webView.goBack(); true }
@@ -407,9 +400,9 @@ class MainActivity : AppCompatActivity() {
         val connected = target != null && target.isConnected
         binding.controlBar.visibility = if (connected) View.VISIBLE else View.GONE
         binding.openRemoteControlButton.isEnabled = connected
-        val hasMedia = target != null && target.playbackState !in listOf(PlaybackState.IDLE, PlaybackState.ERROR)
+        val hasMedia = target != null && !CastingService.needsSourceAction() && target.playbackState !in listOf(PlaybackState.IDLE, PlaybackState.ERROR)
         binding.playPauseButton.isEnabled = hasMedia
-        binding.stopButton.isEnabled = hasMedia
+        binding.stopButton.isEnabled = connected
         binding.playPauseButton.setText(
             if (target?.playbackState == PlaybackState.PLAYING) R.string.pause else R.string.play
         )
@@ -437,7 +430,7 @@ class MainActivity : AppCompatActivity() {
         val loadGeneration: Long
         try {
             val pendingSeek = if (target.protocol == CastProtocol.GOOGLE_CAST) 0L else incomingResumePositionMs
-            loadGeneration = CastingService.start(this, target, mediaProxy, video, binding.webView.settings.userAgentString, pendingSeek)
+            loadGeneration = CastingService.start(this, target, mediaProxy, video, binding.webView.settings.userAgentString, pendingSeek, incomingRequest)
         } catch (_: Exception) {
             CastSessionEvents.error("service_unavailable")
             toast(getString(R.string.cast_load_error, 0))
@@ -559,6 +552,21 @@ class MainActivity : AppCompatActivity() {
     // ───────────────────────── CiNey Bridge ─────────────────────────
 
     private fun handleIncomingIntent(intent: Intent?): Boolean {
+        if (intent?.getBooleanExtra("com.ciney.castlite.REOPEN", false) == true) {
+            val request = CastingService.sourceRequest() ?: runCatching { CastRequestIntent.read(intent) }.getOrNull() ?: incomingRequest
+            if (request != null) {
+                if (request.source.isEmbed || !request.source.isDirect) openInternalRequest(request)
+                else {
+                    incomingRequest = request
+                    incomingResumePositionMs = request.positionMs
+                    invalidateOptionsMenu()
+                    toast(getString(R.string.cast_direct_source_denied))
+                }
+            } else {
+                binding.webView.reload()
+            }
+            return true
+        }
         if (intent == null) return false
         if (intent.hasExtra(CastRequest.EXTRA)) {
             try {
@@ -836,7 +844,7 @@ class MainActivity : AppCompatActivity() {
                         !host.contains("superflix") &&
                         !host.contains("myembed")
                     ) {
-                        android.util.Log.d("CastLite", "Bloqueando redirecionamento de anúncio externo: $url")
+                        android.util.Log.d("CastLite", "Bloqueando redirecionamento de anúncio externo")
                         return true
                     }
                 }
@@ -907,7 +915,9 @@ class MainActivity : AppCompatActivity() {
         val mime = VideoDetector.mimeTypeFor(url, declaredType) ?: return
         runOnUiThread {
             if (isDestroyed || isFinishing || videos.pageId != pageId) return@runOnUiThread
-            val relayHeaders = (incomingRequest?.source?.headers.orEmpty() + mediaRequestHeaders[url].orEmpty() + requestHeaders).filterKeys { name ->
+            val inherited = incomingRequest?.source?.let { RelayHeaderPolicy.forTarget(it.headers, it.url, url) }.orEmpty()
+            val relayHeaders = (inherited + mediaRequestHeaders[url].orEmpty() + requestHeaders)
+                .entries.associate { it.key.lowercase(java.util.Locale.ROOT) to it.value }.filterKeys { name ->
                 listOf("User-Agent", "Referer", "Origin", "Accept", "Accept-Language", "Authorization", "Cookie")
                     .any { it.equals(name, ignoreCase = true) }
             }
@@ -920,7 +930,7 @@ class MainActivity : AppCompatActivity() {
                 updateVideosButton()
                 if (autoCastOnDetect) {
                     autoCastOnDetect = false
-                    showDevicePickerDialog(video)
+                    if (activeTarget?.isConnected == true) castVideo(video) else showDevicePickerDialog(video)
                 }
             }
         }

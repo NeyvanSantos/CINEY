@@ -27,6 +27,7 @@ object CastSessionEvents {
     ))
 
     fun error(code: String) = publish(state + mapOf("state" to "error", "error" to code))
+    fun quality(value: String) = publish(state + mapOf("quality" to value))
 
     private fun publish(value: Map<String, Any?>) {
         state = value

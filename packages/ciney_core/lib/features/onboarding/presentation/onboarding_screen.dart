@@ -57,6 +57,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     ref
         .read(pluginManagerProvider.notifier)
         .setInstalledPluginIds(_selectedPluginIds.toList());
+    await ref.read(pluginManagerProvider.notifier).flushConfiguration();
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('onboarding_completed', true);

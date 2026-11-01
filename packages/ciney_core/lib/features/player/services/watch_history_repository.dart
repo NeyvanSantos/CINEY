@@ -4,21 +4,32 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../plugin_engine/models/content_item.dart';
 import '../models/watch_progress.dart';
+import '../../auth/services/account_repository.dart';
 
-final watchHistoryRepositoryProvider = Provider<WatchHistoryRepository>(
-  (ref) => WatchHistoryRepository(),
-);
+final watchHistoryRepositoryProvider = Provider<WatchHistoryRepository>((ref) {
+  final account = ref.watch(accountUserProvider);
+  final userId = account.hasValue
+      ? account.valueOrNull?.id
+      : ref.watch(accountRepositoryProvider).currentUser?.id;
+  return WatchHistoryRepository(accountId: userId);
+});
 
 final watchHistoryProvider = FutureProvider.autoDispose<List<WatchProgress>>(
-  (ref) => ref.read(watchHistoryRepositoryProvider).load(),
+  (ref) => ref.watch(watchHistoryRepositoryProvider).load(),
 );
 
 class WatchHistoryRepository {
   WatchHistoryRepository({
+    this.accountId,
     Future<SharedPreferences> Function()? preferencesLoader,
   }) : _preferencesLoader = preferencesLoader ?? SharedPreferences.getInstance;
 
-  static const _storageKey = 'watch-history-v1';
+  final String? accountId;
+  // Legacy device history has no verifiable owner. Never migrate it into an
+  // authenticated account merely because that person happens to log in next.
+  String get _storageKey => accountId == null
+      ? 'watch-history-v1'
+      : 'watch-history-v2:${Uri.encodeComponent(accountId!)}';
   static const _maxItems = 30;
 
   final Future<SharedPreferences> Function() _preferencesLoader;

@@ -11,15 +11,26 @@ internal class PlaybackRecovery(startedAt: Long, positionMs: Long) {
     private var lastAttemptAt = startedAt
     private var stableSince: Long? = null
     private var attempts = 0
+    private var seekPending = false
+
+    fun seekTo(now: Long, destination: Long) {
+        positionMs = destination.coerceAtLeast(0)
+        seekPending = true
+        lastProgressAt = now
+        stableSince = null
+    }
 
     fun observe(now: Long, connected: Boolean, state: PlaybackState, position: Long,
                 duration: Long, recoverableIdle: Boolean, loadFailed: Boolean, starting: Boolean = false): Action {
+        if (seekPending && kotlin.math.abs(position - positionMs) <= 2000 &&
+            state in listOf(PlaybackState.PLAYING, PlaybackState.PAUSED)) seekPending = false
         if (state == PlaybackState.PAUSED) {
             lastProgressAt = now
             stableSince = null
             return Action.WAIT
         }
-        if (state == PlaybackState.PLAYING && connected && position > 0 && position != positionMs) {
+        if (!seekPending && state == PlaybackState.BUFFERING && connected && position > 0) positionMs = position
+        if (!seekPending && state == PlaybackState.PLAYING && connected && position > 0 && position != positionMs) {
             positionMs = position
             lastProgressAt = now
             val stable = stableSince ?: now.also { stableSince = it }
@@ -27,7 +38,7 @@ internal class PlaybackRecovery(startedAt: Long, positionMs: Long) {
             return Action.WAIT
         }
         stableSince = null
-        val finished = duration > 0 && positionMs >= duration - 2_000
+        val finished = !seekPending && state == PlaybackState.IDLE && duration > 0 && positionMs >= duration - 2_000
         if (finished || (connected && state == PlaybackState.IDLE && !recoverableIdle && !loadFailed && !starting)) return Action.WAIT
         val timeout = if (loadFailed || state == PlaybackState.ERROR || recoverableIdle && !starting) 8_000L else 45_000L
         if (now - lastProgressAt < timeout || now - lastAttemptAt < timeout) return Action.WAIT

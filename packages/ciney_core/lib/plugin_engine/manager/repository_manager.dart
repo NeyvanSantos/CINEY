@@ -1,307 +1,190 @@
+import 'dart:convert';
+import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/plugin_manifest.dart';
+import 'plugin_manager.dart';
 
-/// Estado do Gerenciador de Repositórios
 class RepositoryState {
+  static const bundled = 'builtin://ciney';
   final List<String> repositories;
   final String activeRepoUrl;
   final List<PluginManifest> availablePlugins;
   final bool isLoading;
   final String? error;
-
   const RepositoryState({
-    this.repositories = const ['https://plugins.cinemax-stream.app/repo.json'],
-    this.activeRepoUrl = 'https://plugins.cinemax-stream.app/repo.json',
+    this.repositories = const [bundled],
+    this.activeRepoUrl = bundled,
     this.availablePlugins = const [],
     this.isLoading = false,
     this.error,
   });
-
   RepositoryState copyWith({
     List<String>? repositories,
     String? activeRepoUrl,
     List<PluginManifest>? availablePlugins,
     bool? isLoading,
     String? error,
-  }) {
-    return RepositoryState(
-      repositories: repositories ?? this.repositories,
-      activeRepoUrl: activeRepoUrl ?? this.activeRepoUrl,
-      availablePlugins: availablePlugins ?? this.availablePlugins,
-      isLoading: isLoading ?? this.isLoading,
-      error: error,
-    );
-  }
+  }) => RepositoryState(
+    repositories: repositories ?? this.repositories,
+    activeRepoUrl: activeRepoUrl ?? this.activeRepoUrl,
+    availablePlugins: availablePlugins ?? this.availablePlugins,
+    isLoading: isLoading ?? this.isLoading,
+    error: error,
+  );
 }
 
 final repositoryManagerProvider =
-    StateNotifierProvider<RepositoryManager, RepositoryState>((ref) {
-      return RepositoryManager();
-    });
+    StateNotifierProvider<RepositoryManager, RepositoryState>(
+      (ref) => RepositoryManager(),
+    );
 
 class RepositoryManager extends StateNotifier<RepositoryState> {
-  RepositoryManager() : super(const RepositoryState()) {
-    fetchRepositoryPlugins(state.activeRepoUrl);
-  }
-
-  /// Adiciona o repositório padrão do CiNey
-  void addDefaultRepository() {
-    const defaultUrl = 'https://plugins.cinemax-stream.app/repo.json';
-    if (!state.repositories.contains(defaultUrl)) {
-      state = state.copyWith(
-        repositories: [...state.repositories, defaultUrl],
-        activeRepoUrl: defaultUrl,
+  RepositoryManager({Dio? client})
+    : _client =
+          client ??
+          Dio(
+            BaseOptions(
+              connectTimeout: const Duration(seconds: 8),
+              receiveTimeout: const Duration(seconds: 8),
+              followRedirects: false,
+            ),
+          ),
+      super(
+        RepositoryState(
+          availablePlugins: PluginManager.allAvailablePlugins
+              .map((p) => p.manifest)
+              .toList(),
+        ),
       );
-    }
-    fetchRepositoryPlugins(defaultUrl);
-  }
-
-  /// Adiciona um novo repositório por URL
+  final Dio _client;
+  int _request = 0;
+  CancelToken? _pending;
+  void addDefaultRepository() => addRepository(RepositoryState.bundled);
   void addRepository(String url) {
-    if (url.trim().isEmpty) return;
-    final trimmed = url.trim();
-    if (!state.repositories.contains(trimmed)) {
-      state = state.copyWith(
-        repositories: [...state.repositories, trimmed],
-        activeRepoUrl: trimmed,
-      );
-      fetchRepositoryPlugins(trimmed);
-    }
-  }
-
-  /// Remove um repositório
-  void removeRepository(String url) {
-    final updated = state.repositories.where((r) => r != url).toList();
+    final value = url.trim();
+    if (value.isEmpty) return;
     state = state.copyWith(
-      repositories: updated,
-      activeRepoUrl: updated.isNotEmpty ? updated.first : '',
+      repositories: {...state.repositories, value}.toList(),
     );
-    if (updated.isNotEmpty) {
-      fetchRepositoryPlugins(updated.first);
+    fetchRepositoryPlugins(value);
+  }
+
+  void removeRepository(String url) {
+    final remaining = state.repositories.where((r) => r != url).toList();
+    state = state.copyWith(repositories: remaining);
+    if (remaining.isNotEmpty) {
+      fetchRepositoryPlugins(remaining.first);
     } else {
-      state = state.copyWith(availablePlugins: []);
+      _request++;
+      _pending?.cancel();
+      state = state.copyWith(
+        activeRepoUrl: '',
+        availablePlugins: [],
+        isLoading: false,
+      );
     }
   }
 
-  /// Busca a lista de plugins disponíveis no repositório
+  Future<Map<String, dynamic>> _document(
+    String url,
+    CancelToken cancellation,
+  ) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty) {
+      throw const FormatException('Use uma URL HTTPS sem credenciais.');
+    }
+    final response = await _client.get<ResponseBody>(
+      url,
+      cancelToken: cancellation,
+      options: Options(
+        responseType: ResponseType.stream,
+        followRedirects: false,
+      ),
+    );
+    final bytes = <int>[];
+    await for (final chunk in response.data!.stream.timeout(
+      const Duration(seconds: 8),
+    )) {
+      if (bytes.length + chunk.length > 1024 * 1024) {
+        throw const FormatException('Manifesto muito grande.');
+      }
+      bytes.addAll(chunk);
+    }
+    return Map<String, dynamic>.from(jsonDecode(utf8.decode(bytes)) as Map);
+  }
+
   Future<void> fetchRepositoryPlugins(String repoUrl) async {
-    state = state.copyWith(isLoading: true, error: null);
+    final request = ++_request;
+    _pending?.cancel();
+    final cancellation = _pending = CancelToken();
+    final deadline = Timer(
+      const Duration(seconds: 30),
+      () => cancellation.cancel('Repository deadline'),
+    );
+    state = state.copyWith(
+      activeRepoUrl: repoUrl,
+      availablePlugins: [],
+      isLoading: true,
+    );
+    try {
+      final plugins = <PluginManifest>[];
+      if (repoUrl == RepositoryState.bundled) {
+        plugins.addAll(
+          PluginManager.allAvailablePlugins.map((p) => p.manifest),
+        );
+      } else {
+        final data = await _document(repoUrl, cancellation);
+        final entries = data['plugins'] as List;
+        if (entries.length > 64) {
+          throw const FormatException('Muitas extensões.');
+        }
+        for (final entry in entries) {
+          if (!mounted || request != _request) return;
+          final item = Map<String, dynamic>.from(entry as Map);
+          final manifest = PluginManifest.fromJson(
+            item['manifest'] is String
+                ? await _document(
+                    Uri.parse(
+                      repoUrl,
+                    ).resolve(item['manifest'] as String).toString(),
+                    cancellation,
+                  )
+                : item,
+          );
+          if (manifest.id.isEmpty ||
+              manifest.name.isEmpty ||
+              manifest.categories.isEmpty) {
+            throw const FormatException('Manifesto incompleto.');
+          }
+          plugins.add(manifest);
+        }
+      }
+      if (mounted && request == _request) {
+        state = state.copyWith(availablePlugins: plugins, isLoading: false);
+      }
+    } catch (_) {
+      if (mounted && request == _request) {
+        state = state.copyWith(
+          isLoading: false,
+          error:
+              'Não foi possível carregar o repositório. Verifique a URL HTTPS, a conexão e o formato do manifesto.',
+        );
+      }
+    } finally {
+      deadline.cancel();
+      if (identical(_pending, cancellation)) _pending = null;
+    }
+  }
 
-    // Fallback com os plugins oficiais do CiNey
-    await Future.delayed(const Duration(milliseconds: 600));
-
-    final plugins = <PluginManifest>[
-      const PluginManifest(
-        id: 'com.amenictv',
-        name: 'AmenicTV',
-        version: 'v2',
-        versionCode: 2,
-        description: 'Tudo do app AmenicPlus - Filmes, Séries e Animes',
-        author: 'Amenic Team',
-        lang: 'pt-BR',
-        categories: ['movies', 'series', 'anime'],
-        baseUrl: 'https://amenicplus.com',
-        entryPoint: 'amenictv.js',
-        size: '27 KB',
-        capabilities: PluginCapabilities(
-          search: true,
-          home: true,
-          detail: true,
-          streams: true,
-        ),
-      ),
-      const PluginManifest(
-        id: 'com.animescloud',
-        name: 'AnimesCloud',
-        version: 'v4',
-        versionCode: 4,
-        description: 'AnimesCloud - Animes em FHD e HD',
-        author: 'Cloud Team',
-        lang: 'pt-BR',
-        categories: ['anime'],
-        baseUrl: 'https://animescloud.tv',
-        entryPoint: 'animescloud.js',
-        size: '25 KB',
-        capabilities: PluginCapabilities(
-          search: true,
-          home: true,
-          detail: true,
-          streams: true,
-        ),
-      ),
-      const PluginManifest(
-        id: 'com.animesdigital',
-        name: 'AnimesDigital',
-        version: 'v2',
-        versionCode: 2,
-        description: 'Animes Digital - Animes em FHD LEG e DUB.',
-        author: 'Digital Anime',
-        lang: 'pt-BR',
-        categories: ['anime'],
-        baseUrl: 'https://animesdigital.org',
-        entryPoint: 'animesdigital.js',
-        size: '30 KB',
-        capabilities: PluginCapabilities(
-          search: true,
-          home: true,
-          detail: true,
-          streams: true,
-        ),
-      ),
-      const PluginManifest(
-        id: 'com.animesonlinenet',
-        name: 'AnimesOnlineNet',
-        version: 'v3',
-        versionCode: 3,
-        description: 'AnimesOnlineNet - Animes',
-        author: 'AON Team',
-        lang: 'pt-BR',
-        categories: ['anime'],
-        baseUrl: 'https://animesonline.net',
-        entryPoint: 'animesonline.js',
-        size: '20 KB',
-        capabilities: PluginCapabilities(
-          search: true,
-          home: true,
-          detail: true,
-          streams: true,
-        ),
-      ),
-      const PluginManifest(
-        id: 'com.doramas',
-        name: 'Doramas',
-        version: 'v6',
-        versionCode: 6,
-        description: 'Servidor exclusivo de Doramas',
-        author: 'DoramaFlix',
-        lang: 'pt-BR',
-        categories: ['doramas', 'series'],
-        baseUrl: 'https://doramas.io',
-        entryPoint: 'doramas.js',
-        size: '18 KB',
-        capabilities: PluginCapabilities(
-          search: true,
-          home: true,
-          detail: true,
-          streams: true,
-        ),
-      ),
-      const PluginManifest(
-        id: 'com.megaflix',
-        name: 'MegaFlix',
-        version: 'v4',
-        versionCode: 4,
-        description: 'Filmes, Séries e Animes em Português',
-        author: 'MegaFlix Team',
-        lang: 'pt-BR',
-        categories: ['movies', 'series', 'anime'],
-        baseUrl: 'https://megaflix.biz',
-        entryPoint: 'megaflix.js',
-        size: '21 KB',
-        capabilities: PluginCapabilities(
-          search: true,
-          home: true,
-          detail: true,
-          streams: true,
-        ),
-      ),
-      const PluginManifest(
-        id: 'com.probreflix',
-        name: 'ProbreFlix',
-        version: 'v9',
-        versionCode: 9,
-        description: 'Filmes, Séries e Animes',
-        author: 'ProbreFlix',
-        lang: 'pt-BR',
-        categories: ['movies', 'series', 'anime'],
-        baseUrl: 'https://probreflix.app',
-        entryPoint: 'probreflix.js',
-        size: '27 KB',
-        capabilities: PluginCapabilities(
-          search: true,
-          home: true,
-          detail: true,
-          streams: true,
-        ),
-      ),
-      const PluginManifest(
-        id: 'com.reidoscanais',
-        name: 'ReidosCanais',
-        version: 'v4',
-        versionCode: 4,
-        description: 'Canais ao vivo, Futebol, UFC e muito mais. OBS: Ne...',
-        author: 'Rei Dev',
-        lang: 'pt-BR',
-        categories: ['live', 'tv'],
-        baseUrl: 'https://reidoscanais.tv',
-        entryPoint: 'reidoscanais.js',
-        size: '22 KB',
-        capabilities: PluginCapabilities(
-          search: true,
-          home: true,
-          detail: true,
-          streams: true,
-        ),
-      ),
-      const PluginManifest(
-        id: 'com.streamberry',
-        name: 'Streamberry',
-        version: 'v4',
-        versionCode: 4,
-        description: 'Streamberry Filmes e Séries',
-        author: 'Berry Labs',
-        lang: 'pt-BR',
-        categories: ['movies', 'series'],
-        baseUrl: 'https://streamberry.xyz',
-        entryPoint: 'streamberry.js',
-        size: '23 KB',
-        capabilities: PluginCapabilities(
-          search: true,
-          home: true,
-          detail: true,
-          streams: true,
-        ),
-      ),
-      const PluginManifest(
-        id: 'com.supercine',
-        name: 'SuperCine',
-        version: 'v2',
-        versionCode: 2,
-        description: 'Tudo do app SuperCine Filmes, Séries e Animes',
-        author: 'SuperCine Dev',
-        lang: 'pt-BR',
-        categories: ['movies', 'series', 'anime'],
-        baseUrl: 'https://supercine.org',
-        entryPoint: 'supercine.js',
-        size: '28 KB',
-        capabilities: PluginCapabilities(
-          search: true,
-          home: true,
-          detail: true,
-          streams: true,
-        ),
-      ),
-      const PluginManifest(
-        id: 'com.ultracine',
-        name: 'UltraCine',
-        version: 'v6',
-        versionCode: 6,
-        description: 'UltraCine Filmes e Séries',
-        author: 'Ultra Team',
-        lang: 'pt-BR',
-        categories: ['movies', 'series'],
-        baseUrl: 'https://ultracine.to',
-        entryPoint: 'ultracine.js',
-        size: '19 KB',
-        capabilities: PluginCapabilities(
-          search: true,
-          home: true,
-          detail: true,
-          streams: true,
-        ),
-      ),
-    ];
-
-    state = state.copyWith(availablePlugins: plugins, isLoading: false);
+  @override
+  void dispose() {
+    _request++;
+    _pending?.cancel();
+    _client.close(force: true);
+    super.dispose();
   }
 }

@@ -52,6 +52,7 @@ class _TvEmbedPlayerState extends State<TvEmbedPlayer>
   Widget? _fullscreen;
   VoidCallback? _hideFullscreen;
   Timer? _deadline;
+  Timer? _menuDeadline;
   StreamSubscription<({int id, String action})>? _events;
   final _menuFocus = FocusNode(debugLabel: 'TV provider menu');
   final _browserFocus = FocusNode(debugLabel: 'TV browser keys');
@@ -75,6 +76,7 @@ class _TvEmbedPlayerState extends State<TvEmbedPlayer>
 
   Future<void> _release() async {
     _deadline?.cancel();
+    _menuDeadline?.cancel();
     final host = _host;
     _host = null;
     _controller = null;
@@ -323,6 +325,7 @@ class _TvEmbedPlayerState extends State<TvEmbedPlayer>
       _closeFullscreen();
       _menu = true;
     });
+    _renewMenuDeadline();
     final id = _viewId;
     if (id != null) unawaited(TvWebViewBridge.invoke('blur', id));
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -342,14 +345,27 @@ class _TvEmbedPlayerState extends State<TvEmbedPlayer>
   }
 
   void _focusProvider() {
+    _menuDeadline?.cancel();
     setState(() => _menu = false);
     _browserFocus.requestFocus();
     final id = _viewId;
     if (id != null) unawaited(TvWebViewBridge.invoke('focus', id));
   }
 
+  void _renewMenuDeadline() {
+    _menuDeadline?.cancel();
+    // Keep recovery actions available when there is no live provider to return to.
+    if (!_menu || _suspended || _controller == null) return;
+    _menuDeadline = Timer(const Duration(seconds: 5), () {
+      if (mounted && _menu && !_suspended && _controller != null) {
+        _focusProvider();
+      }
+    });
+  }
+
   KeyEventResult _key(FocusNode node, KeyEvent event) {
     if (event is KeyUpEvent) return KeyEventResult.ignored;
+    if (_menu) _renewMenuDeadline();
     if (event.logicalKey == LogicalKeyboardKey.contextMenu ||
         event.logicalKey == LogicalKeyboardKey.escape) {
       _showMenu();
@@ -376,6 +392,9 @@ class _TvEmbedPlayerState extends State<TvEmbedPlayer>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // onMedia remains pending for the whole dedicated Activity session. Its
+    // WebView supplies authenticated segments even while Flutter is paused.
+    if (_resolvingMedia) return;
     if (state != AppLifecycleState.paused &&
         state != AppLifecycleState.hidden) {
       return;
@@ -414,85 +433,90 @@ class _TvEmbedPlayerState extends State<TvEmbedPlayer>
       body: Focus(
         focusNode: _browserFocus,
         onKeyEvent: _key,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (_controller != null && !_suspended)
-              WebViewWidget(controller: _controller!),
-            ?_fullscreen,
-            if (_loading)
-              const Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: LinearProgressIndicator(),
-              ),
-            if (_menu)
-              Align(
-                alignment: Alignment.topCenter,
-                child: Material(
-                  color: Colors.black.withValues(alpha: 0.94),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${widget.title} • ${widget.source.server}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _message ??
-                              'Use as setas e OK no player. Voltar ou Menu abre estas opções. Se ficar sem imagem, recarregue ou troque de servidor.',
-                          style: const TextStyle(color: Colors.white70),
-                        ),
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 12,
-                          runSpacing: 8,
-                          children: [
-                            FilledButton(
-                              focusNode: _menuFocus,
-                              autofocus: true,
-                              onPressed: _suspended || _controller == null
-                                  ? () => unawaited(_open())
-                                  : _focusProvider,
-                              child: Text(
-                                _suspended || _controller == null
-                                    ? 'Recarregar'
-                                    : 'Ir ao player',
+        child: Listener(
+          onPointerDown: (_) => _menuDeadline?.cancel(),
+          onPointerUp: (_) => _renewMenuDeadline(),
+          onPointerCancel: (_) => _renewMenuDeadline(),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (_controller != null && !_suspended)
+                WebViewWidget(controller: _controller!),
+              ?_fullscreen,
+              if (_loading)
+                const Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: LinearProgressIndicator(),
+                ),
+              if (_menu)
+                Align(
+                  alignment: Alignment.topCenter,
+                  child: Material(
+                    color: Colors.black.withValues(alpha: 0.94),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${widget.title} • ${widget.source.server}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _message ??
+                                'Use as setas e OK no player. Voltar ou Menu abre estas opções. Se ficar sem imagem, recarregue ou troque de servidor.',
+                            style: const TextStyle(color: Colors.white70),
+                          ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 12,
+                            runSpacing: 8,
+                            children: [
+                              FilledButton(
+                                focusNode: _menuFocus,
+                                autofocus: true,
+                                onPressed: _suspended || _controller == null
+                                    ? () => unawaited(_open())
+                                    : _focusProvider,
+                                child: Text(
+                                  _suspended || _controller == null
+                                      ? 'Recarregar'
+                                      : 'Ir ao player',
+                                ),
                               ),
-                            ),
-                            if (!_suspended && _controller != null)
+                              if (!_suspended && _controller != null)
+                                OutlinedButton(
+                                  onPressed: () => unawaited(_open()),
+                                  child: const Text('Recarregar'),
+                                ),
                               OutlinedButton(
-                                onPressed: () => unawaited(_open()),
-                                child: const Text('Recarregar'),
+                                onPressed: widget.onSources,
+                                child: const Text('Servidores'),
                               ),
-                            OutlinedButton(
-                              onPressed: widget.onSources,
-                              child: const Text('Servidores'),
-                            ),
-                            if (widget.onNext != null)
+                              if (widget.onNext != null)
+                                OutlinedButton(
+                                  onPressed: widget.onNext,
+                                  child: const Text('Próximo episódio'),
+                                ),
                               OutlinedButton(
-                                onPressed: widget.onNext,
-                                child: const Text('Próximo episódio'),
+                                onPressed: widget.onExit,
+                                child: const Text('Sair'),
                               ),
-                            OutlinedButton(
-                              onPressed: widget.onExit,
-                              child: const Text('Sair'),
-                            ),
-                          ],
-                        ),
-                      ],
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     ),

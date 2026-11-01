@@ -33,6 +33,9 @@ interface CastTarget {
     /** Only idle caused by a playback failure may be automatically restarted. */
     val recoverableIdle: Boolean get() = false
 
+    /** False when a renderer cannot distinguish an external pause from a stall. */
+    val reportsTransportState: Boolean get() = true
+
     /** Connect to the target device. */
     fun connect()
 

@@ -15,6 +15,7 @@ import java.net.URLEncoder
 import java.util.Timer
 import java.util.TimerTask
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicLong
 import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.concurrent.thread
 
@@ -31,10 +32,14 @@ class RokuCastTarget(
     override val protocol = CastProtocol.ROKU
 
     private val listeners = CopyOnWriteArrayList<CastTargetListener>()
-    private var _playbackState = PlaybackState.IDLE
-    private var _positionMs = 0L
-    private var _durationMs = 0L
-    private var _connected = false
+    @Volatile private var _playbackState = PlaybackState.IDLE
+    @Volatile private var _positionMs = 0L
+    @Volatile private var _durationMs = 0L
+    @Volatile private var _connected = false
+    private val loadEpoch = AtomicLong()
+    private val pollEpoch = AtomicLong()
+    private var statusFailures = 0
+    override val recoverableIdle: Boolean get() = _playbackState == PlaybackState.ERROR
     private var statusTimer: Timer? = null
 
     private val baseUrl get() = "http://${deviceInfo.ip}:${deviceInfo.port}"
@@ -52,6 +57,7 @@ class RokuCastTarget(
     }
 
     override fun disconnect() {
+        loadEpoch.incrementAndGet()
         stopStatusPolling()
         _connected = false
         notifyState(PlaybackState.IDLE)
@@ -63,6 +69,11 @@ class RokuCastTarget(
         fallbackUserAgent: String,
         onResult: (Boolean) -> Unit
     ) {
+        val generation = loadEpoch.incrementAndGet()
+        stopStatusPolling()
+        _positionMs = 0
+        _durationMs = 0
+        statusFailures = 0
         _connected = true
         notifyState(PlaybackState.LOADING)
 
@@ -76,10 +87,11 @@ class RokuCastTarget(
                 val launchUrl = "$baseUrl/launch/$ROKU_MEDIA_PLAYER_ID?contentId=$encodedUrl&mediaType=$encodedType"
 
                 val code = httpPost(launchUrl)
+                if (generation != loadEpoch.get()) return@thread
                 if (code in 200..299) {
                     Log.d(TAG, "Roku launch success (HTTP $code)")
-                    _playbackState = PlaybackState.PLAYING
-                    notifyState(PlaybackState.PLAYING)
+                    // Launch acceptance is not confirmation that media started.
+                    notifyState(PlaybackState.LOADING)
                     startStatusPolling()
                     onResult(true)
                 } else {
@@ -89,7 +101,8 @@ class RokuCastTarget(
                     onResult(false)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Roku loadMedia error: ${e.message}")
+                if (generation != loadEpoch.get()) return@thread
+                Log.w(TAG, "Roku loadMedia error: ${e.javaClass.simpleName}")
                 notifyState(PlaybackState.ERROR)
                 listeners.forEach { it.onError(appContext.getString(R.string.roku_send_failed)) }
                 onResult(false)
@@ -99,15 +112,14 @@ class RokuCastTarget(
 
     override fun play() {
         sendKeypress("Play") // Play/Pause toggle on Roku
-        if (_playbackState == PlaybackState.PAUSED) notifyState(PlaybackState.PLAYING)
     }
 
     override fun pause() {
         sendKeypress("Play") // Play/Pause toggle on Roku
-        if (_playbackState == PlaybackState.PLAYING) notifyState(PlaybackState.PAUSED)
     }
 
     override fun stop() {
+        loadEpoch.incrementAndGet()
         stopStatusPolling()
         sendKeypress("Home") // Home exits the player
         _positionMs = 0L
@@ -154,7 +166,9 @@ class RokuCastTarget(
     // --- ECP commands ---
 
     private fun sendKeypress(key: String) {
+        val generation = loadEpoch.get()
         thread(name = "Roku-key-$key", isDaemon = true) {
+            if (generation != loadEpoch.get()) return@thread
             try {
                 httpPost("$baseUrl/keypress/$key")
             } catch (e: Exception) {
@@ -165,49 +179,56 @@ class RokuCastTarget(
 
     private fun httpPost(urlString: String): Int {
         val conn = URL(urlString).openConnection() as HttpURLConnection
-        conn.requestMethod = "POST"
-        conn.connectTimeout = 5_000
-        conn.readTimeout = 5_000
-        conn.setRequestProperty("Content-Length", "0")
-        conn.doOutput = true
-        conn.outputStream.close()
-        val code = conn.responseCode
-        conn.disconnect()
-        return code
+        return try {
+            conn.requestMethod = "POST"
+            conn.connectTimeout = 5_000
+            conn.readTimeout = 5_000
+            conn.setRequestProperty("Content-Length", "0")
+            conn.doOutput = true
+            conn.outputStream.close()
+            conn.responseCode
+        } finally { conn.disconnect() }
     }
 
     // --- Status polling ---
 
     private fun startStatusPolling() {
         stopStatusPolling()
+        val generation = pollEpoch.get()
         statusTimer = Timer("RokuStatus-${deviceInfo.ip}", true).apply {
             scheduleAtFixedRate(object : TimerTask() {
                 override fun run() {
-                    pollMediaStatus()
+                    pollMediaStatus(generation)
                 }
             }, 1_000L, POLL_INTERVAL_MS)
         }
     }
 
     private fun stopStatusPolling() {
+        pollEpoch.incrementAndGet()
         statusTimer?.cancel()
         statusTimer = null
     }
 
-    private fun pollMediaStatus() {
+    private fun pollMediaStatus(generation: Long) {
+        if (generation != pollEpoch.get()) return
+        var connection: HttpURLConnection? = null
         try {
             val url = URL("$baseUrl/query/media-player")
             val conn = url.openConnection() as HttpURLConnection
+            connection = conn
             conn.connectTimeout = 3_000
             conn.readTimeout = 3_000
             val code = conn.responseCode
             if (code != 200) {
-                conn.disconnect()
-                return
+                throw java.io.IOException("Roku status unavailable")
             }
             val doc = DocumentBuilderFactory.newInstance().newDocumentBuilder()
                 .parse(conn.inputStream)
             conn.disconnect()
+            if (generation != pollEpoch.get()) return
+            _connected = true
+            statusFailures = 0
 
             val playerNode = doc.getElementsByTagName("player")?.item(0)
             val stateAttr = playerNode?.attributes?.getNamedItem("state")?.nodeValue
@@ -230,8 +251,11 @@ class RokuCastTarget(
 
             if (newState == PlaybackState.IDLE) stopStatusPolling()
         } catch (_: Exception) {
-            // Roku may not respond if the player was closed
-        }
+            if (generation == pollEpoch.get() && ++statusFailures >= 3) {
+                _connected = false
+                notifyState(PlaybackState.ERROR)
+            }
+        } finally { connection?.disconnect() }
     }
 
     private fun notifyState(state: PlaybackState) {

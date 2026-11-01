@@ -121,7 +121,12 @@ class TmdbService {
         pluginId: pluginId,
         overview: json['overview']?.toString(),
       );
-    } catch (_) {
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Falha no catálogo TMDB (${error.runtimeType}).',
+        tag: 'TMDB',
+        stackTrace: stackTrace,
+      );
       return null;
     }
   }
@@ -143,7 +148,12 @@ class TmdbService {
           )
           .whereType<ContentItem>()
           .toList();
-    } catch (_) {
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Falha no catálogo TMDB (${error.runtimeType}).',
+        tag: 'TMDB',
+        stackTrace: stackTrace,
+      );
       return [];
     }
   }
@@ -165,7 +175,12 @@ class TmdbService {
           )
           .whereType<ContentItem>()
           .toList();
-    } catch (_) {
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Falha no catálogo TMDB (${error.runtimeType}).',
+        tag: 'TMDB',
+        stackTrace: stackTrace,
+      );
       return [];
     }
   }
@@ -194,7 +209,12 @@ class TmdbService {
           )
           .whereType<ContentItem>()
           .toList();
-    } catch (_) {
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Falha no catálogo TMDB (${error.runtimeType}).',
+        tag: 'TMDB',
+        stackTrace: stackTrace,
+      );
       return [];
     }
   }
@@ -222,7 +242,12 @@ class TmdbService {
           )
           .whereType<ContentItem>()
           .toList();
-    } catch (_) {
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Falha no catálogo TMDB (${error.runtimeType}).',
+        tag: 'TMDB',
+        stackTrace: stackTrace,
+      );
       return [];
     }
   }
@@ -250,7 +275,12 @@ class TmdbService {
           )
           .whereType<ContentItem>()
           .toList();
-    } catch (_) {
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Falha no catálogo TMDB (${error.runtimeType}).',
+        tag: 'TMDB',
+        stackTrace: stackTrace,
+      );
       return [];
     }
   }
@@ -278,7 +308,12 @@ class TmdbService {
           )
           .whereType<ContentItem>()
           .toList();
-    } catch (_) {
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Falha no catálogo TMDB (${error.runtimeType}).',
+        tag: 'TMDB',
+        stackTrace: stackTrace,
+      );
       return [];
     }
   }
@@ -306,7 +341,12 @@ class TmdbService {
           )
           .whereType<ContentItem>()
           .toList();
-    } catch (_) {
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Falha no catálogo TMDB (${error.runtimeType}).',
+        tag: 'TMDB',
+        stackTrace: stackTrace,
+      );
       return [];
     }
   }
@@ -364,7 +404,12 @@ class TmdbService {
           )
           .whereType<ContentItem>()
           .toList();
-    } catch (_) {
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Falha no catálogo TMDB (${error.runtimeType}).',
+        tag: 'TMDB',
+        stackTrace: stackTrace,
+      );
       return [];
     }
   }
@@ -373,13 +418,14 @@ class TmdbService {
   static Future<List<ContentItem>> search(
     String query, {
     String pluginId = 'com.megaflix',
+    Dio? client,
   }) async {
     final cleanQuery = query.trim();
     if (cleanQuery.isEmpty) return [];
 
     try {
       // 1. Busca Multi no TMDB com o idioma escolhido no app
-      final response = await _dio.get(
+      final response = await (client ?? _dio).get(
         '/search/multi',
         queryParameters: {
           'query': cleanQuery,
@@ -396,7 +442,7 @@ class TmdbService {
 
       // 2. Se a busca retornou vazia, tenta busca global/en-US
       if (items.isEmpty) {
-        final fallbackResponse = await _dio.get(
+        final fallbackResponse = await (client ?? _dio).get(
           '/search/multi',
           queryParameters: {
             'query': cleanQuery,
@@ -413,10 +459,16 @@ class TmdbService {
       }
 
       // 3. Ordena por relevância: títulos que batem ou começam com o termo pesquisado têm prioridade
-      final normalizedQuery = cleanQuery.toLowerCase();
+      String normalized(String value) => value
+          .toLowerCase()
+          .replaceAll('&', ' e ')
+          .replaceAll(RegExp(r'[^a-z0-9À-ÿ]+'), ' ')
+          .trim()
+          .replaceAll(RegExp(r'\s+'), ' ');
+      final normalizedQuery = normalized(cleanQuery);
       items.sort((a, b) {
-        final aLower = a.title.toLowerCase();
-        final bLower = b.title.toLowerCase();
+        final aLower = normalized(a.title);
+        final bLower = normalized(b.title);
         final aExact = aLower == normalizedQuery;
         final bExact = bLower == normalizedQuery;
         if (aExact && !bExact) return -1;
@@ -431,8 +483,13 @@ class TmdbService {
       });
 
       return items;
-    } catch (_) {
-      return [];
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Falha no catálogo TMDB (${error.runtimeType}).',
+        tag: 'TMDB',
+        stackTrace: stackTrace,
+      );
+      throw StateError('A busca no catálogo está indisponível.');
     }
   }
 
@@ -505,7 +562,12 @@ class TmdbService {
             );
 
       return episodes;
-    } catch (_) {
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Falha no catálogo TMDB (${error.runtimeType}).',
+        tag: 'TMDB',
+        stackTrace: stackTrace,
+      );
       return const [];
     }
   }
@@ -647,7 +709,12 @@ class TmdbService {
         collectionName: collectionName,
         similar: similarList,
       );
-    } catch (_) {
+    } catch (error, stackTrace) {
+      AppLogger.error(
+        'Falha no catálogo TMDB (${error.runtimeType}).',
+        tag: 'TMDB',
+        stackTrace: stackTrace,
+      );
       return null;
     }
   }
@@ -664,7 +731,12 @@ class TmdbService {
       collectionIds.map((id) async {
         try {
           return await getCollection(id, pluginId, client: client);
-        } catch (_) {
+        } catch (error, stackTrace) {
+          AppLogger.error(
+            'Falha no catálogo TMDB (${error.runtimeType}).',
+            tag: 'TMDB',
+            stackTrace: stackTrace,
+          );
           return null;
         }
       }),
@@ -726,7 +798,12 @@ class TmdbService {
             ),
           ];
         }
-      } catch (_) {
+      } catch (error, stackTrace) {
+        AppLogger.error(
+          'Falha no catálogo TMDB (${error.runtimeType}).',
+          tag: 'TMDB',
+          stackTrace: stackTrace,
+        );
         // Continua para o próximo fallback se a fonte principal falhar.
       }
     }

@@ -103,14 +103,18 @@ void main() {
       );
     });
 
-    test('RepositoryManager inicializa repositório padrão TLN+', () {
-      final repoManager = RepositoryManager();
-      expect(
-        repoManager.state.repositories.contains(
-          'https://plugins.cinemax-stream.app/repo.json',
-        ),
-        true,
-      );
-    });
+    test(
+      'RepositoryManager inicia com catálogo local de implementações reais',
+      () {
+        final repoManager = RepositoryManager();
+        addTearDown(repoManager.dispose);
+        expect(repoManager.state.activeRepoUrl, RepositoryState.bundled);
+        expect(
+          repoManager.state.availablePlugins.map((p) => p.id),
+          PluginManager.allAvailablePlugins.map((p) => p.manifest.id),
+        );
+        expect(repoManager.state.isLoading, false);
+      },
+    );
   });
 }

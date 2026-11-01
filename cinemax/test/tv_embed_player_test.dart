@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:ciney_core/core/platform/app_platform_services.dart';
 import 'package:cinemax/features/player/tv/tv_embed_document.dart';
 import 'package:cinemax/features/player/tv/tv_embed_host.dart';
 import 'package:cinemax/features/player/tv/tv_webview_bridge.dart';
@@ -228,6 +229,13 @@ void main() {
     channel.onMessageReceived(message);
     await tester.pump();
     expect(received, hasLength(1));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    expect(
+      platform.controllers.single.requests,
+      isNot(contains('about:blank')),
+    );
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     expect(received.single.isM3U8, true);
     expect(received.single.headers?['Cookie'], 'session=fixture');
     pending.complete(false);
@@ -365,6 +373,53 @@ void main() {
   });
 
   testWidgets(
+    'cancelar servidores ao voltar do player nativo restaura o provedor',
+    (tester) async {
+      final previousServices = AppPlatformServices.current;
+      addTearDown(() => AppPlatformServices.current = previousServices);
+      AppPlatformServices.current = AppPlatformServices(
+        tvPlayback: (_, onReady) async => {'sources': true},
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [pluginManagerProvider.overrideWith((ref) => _Catalog())],
+          child: const MaterialApp(
+            home: PlayerScreen(
+              contentId: 'tmdb_1_movie',
+              pluginId: 'test',
+              title: 'Teste',
+              isTv: true,
+            ),
+          ),
+        ),
+      );
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      platform.controllers.single.channels['TvMediaBridge']!.onMessageReceived(
+        JavaScriptMessage(
+          message: jsonEncode({
+            'event': 'hls',
+            'url': 'https://media.test/master.m3u8',
+            'referer': 'https://provider.test/frame',
+          }),
+        ),
+      );
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(find.byType(BottomSheet), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(find.byType(TvEmbedPlayer), findsOneWidget);
+      expect(platform.controllers, hasLength(2));
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
     'Dpad OK play pause go to the platform view without pointer clicks',
     (tester) async {
       await open(tester);
@@ -427,6 +482,27 @@ void main() {
     old.navigation.finished(tvEmbedBaseUrl);
     await tester.pump();
     expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('provider toolbar hides after inactivity and can reopen', (
+    tester,
+  ) async {
+    await open(tester);
+    platform.controllers.single.navigation.finished(tvEmbedBaseUrl);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.contextMenu);
+    await tester.pump();
+    expect(find.text('Ir ao player'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 4));
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump(const Duration(seconds: 4));
+    expect(find.text('Servidores'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.text('Servidores'), findsNothing);
+    await tester.sendKeyEvent(LogicalKeyboardKey.contextMenu);
+    await tester.pump();
+    expect(find.text('Servidores'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 

@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
@@ -35,6 +36,7 @@ open class NativeTvPlayerActivity : Activity() {
     private lateinit var controls: TvPlayerControls
     private var player: ExoPlayer? = null
     private var position = 0L
+    private var resumePlaying = true
     private var duration = 0L
     private var failed = false
     private var completed = false
@@ -58,11 +60,14 @@ open class NativeTvPlayerActivity : Activity() {
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or
             View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         position = state?.getLong("positionMs") ?: intent.getLongExtra("positionMs", 0)
+        resumePlaying = state?.getBoolean("playWhenReady", true) ?: true
         brightness = state?.getInt("brightness", 0) ?: 0
         effectsEnabled = brightness > 0
         // PlayerView uses SurfaceView by default. No Flutter platform-view layer.
         window.decorView.setBackgroundColor(android.graphics.Color.BLACK)
         playerView = PlayerView(this)
+        playerView.setControllerAutoShow(false)
+        playerView.controllerShowTimeoutMs = TvControlsAutoHide.TIMEOUT_MS
         playerView.setBackgroundColor(android.graphics.Color.BLACK)
         playerView.setShowNextButton(false)
         playerView.setShowPreviousButton(false)
@@ -77,7 +82,7 @@ open class NativeTvPlayerActivity : Activity() {
     override fun onStart() {
         super.onStart()
         if (player != null) return
-        startPlayer(position, true)
+        startPlayer(position, resumePlaying)
     }
     private fun startPlayer(startPosition: Long, startPlaying: Boolean) {
         firstFrameRendered = false
@@ -255,10 +260,12 @@ open class NativeTvPlayerActivity : Activity() {
         player?.let {
             position = it.currentPosition.coerceAtLeast(0)
             duration = it.duration.coerceAtLeast(0)
+            resumePlaying = it.playWhenReady
         }
     }
     override fun onSaveInstanceState(out: Bundle) {
         snapshot(); out.putLong("positionMs", position)
+        out.putBoolean("playWhenReady", resumePlaying)
         out.putInt("brightness", brightness)
         super.onSaveInstanceState(out)
     }
@@ -294,6 +301,7 @@ open class NativeTvPlayerActivity : Activity() {
         super.finish()
     }
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (::controls.isInitialized) controls.onUserInteraction()
         if (event.keyCode == KeyEvent.KEYCODE_MENU) {
             if (event.action == KeyEvent.ACTION_UP) showSources()
             return true
@@ -302,8 +310,15 @@ open class NativeTvPlayerActivity : Activity() {
         if (event.keyCode in intArrayOf(KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE,
                 KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_REWIND,
                 KeyEvent.KEYCODE_MEDIA_FAST_FORWARD, KeyEvent.KEYCODE_MEDIA_STOP) &&
-            playerView.dispatchMediaKeyEvent(event)) return true
+            playerView.dispatchMediaKeyEvent(event)) {
+            playerView.showController()
+            return true
+        }
         // Give the overlay's focused buttons/slider the event before PlayerView.
         return super.dispatchKeyEvent(event)
+    }
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (::controls.isInitialized) controls.onTouchObserved(event)
+        return super.dispatchTouchEvent(event)
     }
 }

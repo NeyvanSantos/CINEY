@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cinemax/features/player/presentation/player_screen.dart';
+import 'package:cinemax/core/services/app_logger.dart';
 import 'package:cinemax/features/player/services/watch_history_repository.dart';
 import 'package:cinemax/plugin_engine/manager/plugin_manager.dart';
 import 'package:cinemax/plugin_engine/models/content_item.dart';
@@ -75,6 +76,31 @@ class _VideoPlatform extends VideoPlayerPlatform {
   final positions = <int, Duration>{};
   final seeks = <(int, Duration)>[];
   final openedUrls = <String>[];
+  final failingUrls = <String>{};
+  bool supportsAudio = false;
+  final selectedTracks = <String>[];
+  @override
+  bool isAudioTrackSupportAvailable() => supportsAudio;
+  @override
+  Future<List<VideoAudioTrack>> getAudioTracks(int playerId) async => const [
+    VideoAudioTrack(
+      id: 'en',
+      label: 'English original',
+      language: 'en',
+      isSelected: true,
+    ),
+    VideoAudioTrack(
+      id: 'pt',
+      label: 'Português real',
+      language: 'pt',
+      isSelected: false,
+    ),
+  ];
+  @override
+  Future<void> selectAudioTrack(int playerId, String trackId) async {
+    selectedTracks.add(trackId);
+  }
+
   int nextId = 0;
   Duration duration = const Duration(minutes: 20);
 
@@ -84,14 +110,20 @@ class _VideoPlatform extends VideoPlayerPlatform {
   Future<int> createWithOptions(VideoCreationOptions options) async {
     openedUrls.add(options.dataSource.uri!);
     final id = nextId++;
-    streams[id] = StreamController<VideoEvent>()
-      ..add(
+    streams[id] = StreamController<VideoEvent>();
+    if (failingUrls.contains(options.dataSource.uri)) {
+      streams[id]!.addError(
+        PlatformException(code: 'unavailable', message: 'Fonte indisponível'),
+      );
+    } else {
+      streams[id]!.add(
         VideoEvent(
           eventType: VideoEventType.initialized,
           duration: duration,
           size: const Size(1920, 1080),
         ),
       );
+    }
     return id;
   }
 
@@ -120,7 +152,7 @@ class _VideoPlatform extends VideoPlayerPlatform {
   Future<void> setMixWithOthers(bool mixWithOthers) async {}
   @override
   Future<void> dispose(int playerId) async {
-    await streams[playerId]?.close();
+    unawaited(streams[playerId]?.close());
   }
 
   @override
@@ -202,12 +234,74 @@ void main() {
     }
   }
 
+  testWidgets('fallback visita servidor anterior ao iniciar na última fonte', (
+    tester,
+  ) async {
+    catalog.sources = [
+      const StreamSource(
+        url: 'https://video.test/first.mp4',
+        quality: 'HD',
+        server: 'Primeiro',
+      ),
+      const StreamSource(
+        url: 'https://video.test/last.mp4',
+        quality: 'HD',
+        server: 'Último',
+      ),
+    ];
+    platform.failingUrls.add('https://video.test/last.mp4');
+    await pumpPlayer(tester, movie: true, initialSourceIndex: 1);
+    await tester.pump(const Duration(seconds: 13));
+    await tester.pump();
+    expect(platform.openedUrls, [
+      'https://video.test/last.mp4',
+      'https://video.test/first.mp4',
+    ], reason: AppLogger.exportAll());
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+  });
+
   Future<void> moveTo(WidgetTester tester, Duration position) async {
     platform.positions[0] = position;
     for (var n = 0; n < 4; n++) {
       await tester.pump(const Duration(milliseconds: 300));
     }
   }
+
+  testWidgets('seletor de áudio aplica a faixa real ao player', (tester) async {
+    platform.supportsAudio = true;
+    await pumpPlayer(tester, movie: true);
+    await tester.tap(find.text('Áudio').first);
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.pumpAndSettle();
+    expect(find.text('Português real'), findsOneWidget);
+    await tester.tap(find.text('Português real'));
+    await tester.pumpAndSettle();
+    expect(platform.selectedTracks, ['pt']);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+    'qualidade lista fontes reais e legenda não anuncia seleção fictícia',
+    (tester) async {
+      await pumpPlayer(tester, movie: true);
+      await tester.tap(find.text('Qualidade').first);
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+      expect(find.text('Teste • HD'), findsOneWidget);
+      expect(find.text('1080p'), findsNothing);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Legendas').first);
+      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('não permite selecionar legendas'),
+        findsOneWidget,
+      );
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets('botão aparece no fim com controles ocultos e some ao voltar', (
     tester,

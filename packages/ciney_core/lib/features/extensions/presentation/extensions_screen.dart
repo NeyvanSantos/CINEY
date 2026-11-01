@@ -140,7 +140,7 @@ class _ExtensionsScreenState extends ConsumerState<ExtensionsScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'TLN+ Plugins (Repositório Oficial)',
+                        'Extensões do CiNey',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
@@ -169,6 +169,11 @@ class _ExtensionsScreenState extends ConsumerState<ExtensionsScreen>
             ),
           ),
 
+          if (repoState.error != null)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(repoState.error!),
+            ),
           // Lista de plugins disponíveis
           Expanded(
             child: TabBarView(
@@ -251,7 +256,7 @@ class _ExtensionsScreenState extends ConsumerState<ExtensionsScreen>
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         content: Text(
-                          'Repositório padrão sincronizado com sucesso!',
+                          'Catálogo incluído no aplicativo selecionado.',
                         ),
                         backgroundColor: AppColors.primary,
                       ),
@@ -324,7 +329,12 @@ class _ExtensionsScreenState extends ConsumerState<ExtensionsScreen>
               children: [
                 Row(
                   children: [
-                    Text(manifest.name, style: AppTypography.pluginName),
+                    Flexible(
+                      child: Text(
+                        manifest.name,
+                        style: AppTypography.pluginName,
+                      ),
+                    ),
                     const SizedBox(width: 6),
                     if (manifest.description.contains('Desativado'))
                       Container(
@@ -397,6 +407,22 @@ class _ExtensionsScreenState extends ConsumerState<ExtensionsScreen>
                   ),
                 );
               } else {
+                final implementations = PluginManager.allAvailablePlugins.where(
+                  (p) => p.manifest.id == manifest.id,
+                );
+                if (implementations.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Esta extensão precisa de uma implementação compatível incluída no aplicativo.',
+                      ),
+                    ),
+                  );
+                  return;
+                }
+                ref
+                    .read(pluginManagerProvider.notifier)
+                    .installPlugin(implementations.first);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
@@ -445,9 +471,10 @@ class _ExtensionsScreenState extends ConsumerState<ExtensionsScreen>
       if (category == 'Filmes') return p.categories.contains('movies');
       if (category == 'Séries') return p.categories.contains('series');
       if (category == 'Anime') return p.categories.contains('anime');
-      if (category == 'Dramas Asiáticos')
+      if (category == 'Dramas Asiáticos') {
         return p.categories.contains('doramas') ||
             p.categories.contains('dorama');
+      }
 
       return true;
     }).toList();

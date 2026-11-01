@@ -2,6 +2,7 @@ package com.example.castlite
 
 import android.os.Handler
 import android.os.Looper
+import android.webkit.CookieManager
 import android.util.Base64
 import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.WebViewFeature
@@ -65,7 +66,11 @@ internal class FrameMediaTransport(private val cacheDirectory: File) : Closeable
             ui.post {
                 if (frames[pageUrl] !== frame || !WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
                     request.done.countDown()
-                } else runCatching { frame.reply.postMessage(message) }.onFailure { request.done.countDown() }
+                } else runCatching {
+                    val credentials = if (!RelayHeaderPolicy.sameOrigin(pageUrl, url) &&
+                        !CookieManager.getInstance().getCookie(url).isNullOrBlank()) "include" else "same-origin"
+                    frame.reply.postMessage(JSONObject(message).put("credentials", credentials).toString())
+                }.onFailure { request.done.countDown() }
             }
             request.done.await(45, TimeUnit.SECONDS)
             val response = request.result

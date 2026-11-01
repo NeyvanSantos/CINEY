@@ -28,9 +28,22 @@ class CastingService : Service() {
             if (device == null) { stopSelf(); return }
             (device as? GoogleCastTarget)?.refreshSession()
             val state = device.playbackState
+            val now = SystemClock.elapsedRealtime()
             if (state == PlaybackState.PLAYING && mediaWasAccepted) hasPlayed = true
+            val monitor = playbackIntent.shouldMonitor(state, now)
+            if (!sourceNeedsReopen && monitor && accessGuard.observe(now, state, device.positionMs)) {
+                sourceNeedsReopen = true
+                sourceBlockedAt = now
+                lastResumePosition = recovery?.positionMs ?: device.positionMs.takeIf { it > 0 } ?: lastResumePosition
+                recovery = null
+                if (state == PlaybackState.PLAYING) device.pause()
+            }
+            if (sourceNeedsReopen) {
+                CastSessionEvents.error("source_access_denied")
+                if (now - sourceBlockedAt >= 180_000) { terminalError = "source_access_denied"; stopSelf(); return }
+            }
             val watchdog = recovery
-            if (watchdog != null && !userPaused) {
+            if (watchdog != null && device.reportsTransportState && (monitor || state == PlaybackState.PAUSED)) {
                 val action = watchdog.observe(SystemClock.elapsedRealtime(), device.isConnected,
                     state, if (mediaWasAccepted) device.positionMs else 0L,
                     if (hasPlayed) device.durationMs else 0L,
@@ -55,9 +68,10 @@ class CastingService : Service() {
                 val position = if (device.durationMs > 0) pendingSeekMs.coerceAtMost((device.durationMs - 1000).coerceAtLeast(0))
                     else pendingSeekMs
                 pendingSeekMs = 0L
-                device.seek(position)
+                seekTo(position)
             }
             CastSessionEvents.update(device)
+            if (sourceNeedsReopen) CastSessionEvents.error("source_access_denied")
             updateNotification()
             handler.postDelayed(this, 2_000)
         }
@@ -74,7 +88,7 @@ class CastingService : Service() {
             setCallback(object : MediaSession.Callback() {
                 override fun onPlay() { setUserPaused(false); target?.play() }
                 override fun onPause() { setUserPaused(true); target?.pause() }
-                override fun onSeekTo(pos: Long) { target?.seek(pos.coerceAtLeast(0)) }
+                override fun onSeekTo(pos: Long) { seekTo(pos.coerceAtLeast(0)) }
                 override fun onStop() { stopCasting() }
             })
             isActive = true
@@ -95,7 +109,7 @@ class CastingService : Service() {
         when (intent?.action) {
             "pause" -> { setUserPaused(true); target?.pause() }
             "play" -> { setUserPaused(false); target?.play() }
-            "back" -> target?.let { it.seek((it.positionMs - 10_000).coerceAtLeast(0)) }
+            "back" -> target?.let { seekTo((it.positionMs - 10_000).coerceAtLeast(0)) }
             "stop" -> stopCasting()
         }
         if (target == null) stopSelf() else updateNotification()
@@ -109,7 +123,9 @@ class CastingService : Service() {
         val video = media ?: return
         val relay = proxy ?: return
         val generation = ++loadGeneration
+        bindRelayEvents(relay, generation)
         val resumed = video.copy(resumePositionMs = position)
+        hasPlayed = false
         mediaWasAccepted = false
         loadFailed = false
         pendingSeekMs = if (device.protocol == CastProtocol.GOOGLE_CAST) 0L else position
@@ -176,7 +192,11 @@ class CastingService : Service() {
         wifiLock?.let { if (it.isHeld) it.release() }
         wifiLock = null
         loadGeneration++
+        target?.takeIf { it.protocol != CastProtocol.GOOGLE_CAST }?.disconnect()
         recovery = null
+        lastResumePosition = 0L
+        reopenRequest = null
+        playbackIntent = PlaybackIntent()
         media = null
         userAgent = ""
         if (releaseResources != null) (target as? GoogleCastTarget)?.detachClient()
@@ -210,12 +230,41 @@ class CastingService : Service() {
         private var recovery: PlaybackRecovery? = null
         private var hasPlayed = false
         private var loadFailed = false
-        private var userPaused = false
         private var loadGeneration = 0L
+        private var playbackIntent = PlaybackIntent()
+        private var accessGuard = SourceAccessGuard()
+        private var sourceNeedsReopen = false
+        private var sourceBlockedAt = 0L
+        private var lastResumePosition = 0L
+        private var reopenRequest: CastRequest? = null
+
+        private fun bindRelayEvents(relay: LocalMediaProxy, generation: Long) {
+            val ui = Handler(Looper.getMainLooper())
+            relay.onAccessDenied = {
+                ui.post { if (proxy === relay && loadGeneration == generation) accessGuard.denied(SystemClock.elapsedRealtime()) }
+            }
+            relay.onQualityRequested = { quality ->
+                ui.post { if (proxy === relay && loadGeneration == generation) CastSessionEvents.quality(quality) }
+            }
+        }
+
+        fun sourceRequest(): CastRequest? = reopenRequest?.copy(positionMs =
+            recovery?.positionMs ?: target?.positionMs?.takeIf { it > 0 } ?: lastResumePosition)
+
+        fun needsSourceAction(): Boolean = sourceNeedsReopen && target != null
+
+        fun seekTo(position: Long) {
+            val device = target ?: return
+            val destination = if (device.durationMs > 0) position.coerceIn(0, (device.durationMs - 1000).coerceAtLeast(0))
+                else position.coerceAtLeast(0)
+            if (device.protocol != CastProtocol.ROKU) recovery?.seekTo(SystemClock.elapsedRealtime(), destination)
+            lastResumePosition = destination
+            device.seek(destination)
+        }
 
         fun setUserPaused(paused: Boolean) {
-            userPaused = paused
-            if (!paused) recovery = PlaybackRecovery(SystemClock.elapsedRealtime(),
+            playbackIntent.requestPause(paused, SystemClock.elapsedRealtime())
+            if (!paused && !sourceNeedsReopen) recovery = PlaybackRecovery(SystemClock.elapsedRealtime(),
                 target?.positionMs ?: recovery?.positionMs ?: 0L)
         }
 
@@ -236,7 +285,7 @@ class CastingService : Service() {
             if (owns(value)) releaseResources = cleanup else cleanup()
         }
 
-        fun start(context: Context, device: CastTarget, relay: LocalMediaProxy, video: DetectedVideo, fallbackUserAgent: String, resumePositionMs: Long = 0): Long {
+        fun start(context: Context, device: CastTarget, relay: LocalMediaProxy, video: DetectedVideo, fallbackUserAgent: String, resumePositionMs: Long = 0, request: CastRequest? = null): Long {
             if (target !== device) (target as? GoogleCastTarget)?.detachClient()
             if (proxy !== relay) { proxy?.close(); releaseResources?.invoke(); releaseResources = null }
             // A limpeza da tela anterior pode ter removido os callbacks deste alvo reutilizado.
@@ -248,9 +297,14 @@ class CastingService : Service() {
             userAgent = fallbackUserAgent
             recovery = PlaybackRecovery(SystemClock.elapsedRealtime(), video.resumePositionMs)
             loadGeneration++
+            bindRelayEvents(relay, loadGeneration)
+            reopenRequest = request
+            lastResumePosition = video.resumePositionMs
+            playbackIntent = PlaybackIntent()
+            accessGuard = SourceAccessGuard()
+            sourceNeedsReopen = false
             hasPlayed = false
             loadFailed = false
-            userPaused = false
             pendingSeekMs = resumePositionMs.coerceAtLeast(0)
             mediaWasAccepted = false
             try {

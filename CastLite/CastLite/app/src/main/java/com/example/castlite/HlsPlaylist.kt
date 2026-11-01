@@ -7,10 +7,10 @@ import java.net.URL
 internal object HlsPlaylist {
     const val MIME = "application/vnd.apple.mpegurl"
 
-    /** Mantém adaptação nas variantes menores, sem remover áudio, legendas ou chaves. */
-    fun economical(text: String): String {
+    /** Restricts video to the best declared resolution, preserving codec alternatives and renditions. */
+    fun maximumQuality(text: String): String {
         val lines = text.lines()
-        data class Variant(val tag: Int, val uri: Int, val rate: Long, val height: Int?)
+        data class Variant(val tag: Int, val uri: Int, val rate: Long, val pixels: Long?)
         val variants = lines.mapIndexedNotNull { index, line ->
             if (!line.trim().startsWith("#EXT-X-STREAM-INF:")) return@mapIndexedNotNull null
             val attributes = parseAttributes(line.substringAfter(':'))
@@ -19,13 +19,27 @@ internal object HlsPlaylist {
             val uri = (index + 1 until lines.size).firstOrNull { lines[it].isNotBlank() }
                 ?: return@mapIndexedNotNull null
             if (lines[uri].trim().startsWith("#")) return@mapIndexedNotNull null
-            Variant(index, uri, rate, attributes["RESOLUTION"]?.substringAfter('x')?.toIntOrNull())
+            val resolution = attributes["RESOLUTION"]?.let {
+                Regex("(\\d{1,5})x(\\d{1,5})").matchEntire(it)
+            }
+            val pixels = resolution?.let {
+                val width = it.groupValues[1].toLong()
+                val height = it.groupValues[2].toLong()
+                (width * height).takeIf { width > 0 && height > 0 }
+            }
+            Variant(index, uri, rate, pixels)
         }
         if (variants.isEmpty()) return text
         // Sem metadados de todas as variantes, preserva o manifesto original.
         if (variants.size != lines.count { it.trim().startsWith("#EXT-X-STREAM-INF:") }) return text
-        val allowed = variants.filter { it.rate <= 3_000_000 && (it.height ?: 0) <= 720 }
-            .ifEmpty { listOf(variants.minBy { it.rate }) }.toSet()
+        // Mixed/invalid resolution metadata cannot safely rank video against audio-only variants.
+        if (variants.any { it.pixels == null } && variants.any { it.pixels != null }) return text
+        if (variants.any { lines[it.tag].contains("RESOLUTION=") && it.pixels == null }) return text
+        val bestPixels = variants.mapNotNull { it.pixels }.maxOrNull()
+        val bestRate = variants.maxOf { it.rate }
+        val allowed = variants.filter {
+            if (bestPixels != null) it.pixels == bestPixels else it.rate == bestRate
+        }.toSet()
         val removed = variants.filterNot { it in allowed }.flatMap { listOf(it.tag, it.uri) }.toSet()
         return lines.filterIndexed { index, _ -> index !in removed }.joinToString("\n")
     }

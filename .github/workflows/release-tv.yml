@@ -24,15 +24,22 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+    with:
+      source_ref: ${{ inputs.version_tag || github.ref }}
   build-and-release:
-    name: Compilar APK TV e publicar pré-release
+    needs: validate
+    name: Compilar APK TV e publicar release oficial
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          ref: ${{ inputs.version_tag || github.ref }}
+          ref: ${{ needs.validate.outputs.source_sha }}
           fetch-depth: 0
 
       - name: Validar tag TV
@@ -172,14 +179,15 @@ jobs:
           cp cinemax_tv/build/app/outputs/flutter-apk/app-release.apk "$ASSET"
           sha256sum "$ASSET" > "${ASSET}.sha256"
 
-      - name: Publicar pré-release Android TV
+      - name: Publicar release oficial Android TV
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: ${{ steps.vars.outputs.tag }}
           name: ${{ steps.vars.outputs.title }}
           body_path: ${{ runner.temp }}/release-notes.md
           draft: false
-          prerelease: true
+          prerelease: false
+          make_latest: false
           files: |
             CiNey-v${{ steps.vars.outputs.version }}-TV.apk
             CiNey-v${{ steps.vars.outputs.version }}-TV.apk.sha256

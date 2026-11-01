@@ -42,6 +42,7 @@ class GoogleCastTarget private constructor(
     private val listeners = CopyOnWriteArrayList<CastTargetListener>()
     private var observedClient: RemoteMediaClient? = null
     private var loading = false
+    private var loadEpoch = 0L
 
     private val mediaCallback = object : RemoteMediaClient.Callback() {
         override fun onStatusUpdated() = notifyStatus()
@@ -92,6 +93,8 @@ class GoogleCastTarget private constructor(
     }
 
     override fun disconnect() {
+        loadEpoch++
+        loading = false
         detachClient()
         try { session.remoteMediaClient?.stop() } catch (_: Exception) {}
     }
@@ -102,6 +105,7 @@ class GoogleCastTarget private constructor(
         fallbackUserAgent: String,
         onResult: (Boolean) -> Unit
     ) {
+        val generation = ++loadEpoch
         val client = session.remoteMediaClient
         if (client == null || !session.isConnected) {
             onResult(false)
@@ -126,6 +130,7 @@ class GoogleCastTarget private constructor(
         try {
             loading = true
             client.load(request).setResultCallback { result ->
+                if (generation != loadEpoch) return@setResultCallback
                 loading = false
                 Log.d("CastLite-Cast", "Load result=${result.status.statusCode}")
                 onResult(result.status.isSuccess)
@@ -150,6 +155,8 @@ class GoogleCastTarget private constructor(
     }
 
     override fun stop() = runSafe {
+        loadEpoch++
+        loading = false
         session.remoteMediaClient?.stop()?.setResultCallback { r ->
             if (!r.status.isSuccess) listeners.forEach { it.onError(appContext.getString(R.string.cast_command_error)) }
             notifyStatus()

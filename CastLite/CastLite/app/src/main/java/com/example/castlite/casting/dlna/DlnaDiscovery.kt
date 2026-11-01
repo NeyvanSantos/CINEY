@@ -4,6 +4,8 @@ import android.content.Context
 import android.net.wifi.WifiManager
 import android.util.Log
 import com.example.castlite.casting.DeviceDiscovery
+import com.example.castlite.casting.DiscoveryLifecycle
+import com.example.castlite.casting.CastProtocol
 import org.jupnp.UpnpServiceImpl
 import org.jupnp.DefaultUpnpServiceConfiguration
 import org.jupnp.model.message.header.UDADeviceTypeHeader
@@ -22,12 +24,13 @@ class DlnaDiscovery(
     private val context: Context,
     private val deviceDiscovery: DeviceDiscovery
 ) {
-    private var upnpService: UpnpServiceImpl? = null
+    @Volatile private var upnpService: UpnpServiceImpl? = null
+    private val lifecycle = DiscoveryLifecycle()
     private var multicastLock: WifiManager.MulticastLock? = null
 
     private val registryListener = object : DefaultRegistryListener() {
         override fun remoteDeviceAdded(registry: Registry, device: RemoteDevice) {
-            if (isMediaRenderer(device)) {
+            if (registry === upnpService?.registry && isMediaRenderer(device)) {
                 Log.d(TAG, "DLNA renderer found: ${device.details.friendlyName}")
                 val target = DlnaCastTarget(device, upnpService?.controlPoint, context)
                 deviceDiscovery.addDevice(target)
@@ -35,42 +38,67 @@ class DlnaDiscovery(
         }
 
         override fun remoteDeviceRemoved(registry: Registry, device: RemoteDevice) {
-            if (isMediaRenderer(device)) {
+            if (registry === upnpService?.registry && isMediaRenderer(device)) {
                 Log.d(TAG, "DLNA renderer lost: ${device.details.friendlyName}")
                 val toRemove = deviceDiscovery.allDevices.filterIsInstance<DlnaCastTarget>()
                     .firstOrNull { it.deviceUdn == device.identity.udn.identifierString }
-                if (toRemove != null) deviceDiscovery.removeDevice(toRemove)
+                if (toRemove != null) { toRemove.disconnect(); deviceDiscovery.removeDevice(toRemove) }
             }
         }
     }
 
     /** Start discovering DLNA renderers. Call from main thread. */
     fun start() {
-        acquireMulticastLock()
+        val generation = synchronized(lifecycle) {
+            val next = lifecycle.begin()
+            if (next != null) acquireMulticastLock()
+            next
+        } ?: run { refresh(); return }
         thread(name = "CastLite-DLNA-init", isDaemon = true) {
+            var service: UpnpServiceImpl? = null
             try {
                 // Passa false para ignorar o check de ambiente Android que dispara java.lang.Error
                 val config = object : DefaultUpnpServiceConfiguration(false) {}
-                val service = UpnpServiceImpl(config)
-                service.startup()
-                upnpService = service
-                service.registry?.addListener(registryListener)
-                service.controlPoint?.search(UDADeviceTypeHeader(MEDIA_RENDERER_TYPE), SEARCH_TIMEOUT_SECONDS)
+                val created = UpnpServiceImpl(config)
+                service = created
+                created.startup()
+                val published = synchronized(lifecycle) {
+                    if (!lifecycle.isCurrent(generation)) false else {
+                        upnpService = created
+                        created.registry?.addListener(registryListener)
+                        created.controlPoint?.search(UDADeviceTypeHeader(MEDIA_RENDERER_TYPE), SEARCH_TIMEOUT_SECONDS)
+                        true
+                    }
+                }
+                if (!published) { created.shutdown(); return@thread }
                 Log.d(TAG, "DLNA discovery started")
             } catch (t: Throwable) {
-                Log.e(TAG, "DLNA discovery failed to start: ${t.message}", t)
+                runCatching { service?.shutdown() }
+                synchronized(lifecycle) {
+                    if (lifecycle.isCurrent(generation)) {
+                        lifecycle.stop(); upnpService = null; releaseMulticastLock()
+                    }
+                }
+                Log.w(TAG, "DLNA discovery failed: ${t.javaClass.simpleName}")
             }
         }
     }
 
     /** Stop discovery and release resources. */
     fun stop() {
-        try {
-            upnpService?.registry?.removeListener(registryListener)
-            upnpService?.shutdown()
-        } catch (_: Exception) {}
-        upnpService = null
-        releaseMulticastLock()
+        val service = synchronized(lifecycle) {
+            lifecycle.stop()
+            val current = upnpService
+            upnpService = null
+            releaseMulticastLock()
+            current
+        }
+        deviceDiscovery.allDevices.filterIsInstance<DlnaCastTarget>().forEach { it.disconnect() }
+        deviceDiscovery.removeByProtocol(CastProtocol.DLNA)
+        if (service != null) thread(name = "CastLite-DLNA-stop", isDaemon = true) {
+            runCatching { service.registry?.removeListener(registryListener); service.shutdown() }
+                .onFailure { Log.w(TAG, "DLNA cleanup failed: ${it.javaClass.simpleName}") }
+        }
     }
 
     /** Trigger a new search for renderers. */

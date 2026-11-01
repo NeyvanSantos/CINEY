@@ -1,6 +1,14 @@
 name: CI
 
 on:
+  workflow_call:
+    inputs:
+      source_ref:
+        required: false
+        type: string
+    outputs:
+      source_sha:
+        value: ${{ jobs.verify.outputs.source_sha }}
   push:
     branches:
       - main
@@ -14,9 +22,19 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
+    outputs:
+      source_sha: ${{ steps.source.outputs.sha }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
+          persist-credentials: false
+
+      - name: Record tested commit
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -62,3 +80,30 @@ jobs:
 
       - name: Run notification server tests
         run: node --test supabase/tests/notification_policy.test.ts
+
+      - name: Validate shared Flutter core
+        working-directory: packages/ciney_core
+        run: |
+          flutter pub get
+          flutter analyze --no-pub
+          flutter test --no-pub
+
+      - name: Test TV host
+        working-directory: cinemax_tv
+        run: flutter test --no-pub
+
+      - name: Validate player engine
+        working-directory: player_engine
+        run: |
+          npm ci
+          npx tsc --noEmit
+          npm test
+          npm run test:integration
+
+      - name: Test native CastLite
+        working-directory: cinemax/android
+        run: bash gradlew :castlite_engine:testDebugUnitTest
+
+      - name: Test native TV
+        working-directory: cinemax_tv/android
+        run: bash gradlew :app:testDebugUnitTest

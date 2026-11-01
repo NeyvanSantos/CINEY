@@ -1,16 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">localhost</domain>
-        <domain includeSubdomains="true">127.0.0.1</domain>
-        <domain includeSubdomains="true">192.168.0.0/16</domain>
-        <domain includeSubdomains="true">10.0.0.0/8</domain>
-    </domain-config>
-
-    <!-- Tudo o mais deve usar HTTPS obrigatoriamente -->
+    <!-- LAN discovery/control (Roku/DLNA) and explicitly configured local media
+         require HTTP to dynamic IPs. Android domain-config does not support CIDR.
+         Keep this exception explicit; public application services require TLS. -->
     <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
     </base-config>
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">themoviedb.org</domain>
+        <domain includeSubdomains="true">tmdb.org</domain>
+        <domain includeSubdomains="true">supabase.co</domain>
+        <domain includeSubdomains="true">github.com</domain>
+        <domain includeSubdomains="true">githubusercontent.com</domain>
+        <domain includeSubdomains="true">archive.org</domain>
+        <domain includeSubdomains="true">superflixapi.quest</domain>
+        <domain includeSubdomains="true">myembed.biz</domain>
+        <domain includeSubdomains="true">cinemax-stream.app</domain>
+    </domain-config>
 </network-security-config>

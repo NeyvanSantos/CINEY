@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:iconsax/iconsax.dart';
 import '../../../core/config/theme/app_colors.dart';
+import '../../../core/config/app_environment.dart';
 import '../../../core/config/theme/app_typography.dart';
 import '../../../core/localization/app_localization.dart';
 import '../../../core/widgets/gradient_poster.dart';
@@ -19,11 +21,21 @@ class SearchScreen extends ConsumerStatefulWidget {
 
 class _SearchScreenState extends ConsumerState<SearchScreen> {
   final TextEditingController _searchController = TextEditingController();
+  late final FocusNode _searchFocusNode = FocusNode(
+    debugLabel: 'search-query',
+    onKeyEvent: _handleSearchKey,
+  );
+  final ScrollController _resultsScroll = ScrollController(
+    keepScrollOffset: false,
+  );
+  final Map<String, FocusNode> _resultFocusNodes = {};
+  bool _focusResultsWhenReady = false;
   List<ContentItem> _results = [];
   bool _isSearching = false;
   String _selectedFilter = 'Todos';
   Timer? _debounceTimer;
   int _searchRequestId = 0;
+  String? _searchError;
 
   final List<String> _filters = [
     'Todos',
@@ -49,8 +61,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   ];
 
   void _onSearchChanged(String query) {
+    _focusResultsWhenReady = false;
     _debounceTimer?.cancel();
+    ++_searchRequestId;
+    _searchError = null;
     if (query.trim().isEmpty) {
+      _pruneResultFocusNodes(const []);
       setState(() {
         _results = [];
         _isSearching = false;
@@ -68,6 +84,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     final requestId = ++_searchRequestId;
     final cleanQuery = query.trim();
     if (cleanQuery.isEmpty) {
+      _focusResultsWhenReady = false;
+      _pruneResultFocusNodes(const []);
       if (mounted) {
         setState(() {
           _results = [];
@@ -77,15 +95,30 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       return;
     }
 
-    final results = await ref
-        .read(pluginManagerProvider.notifier)
-        .searchAll(cleanQuery);
+    try {
+      final results = await ref
+          .read(pluginManagerProvider.notifier)
+          .searchAll(cleanQuery);
 
-    if (mounted && requestId == _searchRequestId) {
-      setState(() {
-        _results = results;
-        _isSearching = false;
-      });
+      if (mounted && requestId == _searchRequestId) {
+        _pruneResultFocusNodes(results);
+        setState(() {
+          _results = results;
+          _searchError = null;
+          _isSearching = false;
+        });
+        if (_focusResultsWhenReady) _focusFirstResult();
+      }
+    } catch (_) {
+      if (mounted && requestId == _searchRequestId) {
+        _focusResultsWhenReady = false;
+        setState(() {
+          _results = [];
+          _isSearching = false;
+          _searchError =
+              'Não foi possível pesquisar. Verifique a conexão e tente novamente.';
+        });
+      }
     }
   }
 
@@ -99,10 +132,106 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     _performSearch(term);
   }
 
+  static String _resultKey(ContentItem item) =>
+      '${item.pluginId}:${item.type.value}:${item.id}';
+
+  FocusNode _resultNode(ContentItem item) => _resultFocusNodes.putIfAbsent(
+    _resultKey(item),
+    () => FocusNode(debugLabel: 'search-result-${_resultKey(item)}'),
+  );
+
+  void _pruneResultFocusNodes(List<ContentItem> results) {
+    final retained = results.map(_resultKey).toSet();
+    final removed = _resultFocusNodes.keys
+        .where((key) => !retained.contains(key))
+        .toList();
+    for (final key in removed) {
+      final node = _resultFocusNodes.remove(key)!;
+      WidgetsBinding.instance.addPostFrameCallback((_) => node.dispose());
+    }
+  }
+
+  KeyEventResult _handleSearchKey(FocusNode node, KeyEvent event) {
+    if (!AppEnvironment.isTv ||
+        event is KeyUpEvent ||
+        event.logicalKey != LogicalKeyboardKey.arrowDown) {
+      return KeyEventResult.ignored;
+    }
+    if (_isSearching) {
+      _focusResultsWhenReady = true;
+      return KeyEventResult.handled;
+    }
+    if (_filterResults(_results, _selectedFilter).isEmpty) {
+      return KeyEventResult.ignored;
+    }
+    _focusFirstResult();
+    return KeyEventResult.handled;
+  }
+
+  void _focusFirstResult() {
+    _focusResultsWhenReady = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _isSearching || _searchController.text.trim().isEmpty) {
+        return;
+      }
+      if (!TickerMode.valuesOf(context).enabled ||
+          ModalRoute.of(context)?.isCurrent == false) {
+        return;
+      }
+      final items = _filterResults(_results, _selectedFilter);
+      if (items.isEmpty) return;
+      if (_resultsScroll.hasClients) _resultsScroll.jumpTo(0);
+      _resultNode(items.first).requestFocus();
+    });
+    // Keyboard input may not otherwise schedule a frame before requesting focus.
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  KeyEventResult _handleResultKey(
+    KeyEvent event,
+    int index,
+    int columns,
+    List<ContentItem> items,
+  ) {
+    if (!AppEnvironment.isTv || event is KeyUpEvent) {
+      return KeyEventResult.ignored;
+    }
+    final key = event.logicalKey;
+    int? next;
+    if (key == LogicalKeyboardKey.arrowUp) {
+      if (index < columns) {
+        _searchFocusNode.requestFocus();
+        return KeyEventResult.handled;
+      }
+      next = index - columns;
+    } else if (key == LogicalKeyboardKey.arrowDown) {
+      if (index ~/ columns == (items.length - 1) ~/ columns) {
+        return KeyEventResult.handled;
+      }
+      next = (index + columns).clamp(0, items.length - 1);
+    } else if (key == LogicalKeyboardKey.arrowRight) {
+      if (index % columns == columns - 1 || index + 1 == items.length) {
+        return KeyEventResult.handled;
+      }
+      next = index + 1;
+    } else if (key == LogicalKeyboardKey.arrowLeft) {
+      if (index % columns == 0) return KeyEventResult.ignored;
+      next = index - 1;
+    }
+    if (next == null) return KeyEventResult.ignored;
+    _resultNode(items[next]).requestFocus();
+    return KeyEventResult.handled;
+  }
+
   @override
   void dispose() {
     _debounceTimer?.cancel();
     _searchController.dispose();
+    _searchFocusNode.dispose();
+    _resultsScroll.dispose();
+    for (final node in _resultFocusNodes.values) {
+      node.dispose();
+    }
     super.dispose();
   }
 
@@ -129,8 +258,17 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 ),
                 child: TextField(
                   controller: _searchController,
+                  focusNode: _searchFocusNode,
                   onChanged: _onSearchChanged,
                   onSubmitted: _triggerSearchDirectly,
+                  onEditingComplete: AppEnvironment.isTv
+                      ? () {
+                          _searchFocusNode.requestFocus();
+                          SystemChannels.textInput.invokeMethod<void>(
+                            'TextInput.hide',
+                          );
+                        }
+                      : null,
                   autofocus: false,
                   textInputAction: TextInputAction.search,
                   decoration: InputDecoration(
@@ -170,26 +308,45 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                     final filter = _filters[index];
                     final isSelected = _selectedFilter == filter;
 
-                    return FilterChip(
-                      label: Text(
-                        context.categoryLabel(filter),
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: isSelected
-                              ? FontWeight.bold
-                              : FontWeight.w500,
-                          color: isSelected
-                              ? Colors.white
-                              : AppColors.textSecondary,
-                        ),
-                      ),
-                      selected: isSelected,
-                      selectedColor: AppColors.primary,
-                      backgroundColor: AppColors.surfaceLight,
-                      showCheckmark: false,
-                      onSelected: (selected) {
-                        setState(() => _selectedFilter = filter);
+                    return Focus(
+                      canRequestFocus: false,
+                      onKeyEvent: (_, event) {
+                        if (!AppEnvironment.isTv || event is KeyUpEvent) {
+                          return KeyEventResult.ignored;
+                        }
+                        if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                          return _handleSearchKey(_searchFocusNode, event);
+                        }
+                        if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                          _searchFocusNode.requestFocus();
+                          return KeyEventResult.handled;
+                        }
+                        return KeyEventResult.ignored;
                       },
+                      child: FilterChip(
+                        label: Text(
+                          context.categoryLabel(filter),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: isSelected
+                                ? FontWeight.bold
+                                : FontWeight.w500,
+                            color: isSelected
+                                ? Colors.white
+                                : AppColors.textSecondary,
+                          ),
+                        ),
+                        selected: isSelected,
+                        selectedColor: AppColors.primary,
+                        backgroundColor: AppColors.surfaceLight,
+                        showCheckmark: false,
+                        onSelected: (selected) {
+                          if (_resultsScroll.hasClients) {
+                            _resultsScroll.jumpTo(0);
+                          }
+                          setState(() => _selectedFilter = filter);
+                        },
+                      ),
                     );
                   },
                 ),
@@ -203,6 +360,22 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 
   Widget _buildBody(List<ContentItem> items) {
+    if (!_isSearching &&
+        _searchError != null &&
+        _searchController.text.trim().isNotEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(_searchError!),
+            TextButton(
+              onPressed: () => _triggerSearchDirectly(_searchController.text),
+              child: const Text('Tentar novamente'),
+            ),
+          ],
+        ),
+      );
+    }
     if (_isSearching) {
       return Center(
         child: Column(
@@ -363,25 +536,42 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           ),
         ),
         Expanded(
-          child: GridView.builder(
-            padding: const EdgeInsets.all(16),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              childAspectRatio: 0.65,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-            ),
-            itemCount: items.length,
-            itemBuilder: (context, index) {
-              final item = items[index];
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final columns = AppEnvironment.isTv
+                  ? (constraints.maxWidth / 170).floor().clamp(3, 8)
+                  : 3;
+              final ratio = AppEnvironment.isTv ? 2 / 3 : 0.65;
+              final cardWidth =
+                  (constraints.maxWidth - 32 - 12 * (columns - 1)) / columns;
+              return GridView.builder(
+                controller: _resultsScroll,
+                padding: const EdgeInsets.all(16),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: columns,
+                  childAspectRatio: ratio,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                ),
+                itemCount: items.length,
+                itemBuilder: (context, index) {
+                  final item = items[index];
 
-              return GradientPoster(
-                title: item.title,
-                posterUrl: item.posterUrl,
-                rating: item.rating,
-                year: item.year,
-                onTap: () {
-                  context.push('/details/${item.id}/${item.pluginId}');
+                  return GradientPoster(
+                    key: ValueKey(_resultKey(item)),
+                    width: cardWidth,
+                    height: cardWidth / ratio,
+                    focusNode: AppEnvironment.isTv ? _resultNode(item) : null,
+                    onKey: (_, event) =>
+                        _handleResultKey(event, index, columns, items),
+                    title: item.title,
+                    posterUrl: item.posterUrl,
+                    rating: item.rating,
+                    year: item.year,
+                    onTap: () {
+                      context.push('/details/${item.id}/${item.pluginId}');
+                    },
+                  );
                 },
               );
             },

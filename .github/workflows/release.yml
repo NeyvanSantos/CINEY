@@ -27,7 +27,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+    with:
+      source_ref: ${{ inputs.version_tag || github.ref }}
   build-and-release:
+    needs: validate
     name: Compilar APK e Lançar Release
     runs-on: ubuntu-latest
 
@@ -35,7 +42,7 @@ jobs:
       - name: 📥 Clonar Repositório
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          ref: ${{ inputs.version_tag || github.ref }}
+          ref: ${{ needs.validate.outputs.source_sha }}
           fetch-depth: 0
 
       - name: 🏷️ Determinar Tag e Título

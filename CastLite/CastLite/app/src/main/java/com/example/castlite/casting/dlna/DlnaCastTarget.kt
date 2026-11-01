@@ -15,6 +15,10 @@ import org.jupnp.model.message.UpnpResponse
 import org.jupnp.model.meta.RemoteDevice
 import org.jupnp.model.types.ServiceType
 import org.jupnp.support.avtransport.callback.GetPositionInfo
+import org.jupnp.support.avtransport.callback.GetTransportInfo
+import org.jupnp.support.model.TransportInfo
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import org.jupnp.support.avtransport.callback.Pause
 import org.jupnp.support.avtransport.callback.Play
 import org.jupnp.support.avtransport.callback.Seek
@@ -46,10 +50,18 @@ class DlnaCastTarget(
     val deviceUdn: String = device.identity.udn.identifierString
 
     private val listeners = CopyOnWriteArrayList<CastTargetListener>()
-    private var _playbackState = PlaybackState.IDLE
-    private var _positionMs = 0L
-    private var _durationMs = 0L
-    private var _connected = false
+    @Volatile private var _playbackState = PlaybackState.IDLE
+    @Volatile private var _positionMs = 0L
+    @Volatile private var _durationMs = 0L
+    @Volatile private var _connected = false
+    private val pollEpoch = AtomicLong()
+    private val transportPending = AtomicBoolean(false)
+    private val positionPending = AtomicBoolean(false)
+    private val loadEpoch = AtomicLong()
+    @Volatile private var transportSupported = true
+    override val reportsTransportState: Boolean get() = transportSupported
+    private var transportFailures = 0
+    override val recoverableIdle: Boolean get() = _playbackState == PlaybackState.ERROR
     private var positionTimer: Timer? = null
 
     private val avTransportService
@@ -71,6 +83,7 @@ class DlnaCastTarget(
     }
 
     override fun disconnect() {
+        loadEpoch.incrementAndGet()
         stopPositionPolling()
         _connected = false
         notifyState(PlaybackState.IDLE)
@@ -82,6 +95,10 @@ class DlnaCastTarget(
         fallbackUserAgent: String,
         onResult: (Boolean) -> Unit
     ) {
+        val generation = loadEpoch.incrementAndGet()
+        _positionMs = 0
+        _durationMs = 0
+        transportFailures = 0
         val service = avTransportService
         val cp = controlPoint
         if (service == null || cp == null) {
@@ -97,13 +114,15 @@ class DlnaCastTarget(
 
         val setUriCallback = object : SetAVTransportURI(service, mediaUrl, metadata) {
             override fun success(invocation: ActionInvocation<*>?) {
+                if (generation != loadEpoch.get()) return
                 Log.d(TAG, "SetAVTransportURI success, triggering Play")
                 // URI set, now play
                 val playCallback = object : Play(service) {
                     override fun success(invocation: ActionInvocation<*>?) {
-                        Log.d(TAG, "DLNA Play started")
-                        _playbackState = PlaybackState.PLAYING
-                        notifyState(PlaybackState.PLAYING)
+                        if (generation != loadEpoch.get()) return
+                        Log.d(TAG, "DLNA Play accepted")
+                        // The command was accepted; polling confirms actual playback.
+                        notifyState(PlaybackState.LOADING)
                         startPositionPolling()
                         onResult(true)
                     }
@@ -113,7 +132,8 @@ class DlnaCastTarget(
                         operation: UpnpResponse?,
                         defaultMsg: String?
                     ) {
-                        Log.e(TAG, "DLNA Play failed: $defaultMsg")
+                        if (generation != loadEpoch.get()) return
+                        Log.w(TAG, "DLNA Play failed code=${invocation.failure?.errorCode}")
                         notifyState(PlaybackState.ERROR)
                         listeners.forEach { it.onError(appContext.getString(R.string.dlna_send_failed)) }
                         onResult(false)
@@ -127,7 +147,8 @@ class DlnaCastTarget(
                 operation: UpnpResponse?,
                 defaultMsg: String?
             ) {
-                Log.e(TAG, "SetAVTransportURI failed: $defaultMsg")
+                if (generation != loadEpoch.get()) return
+                Log.w(TAG, "SetAVTransportURI failed code=${invocation.failure?.errorCode}")
                 notifyState(PlaybackState.ERROR)
                 listeners.forEach { it.onError(appContext.getString(R.string.dlna_send_failed)) }
                 onResult(false)
@@ -137,10 +158,12 @@ class DlnaCastTarget(
     }
 
     override fun play() {
+        val generation = loadEpoch.get()
         val service = avTransportService ?: return
         val cp = controlPoint ?: return
         cp.execute(object : Play(service) {
             override fun success(invocation: ActionInvocation<*>?) {
+                if (generation != loadEpoch.get()) return
                 notifyState(PlaybackState.PLAYING)
             }
 
@@ -151,10 +174,12 @@ class DlnaCastTarget(
     }
 
     override fun pause() {
+        val generation = loadEpoch.get()
         val service = avTransportService ?: return
         val cp = controlPoint ?: return
         cp.execute(object : Pause(service) {
             override fun success(invocation: ActionInvocation<*>?) {
+                if (generation != loadEpoch.get()) return
                 notifyState(PlaybackState.PAUSED)
             }
 
@@ -165,11 +190,13 @@ class DlnaCastTarget(
     }
 
     override fun stop() {
+        val generation = loadEpoch.incrementAndGet()
         val service = avTransportService ?: return
         val cp = controlPoint ?: return
         stopPositionPolling()
         cp.execute(object : Stop(service) {
             override fun success(invocation: ActionInvocation<*>?) {
+                if (generation != loadEpoch.get()) return
                 _positionMs = 0L
                 _durationMs = 0L
                 notifyState(PlaybackState.IDLE)
@@ -182,11 +209,13 @@ class DlnaCastTarget(
     }
 
     override fun seek(positionMs: Long) {
+        val generation = loadEpoch.get()
         val service = avTransportService ?: return
         val cp = controlPoint ?: return
         val target = formatTime(positionMs)
         cp.execute(object : Seek(service, target) {
             override fun success(invocation: ActionInvocation<*>?) {
+                if (generation != loadEpoch.get()) return
                 _positionMs = positionMs
                 listeners.forEach { it.onPositionChanged(positionMs, _durationMs) }
             }
@@ -250,33 +279,70 @@ class DlnaCastTarget(
 
     private fun startPositionPolling() {
         stopPositionPolling()
+        val epoch = pollEpoch.get()
         positionTimer = Timer("DlnaPosition-${deviceUdn.take(8)}", true).apply {
             scheduleAtFixedRate(object : TimerTask() {
                 override fun run() {
-                    pollPosition()
+                    pollPosition(epoch)
                 }
             }, 0L, POLL_INTERVAL_MS)
         }
     }
 
     private fun stopPositionPolling() {
+        pollEpoch.incrementAndGet()
+        transportPending.set(false)
+        positionPending.set(false)
         positionTimer?.cancel()
         positionTimer = null
     }
 
-    private fun pollPosition() {
+    private fun pollPosition(epoch: Long) {
+        if (epoch != pollEpoch.get()) return
         val service = avTransportService ?: return
         val cp = controlPoint ?: return
+        if (transportSupported && transportPending.compareAndSet(false, true)) cp.execute(object : GetTransportInfo(service) {
+            override fun received(invocation: ActionInvocation<*>, info: TransportInfo) {
+                if (epoch != pollEpoch.get()) return
+                transportPending.set(false)
+                transportFailures = 0
+                _connected = true
+                val state = if (info.currentTransportStatus.toString() == "ERROR_OCCURRED") PlaybackState.ERROR
+                    else transportPlaybackState(info.currentTransportState.toString())
+                if (state != null && state != _playbackState) notifyState(state)
+            }
+            override fun failure(invocation: ActionInvocation<*>, operation: UpnpResponse?, defaultMsg: String?) {
+                if (epoch != pollEpoch.get()) return
+                transportPending.set(false)
+                if (invocation.failure?.errorCode == 401) {
+                    transportSupported = false
+                    Log.w(TAG, "Renderer does not expose transport state")
+                    listeners.forEach { it.onError(appContext.getString(R.string.cast_limited_transport_state)) }
+                } else if (++transportFailures >= 3) {
+                    _connected = false
+                    notifyState(PlaybackState.ERROR)
+                }
+            }
+        })
+        if (!positionPending.compareAndSet(false, true)) return
         cp.execute(object : GetPositionInfo(service) {
             override fun received(invocation: ActionInvocation<*>, positionInfo: PositionInfo) {
+                if (epoch != pollEpoch.get()) return
+                positionPending.set(false)
                 val trackDuration = parseTime(positionInfo.trackDuration)
                 val relTime = parseTime(positionInfo.relTime)
                 if (trackDuration > 0L) _durationMs = trackDuration
+                if (!transportSupported && relTime > _positionMs &&
+                    _playbackState in listOf(PlaybackState.LOADING, PlaybackState.BUFFERING)) {
+                    notifyState(PlaybackState.PLAYING)
+                }
                 _positionMs = relTime
                 listeners.forEach { it.onPositionChanged(relTime, _durationMs) }
             }
 
             override fun failure(invocation: ActionInvocation<*>, operation: UpnpResponse?, defaultMsg: String?) {
+                if (epoch != pollEpoch.get()) return
+                positionPending.set(false)
                 // Some renderers may not support position queries; ignore silently
             }
         })
@@ -292,6 +358,13 @@ class DlnaCastTarget(
     }
 
     companion object {
+        fun transportPlaybackState(value: String): PlaybackState? = when (value) {
+            "PLAYING" -> PlaybackState.PLAYING
+            "PAUSED_PLAYBACK", "PAUSED_RECORDING" -> PlaybackState.PAUSED
+            "STOPPED", "NO_MEDIA_PRESENT" -> PlaybackState.IDLE
+            "TRANSITIONING" -> PlaybackState.BUFFERING
+            else -> null
+        }
         private const val TAG = "DlnaCastTarget"
         private const val POLL_INTERVAL_MS = 1_000L
         private const val VOLUME_STEP = 5

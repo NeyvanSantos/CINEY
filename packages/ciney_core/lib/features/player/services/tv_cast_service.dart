@@ -38,8 +38,8 @@ class TvCastPlaybackCommand {
     'mediaType': mediaType,
     'server': server,
     'resumePositionMs': resumePositionMs,
-    if (season != null) 'season': season!,
-    if (episode != null) 'episode': episode!,
+    'season': ?season,
+    'episode': ?episode,
   };
 
   static TvCastPlaybackCommand? tryParse(Object? payload) {

@@ -4,12 +4,14 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class TvPlaybackOptionsTest {
-    @Test fun releasesPublicSessionOnlyAfterVideoAndAllTracksAreReady() {
+    @Test fun keepsSessionForAuthenticationRequiredByLaterSegments() {
         val session = TvBrowserSessionState()
         assertFalse(session.canReleaseBrowser(false, false))
         assertFalse(session.canReleaseBrowser(true, false))
         assertFalse(session.canReleaseBrowser(false, true))
-        assertTrue(session.canReleaseBrowser(true, true))
+        assertFalse(session.canReleaseBrowser(true, true))
+        session.requireBrowser()
+        assertFalse(session.canReleaseBrowser(true, true))
     }
 
     @Test fun retainsBrowserWhenAnyResourceNeededAuthenticatedFallback() {

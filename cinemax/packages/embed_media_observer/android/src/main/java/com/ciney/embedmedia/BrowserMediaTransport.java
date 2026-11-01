@@ -69,17 +69,12 @@ public final class BrowserMediaTransport implements Closeable {
         Uri u=Uri.parse(page); return u.getScheme()+"://"+u.getAuthority();
     }
     private Frame findFrame(String page) {
-        if (page == null) return null;
-        Frame f = frames.get(page);
-        if (f != null) return f;
-        String alt = page.endsWith("/") ? page.substring(0, page.length() - 1) : (page + "/");
-        f = frames.get(alt);
-        if (f != null) return f;
-        String orig = origin(page);
+        Map<String, String> registered = new HashMap<>();
         for (Map.Entry<String, Frame> entry : frames.entrySet()) {
-            if (entry.getValue().origin.equals(orig)) return entry.getValue();
+            registered.put(entry.getKey(), entry.getValue().origin);
         }
-        return frames.isEmpty() ? null : frames.values().iterator().next();
+        String selected = FrameSelector.findPage(page, registered);
+        return selected == null ? null : frames.get(selected);
     }
     public boolean hasPage(String page) { return findFrame(page) != null; }
     public void pauseLocalPlayback() { broadcast("pauseLocal"); }

@@ -27,7 +27,31 @@ class RemoteControlActivity : AppCompatActivity() {
     private var target: CastTarget? = null
     private var durationMs = 0L
     private var userSeeking = false
+    private var accessDialogShown = false
     private val sessionListener: (Map<String, Any?>) -> Unit = { state ->
+        runOnUiThread {
+            if (::binding.isInitialized) {
+                binding.controlTitle.text = state["title"] as? String ?: getString(R.string.control_media_unknown)
+                val quality = (state["quality"] as? String)?.let { Regex("resolution=(\\d{1,5}x\\d{1,5})").find(it)?.groupValues?.get(1) }
+                binding.controlQuality.text = quality?.let { getString(R.string.cast_quality_requested, it) }.orEmpty()
+                binding.controlQuality.visibility = if (quality == null) View.GONE else View.VISIBLE
+            }
+        }
+        if (state["error"] == "source_access_denied" && !accessDialogShown) runOnUiThread {
+            if (!isFinishing && !isDestroyed) {
+                accessDialogShown = true
+                val retryRequest = CastingService.sourceRequest()
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle(R.string.cast_source_denied_title).setMessage(R.string.cast_source_denied_message)
+                    .setPositiveButton(R.string.cast_reopen_source) { _, _ ->
+                        startActivity(Intent(this, MainActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                            putExtra("com.ciney.castlite.REOPEN", true)
+                            retryRequest?.let { putExtra(CastRequest.EXTRA, org.json.JSONObject(it.toMap()).toString()) }
+                        })
+                    }.setNegativeButton(R.string.close, null).show()
+            }
+        }
         if (state["error"] == "recovery_exhausted") runOnUiThread {
             if (!isFinishing && !isDestroyed) {
                 showToast(getString(R.string.cast_recovery_exhausted))
@@ -104,7 +128,7 @@ class RemoteControlActivity : AppCompatActivity() {
         binding.controlDevice.text = t?.name?.let { getString(R.string.cast_connected, it) }
             ?: getString(R.string.control_device_unknown)
 
-        binding.controlTitle.text = getString(R.string.control_media_unknown)
+        binding.controlTitle.text = CastSessionEvents.snapshot()["title"] as? String ?: getString(R.string.control_media_unknown)
 
         binding.controlStatus.text = when {
             !connected -> getString(R.string.control_disconnected)
@@ -118,11 +142,11 @@ class RemoteControlActivity : AppCompatActivity() {
         binding.controlBuffering.visibility = if (state == PlaybackState.BUFFERING) View.VISIBLE else View.GONE
         binding.controlPlayPause.setText(if (state == PlaybackState.PLAYING) R.string.pause else R.string.play)
 
-        val active = connected && state !in listOf(PlaybackState.IDLE, PlaybackState.ERROR)
+        val active = connected && !CastingService.needsSourceAction() && state !in listOf(PlaybackState.IDLE, PlaybackState.ERROR)
         binding.controlPlayPause.isEnabled = active
         binding.controlSeekBack.isEnabled = active
         binding.controlSeekForward.isEnabled = active
-        binding.controlStop.isEnabled = active
+        binding.controlStop.isEnabled = connected
 
         val canAdjustVolume = connected && t?.supportsVolumeControl == true
         binding.controlVolumeDown.isEnabled = canAdjustVolume
@@ -163,7 +187,7 @@ class RemoteControlActivity : AppCompatActivity() {
                 val duration = durationMs
                 if (duration <= 0L) return
                 val position = duration * seekBar.progress / SEEK_SCALE
-                target?.seek(position)
+                if (target === CastingService.target) CastingService.seekTo(position) else target?.seek(position)
             }
         })
     }
@@ -173,7 +197,7 @@ class RemoteControlActivity : AppCompatActivity() {
         val position = t.positionMs.coerceAtLeast(0L)
         val duration = maxOf(durationMs, t.durationMs)
         val dest = (position + offsetMs).coerceAtLeast(0L).let { if (duration > 0L) minOf(it, duration) else it }
-        t.seek(dest)
+        if (t === CastingService.target) CastingService.seekTo(dest) else t.seek(dest)
     }
 
     private fun updateTimeline(position: Long, duration: Long) {

@@ -6,6 +6,21 @@ const vm = require('node:vm');
 
 const script = fs.readFileSync(path.join(__dirname, '../../main/assets/media_observer.js'), 'utf8');
 
+test('browser credentials are included only when explicitly requested by native transport', async () => {
+    for (const mode of ['include', undefined]) {
+        let options;
+        const page = frame({ fetch: async (url, request) => {
+            options = request;
+            return { status: 200, url, headers: new Map(),
+                body: { getReader: () => ({ read: async () => ({ done: true }) }) } };
+        } });
+        page.bridge.onmessage({ data: JSON.stringify({ kind: 'fetch', id: 'cookies', pageId: 1,
+            url: 'https://cdn.example/segment', credentials: mode }) });
+        await new Promise(setImmediate);
+        assert.equal(options.credentials, mode === 'include' ? 'include' : 'same-origin');
+    }
+});
+
 function frame({ playlist = [], elements = [], href = 'https://player.example/video/123', fetch: fetchImpl } = {}) {
     const messages = [];
     const events = new Map();

@@ -85,7 +85,12 @@
     <string name="device_type_cast">Chromecast</string>
     <string name="device_type_dlna">DLNA</string>
     <string name="device_type_roku">Roku</string>
-    <string name="cast_economy">Economizar rede (até 720p quando disponível)</string>
     <string name="cast_choose_server">Trocar servidor</string>
+    <string name="cast_source_denied_title">A fonte recusou o acesso ao vídeo</string>
+    <string name="cast_source_denied_message">Reabra a fonte ou escolha outro servidor para continuar. O ponto do filme será preservado quando o dispositivo permitir.</string>
+    <string name="cast_reopen_source">Voltar à fonte</string>
+    <string name="cast_direct_source_denied">Este link direto foi recusado. Use Trocar servidor ou reabra o filme no CiNey para obter outra fonte.</string>
+    <string name="cast_quality_requested">Qualidade solicitada: %1$s</string>
+    <string name="cast_limited_transport_state">Esta TV não informa o estado completo do vídeo. A recuperação automática está indisponível; use Parar ao encerrar.</string>
     <string name="cast_invalid_request">Não foi possível carregar os dados da transmissão.</string>
 </resources>

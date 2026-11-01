@@ -20,7 +20,10 @@ import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 
@@ -31,6 +34,9 @@ import kotlin.concurrent.thread
  */
 class LocalMediaProxy(context: Context) : Closeable {
     internal var frameTransport: FrameMediaTransport? = null
+    @Volatile internal var onAccessDenied: (() -> Unit)? = null
+    @Volatile internal var onQualityRequested: ((String) -> Unit)? = null
+    @Volatile private var activeToken: String? = null
     private data class Resource(val url: String, val mimeType: String? = null, val variantQuality: String? = null)
     private data class Route(
         val token: String,
@@ -39,8 +45,9 @@ class LocalMediaProxy(context: Context) : Closeable {
         val pageUrl: String,
         val requestHeaders: Map<String, String>,
         val userAgent: String,
-        val economy: Boolean,
         val audioLanguage: String?,
+        val denied: (() -> Unit)?,
+        val qualityRequested: ((String) -> Unit)?,
         val browserHosts: MutableSet<String> = ConcurrentHashMap.newKeySet(),
         val resources: ConcurrentHashMap<String, Resource> = ConcurrentHashMap(),
         val resourceIds: ConcurrentHashMap<Resource, String> = ConcurrentHashMap(),
@@ -48,22 +55,23 @@ class LocalMediaProxy(context: Context) : Closeable {
     )
 
     private val appContext = context.applicationContext
-    var economyMode = context.getSharedPreferences("casting", Context.MODE_PRIVATE).getBoolean("economy_opt_in", false)
     private val routes = ConcurrentHashMap<String, Route>()
     private val serverLock = Any()
     @Volatile private var server: ServerSocket? = null
     @Volatile private var workers: ExecutorService? = null
+    private val clients = ConcurrentHashMap.newKeySet<java.net.Socket>()
 
     /** Returns null when the phone is not on a private IPv4 LAN or the listener cannot start. */
     fun createMediaUrl(video: DetectedVideo, fallbackUserAgent: String): String? {
         val lanAddress = findPrivateIpv4() ?: return null
         return try {
-            val listening = ensureServer()
+            val listening = ensureServer(lanAddress)
             val token = UUID.randomUUID().toString().replace("-", "")
             val route = Route(
                 token = token,
-                economy = economyMode,
                 audioLanguage = video.audioLanguage,
+                denied = onAccessDenied,
+                qualityRequested = onQualityRequested,
                 host = lanAddress,
                 port = listening.localPort,
                 pageUrl = video.pageUrl,
@@ -74,27 +82,38 @@ class LocalMediaProxy(context: Context) : Closeable {
             )
             route.resources["source"] = Resource(video.url, video.mimeType)
             routes[token] = route
+            activeToken = token
             "http://${route.host}:${route.port}/$token/source"
         } catch (_: Exception) {
             null
         }
     }
 
-    private fun ensureServer(): ServerSocket = synchronized(serverLock) {
-        server?.takeIf { !it.isClosed }?.let { return it }
+    private fun ensureServer(lanAddress: String): ServerSocket = synchronized(serverLock) {
+        server?.takeIf { !it.isClosed && it.inetAddress.hostAddress == lanAddress }?.let { return it }
+        if (server != null) close()
         val listening = ServerSocket().apply {
             reuseAddress = true
-            bind(InetSocketAddress("0.0.0.0", 0), 32)
+            bind(InetSocketAddress(lanAddress, 0), 24)
         }
         server = listening
-        workers = Executors.newFixedThreadPool(8) { runnable ->
+        workers = ThreadPoolExecutor(8, 8, 0L, TimeUnit.MILLISECONDS, ArrayBlockingQueue(16), { runnable ->
             Thread(runnable, "CastLite-media-proxy-worker").apply { isDaemon = true }
-        }
+        }, ThreadPoolExecutor.AbortPolicy())
         thread(name = "CastLite-media-proxy", isDaemon = true) {
             while (!listening.isClosed) {
                 try {
                     val client = listening.accept()
-                    workers?.execute { handle(client) } ?: client.close()
+                    val acceptedAt = System.nanoTime()
+                    clients.add(client)
+                    try {
+                        workers?.execute {
+                            try { handle(client, acceptedAt) } finally { clients.remove(client) }
+                        } ?: run { clients.remove(client); client.close() }
+                    } catch (_: RejectedExecutionException) {
+                        clients.remove(client)
+                        client.close()
+                    }
                 } catch (_: Exception) {
                     if (!listening.isClosed) Thread.sleep(100)
                 }
@@ -103,26 +122,19 @@ class LocalMediaProxy(context: Context) : Closeable {
         listening
     }
 
-    private fun handle(client: java.net.Socket) {
+    private fun handle(client: java.net.Socket, acceptedAt: Long) {
         client.use { socket ->
             try {
-                socket.soTimeout = 60_000
                 val input = BufferedInputStream(socket.getInputStream())
                 val output = BufferedOutputStream(socket.getOutputStream())
-                val reader = input.bufferedReader(StandardCharsets.ISO_8859_1)
-                val requestLine = reader.readLine() ?: return
-                val parts = requestLine.split(' ', limit = 3)
-                if (parts.size < 2) return
-                val method = parts[0].uppercase(Locale.ROOT)
-                val requestTarget = parts[1]
-                val headers = HashMap<String, String>()
-                var count = 0
-                while (count++ < 100) {
-                    val line = reader.readLine() ?: break
-                    if (line.isEmpty()) break
-                    val colon = line.indexOf(':')
-                    if (colon > 0) headers[line.substring(0, colon).trim().lowercase(Locale.ROOT)] = line.substring(colon + 1).trim()
+                val request = ProxyRequestReader.read(input) {
+                    val remaining = 5000 - (System.nanoTime() - acceptedAt) / 1_000_000
+                    if (remaining <= 0) throw java.net.SocketTimeoutException("HTTP header deadline")
+                    socket.soTimeout = remaining.toInt().coerceAtLeast(1)
                 }
+                val method = request.method
+                val requestTarget = request.target
+                val headers = request.headers
                 if (method == "OPTIONS") {
                     writeResponse(output, 204, "No Content", emptyMap(), null, method == "HEAD")
                     return
@@ -165,6 +177,7 @@ class LocalMediaProxy(context: Context) : Closeable {
             resource.variantQuality?.let { quality ->
                 if (route.lastRequestedVariant.getAndSet(quality) != quality) {
                     Log.d("CastLite-HLS", "Receiver requested video variant: $quality")
+                    if (route.token == activeToken) route.qualityRequested?.invoke(quality)
                 }
             }
         }
@@ -183,32 +196,43 @@ class LocalMediaProxy(context: Context) : Closeable {
             browserResponse?.body?.close()
         }
         val uri = try { URI(resource.url) } catch (_: Exception) { null }
-        if (uri == null || !uri.scheme.equals("http", true) && !uri.scheme.equals("https", true) || uri.host.isNullOrBlank()) {
+        if (uri == null || !uri.scheme.equals("http", true) && !uri.scheme.equals("https", true) || uri.host.isNullOrBlank() || uri.userInfo != null) {
             writeResponse(output, 400, "Bad Request", emptyMap(), "Invalid media URL".toByteArray(), method == "HEAD")
             return
         }
         val requestHeaders = linkedMapOf("User-Agent" to route.userAgent, "Accept-Encoding" to "identity")
+        val scopedHeaders = RelayHeaderPolicy.forTarget(route.requestHeaders, route.resources["source"]!!.url, resource.url)
         listOf("Accept", "Accept-Language", "Origin", "Authorization").forEach { name ->
-            route.requestHeaders.entries.firstOrNull { it.key.equals(name, true) }
+            scopedHeaders.entries.lastOrNull { it.key.equals(name, true) }
                 ?.value?.safeHeaderValue()?.let { requestHeaders[name] = it }
         }
         val referer = route.requestHeaders.entries.firstOrNull { it.key.equals("Referer", true) }
             ?.value?.takeIf { it.isNotBlank() } ?: route.pageUrl
         referer.safeHeaderValue()?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
             ?.let { requestHeaders["Referer"] = it }
-        receiverHeaders["range"]?.safeHeaderValue()?.let { requestHeaders["Range"] = it }
-        receiverHeaders["if-range"]?.safeHeaderValue()?.let { requestHeaders["If-Range"] = it }
-        val cookies = route.requestHeaders.entries.firstOrNull { it.key.equals("Cookie", true) }
+        if (!playlistResource) {
+            receiverHeaders["range"]?.safeHeaderValue()?.let { requestHeaders["Range"] = it }
+            receiverHeaders["if-range"]?.safeHeaderValue()?.let { requestHeaders["If-Range"] = it }
+        }
+        val cookies = scopedHeaders.entries.lastOrNull { it.key.equals("Cookie", true) }
             ?.value?.safeHeaderValue()
-            ?: runCatching { CookieManager.getInstance().getCookie(resource.url) }.getOrNull()
         cookies?.takeIf { it.isNotBlank() }?.let { requestHeaders["Cookie"] = it }
         var source: RelayHttpSource? = null
         try {
             // Inspect a small prefix for HEAD too, so the receiver sees the same
             // media type when probing and downloading a mislabeled HLS segment.
             val inspectHead = method == "HEAD" && hlsSource && !playlistResource
-            val opened = RelayHttpSource(resource.url, if (inspectHead) "GET" else method, requestHeaders)
+            var opened = openSource(resource.url, if (inspectHead) "GET" else method, requestHeaders)
             source = opened
+            if (opened.connection.responseCode == 206 &&
+                HlsPlaylist.isPlaylist(resource.url, opened.connection.contentType, resource.mimeType)) {
+                opened.close()
+                opened = openSource(resource.url, method, requestHeaders.filterKeys {
+                    !it.equals("Range", true) && !it.equals("If-Range", true)
+                })
+                source = opened
+                if (opened.connection.responseCode == 206) throw java.io.IOException("Partial HLS manifest")
+            }
             val connection = opened.connection
             val code = connection.responseCode
             if (hlsSource && code in listOf(401, 403)) {
@@ -223,6 +247,7 @@ class LocalMediaProxy(context: Context) : Closeable {
                 }
                 browserResponse?.body?.close()
             }
+            if (code in listOf(401, 403) && route.token == activeToken) route.denied?.invoke()
             val statusText = connection.responseMessage?.takeIf { it.isNotBlank() } ?: reasonPhrase(code)
             val sourceStream = if (code >= 400) connection.errorStream else if (method == "HEAD" && !inspectHead) null else opened.stream()
             val contentType = connection.contentType ?: resource.mimeType
@@ -295,6 +320,7 @@ class LocalMediaProxy(context: Context) : Closeable {
     ) {
         response.body.use { input ->
             val playlist = HlsPlaylist.isPlaylist(resource.url, response.type, resource.mimeType)
+            if (playlist && response.status != 200) throw java.io.IOException("Partial browser HLS manifest")
             val headers = mutableMapOf("Cache-Control" to "no-store")
             if (response.contentRange.isNotBlank()) headers["Content-Range"] = response.contentRange
             if (playlist && response.status == 200) {
@@ -312,6 +338,10 @@ class LocalMediaProxy(context: Context) : Closeable {
             }
         }
     }
+
+    private fun openSource(url: String, method: String, headers: Map<String, String>) =
+        RelayHttpSource(url, method, headers, headerOrigin = url,
+            cookiesForUrl = { target -> runCatching { CookieManager.getInstance().getCookie(target) }.getOrNull() })
 
     private fun responseHeaders(
         connection: HttpURLConnection,
@@ -372,7 +402,11 @@ class LocalMediaProxy(context: Context) : Closeable {
         HlsPlaylist.qualitySummary(manifest)?.let { summary ->
             Log.d("CastLite-HLS", "Quality variants: $summary")
         }
-        return HlsPlaylist.rewrite(if (route.economy) HlsPlaylist.economical(manifest) else manifest, baseUrl, route.audioLanguage) { target, mimeType, variantQuality ->
+        val selected = HlsPlaylist.maximumQuality(manifest)
+        HlsPlaylist.qualitySummary(selected)?.let { summary ->
+            Log.d("CastLite-HLS", "Maximum quality selection: $summary")
+        }
+        return HlsPlaylist.rewrite(selected, baseUrl, route.audioLanguage) { target, mimeType, variantQuality ->
             val resource = Resource(target, mimeType, variantQuality)
             val resourceId = route.resourceIds.computeIfAbsent(resource) {
                 UUID.randomUUID().toString().replace("-", "").also { route.resources[it] = resource }
@@ -422,8 +456,13 @@ class LocalMediaProxy(context: Context) : Closeable {
             try { server?.close() } catch (_: Exception) { }
             server = null
             workers?.shutdownNow()
+            clients.forEach { runCatching { it.close() } }
+            clients.clear()
             workers = null
             routes.clear()
+            activeToken = null
+            onAccessDenied = null
+            onQualityRequested = null
         }
     }
 

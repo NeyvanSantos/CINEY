@@ -5,6 +5,20 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PlaybackRecoveryTest {
+    @Test fun bufferingPositionIsUsedForRecovery() {
+        val policy = PlaybackRecovery(0, 11000)
+        policy.observe(2000, true, PlaybackState.BUFFERING, 80000, 300000, false, false)
+        assertEquals(PlaybackRecovery.Action.RELOAD,
+            policy.observe(47000, true, PlaybackState.BUFFERING, 80000, 300000, false, false))
+        assertEquals(80000L, policy.positionMs)
+    }
+
+    @Test fun bufferingAfterSeekingBackFromEndStillRecovers() {
+        val policy = PlaybackRecovery(0, 99000)
+        assertEquals(PlaybackRecovery.Action.RELOAD,
+            policy.observe(50000, true, PlaybackState.BUFFERING, 10000, 100000, false, false))
+    }
+
     @Test fun waitsForStartupThenRetriesWithoutLosingPosition() {
         val policy = PlaybackRecovery(0, 123_000)
         assertEquals(PlaybackRecovery.Action.WAIT, policy.observe(44_000, true, PlaybackState.IDLE, 0, 0, false, false, true))

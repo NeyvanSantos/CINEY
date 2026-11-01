@@ -16,6 +16,8 @@ class GradientPoster extends StatelessWidget {
   final double width;
   final double height;
   final VoidCallback? onTap;
+  final FocusNode? focusNode;
+  final FocusOnKeyEventCallback? onKey;
 
   const GradientPoster({
     super.key,
@@ -27,6 +29,8 @@ class GradientPoster extends StatelessWidget {
     this.width = 130,
     this.height = 195,
     this.onTap,
+    this.focusNode,
+    this.onKey,
   });
 
   @override
@@ -34,6 +38,8 @@ class GradientPoster extends StatelessWidget {
     final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
     return FocusableSurface(
       onTap: onTap,
+      focusNode: focusNode,
+      onKey: onKey,
       borderRadius: BorderRadius.circular(12),
       child: Container(
         width: width,

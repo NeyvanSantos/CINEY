@@ -91,6 +91,7 @@
             if (!/^https?:$/.test(url.protocol) || url.username || url.password) throw new Error('Unsupported URL');
             var response = await fetch(url.href, {
                 signal: controller.signal,
+                credentials: request.credentials === 'include' ? 'include' : 'same-origin',
                 headers: request.range ? { Range: request.range } : {}
             });
             send('fetchStart', { status: response.status, type: response.headers.get('content-type') || '',

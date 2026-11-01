@@ -10,6 +10,48 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RelayHttpSourceTest {
+    @Test fun rejectsInitialRangeAtDifferentOffsetThanReceiverRequested() {
+        Origin(listOf("HTTP/1.1 206 Partial Content\r\nContent-Length: 10\r\nContent-Range: bytes 0-9/200\r\n\r\nabcdefghij")).use { origin ->
+            RelayHttpSource(origin.url, "GET", mapOf("Range" to "bytes=100-109"), 0).use { source ->
+                assertThrows(IOException::class.java) { source.stream().readBytes() }
+            }
+        }
+    }
+
+    @Test fun redirectsRescopeCredentialsAndFetchCookiesForDestination() {
+        Origin(listOf("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nmovie")).use { destination ->
+            Origin(listOf("HTTP/1.1 302 Found\r\nLocation: ${destination.url}\r\nContent-Length: 0\r\n\r\n")).use { origin ->
+                RelayHttpSource(origin.url, "GET", mapOf("Authorization" to "Bearer synthetic",
+                    "Cookie" to "origin=synthetic", "Referer" to "https://player.test/"), 0,
+                    cookiesForUrl = { if (it == destination.url) "cdn=synthetic" else null }).use { source ->
+                    assertEquals("movie", source.stream().bufferedReader().readText())
+                    assertTrue(origin.requests[0].contains("Authorization: Bearer synthetic"))
+                    assertFalse(destination.requests[0].contains("Bearer synthetic"))
+                    assertFalse(destination.requests[0].contains("origin=synthetic"))
+                    assertTrue(destination.requests[0].contains("Cookie: cdn=synthetic"))
+                    assertTrue(destination.requests[0].contains("Referer: https://player.test/"))
+                }
+            }
+        }
+    }
+
+    @Test fun rejectsInitialRangeWhoseLengthDoesNotMatch() {
+        Origin(listOf("HTTP/1.1 206 Partial Content\r\nContent-Length: 8\r\nContent-Range: bytes 4-7/12\r\n\r\nefghijkl")).use { origin ->
+            RelayHttpSource(origin.url, "GET", emptyMap(), 0).use { source ->
+                assertThrows(IOException::class.java) { source.stream().readBytes() }
+            }
+        }
+    }
+
+    @Test fun rejectsResumeWithDifferentEndOrTotal() {
+        Origin(listOf("HTTP/1.1 200 OK\r\nContent-Length: 8\r\nETag: \"same\"\r\n\r\nabcd",
+            "HTTP/1.1 206 Partial Content\r\nContent-Length: 8\r\nContent-Range: bytes 4-11/12\r\nETag: \"same\"\r\n\r\nefghijkl")).use { origin ->
+            RelayHttpSource(origin.url, "GET", emptyMap(), 0).use { source ->
+                assertThrows(IOException::class.java) { source.stream().readBytes() }
+            }
+        }
+    }
+
     private class Origin(private val responses: List<String>) : Closeable {
         private val socket = ServerSocket(0, 8, InetAddress.getByName("127.0.0.1"))
         val requests = CopyOnWriteArrayList<String>()

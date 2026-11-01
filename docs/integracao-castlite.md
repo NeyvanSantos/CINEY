@@ -1,5 +1,11 @@
 # Transmissão CastLite dentro do CiNey
 
+As correções de transporte, sessão e descoberta aplicadas em 31/10/2026 estão
+detalhadas no [registro de implementação](correcoes-transmissao-2026-10-31.md),
+incluindo testes, arquivos e limitações dos receptores. Em particular, uma recusa
+persistente da fonte agora oferece reabertura/troca de servidor e suspende as
+recargas da mesma URL enquanto aguarda a ação do usuário.
+
 O CiNey Android abre o navegador e o controle de transmissão do CastLite dentro
 do próprio aplicativo. Os botões ficam nos detalhes do título, em cada episódio,
 no seletor de servidores e no player. Não é necessário instalar outro aplicativo.
@@ -45,9 +51,15 @@ fonte temporária precisa ser aberta novamente.
   portuguesa é anunciada em cada grupo que a oferece. Grupos sem correspondência,
   legendas e variantes de vídeo são preservados. Sem preferência explícita,
   permanecem os padrões da fonte. Isso não seleciona faixas internas de MP4.
-- O modo econômico passa a exigir ativação explícita no menu. O padrão preserva
-  todas as variantes, incluindo Full HD/4K, sem transcodificação. O receptor ainda
-  decide a variante adaptativa que consegue reproduzir.
+- Atualização de 31/10/2026: o modo econômico foi removido. O relay anuncia
+  somente as variantes da maior resolução declarada na fonte HLS, incluindo
+  Full HD/4K quando disponíveis, preservando alternativas de codec nessa resolução,
+  áudio, legendas e chaves. Sem resolução em todas as variantes, usa o maior
+  BANDWIDTH; com metadados incompletos ou mistos, preserva a lista original.
+  MP4 e listas de segmentos sem variantes permanecem inalterados. Não há
+  transcodificação nem criação de qualidade superior à fonte. A seleção máxima
+  pode aumentar o buffering em redes lentas ou falhar em receptores sem suporte
+  aos codecs/resoluções anunciados; não há redução automática nesses casos.
 - Um monitor no serviço tenta recarregar o mesmo vídeo na última posição conhecida
   após carregamento/buffering sem progresso por 45 segundos ou falha por 8 segundos.
   São até três recargas, com orçamento renovado após 30 segundos de progresso.

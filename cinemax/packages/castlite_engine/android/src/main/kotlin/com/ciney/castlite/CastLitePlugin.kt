@@ -57,6 +57,10 @@ class CastLitePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHan
                 }
                 "play", "pause", "stop", "seek" -> {
                     val target = CastingService.target ?: error("no_session")
+                    if (call.method in setOf("play", "seek") && CastingService.needsSourceAction()) {
+                        result.error("source_access_denied", "Reabra a fonte ou escolha outro servidor.", null)
+                        return
+                    }
                     when (call.method) {
                         "play" -> { CastingService.setUserPaused(false); target.play() }
                         "pause" -> { CastingService.setUserPaused(true); target.pause() }
@@ -64,7 +68,7 @@ class CastLitePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHan
                         "seek" -> {
                             val position = call.argument<Number>("positionMs")?.toLong() ?: -1
                             require(position >= 0) { "invalid_position" }
-                            target.seek(position)
+                            CastingService.seekTo(position)
                         }
                     }
                     CastSessionEvents.update(CastingService.target)
