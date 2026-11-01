@@ -101,9 +101,15 @@ jobs:
           npm run test:integration
 
       - name: Test native CastLite
-        working-directory: cinemax/android
-        run: bash gradlew :castlite_engine:testDebugUnitTest
+        working-directory: cinemax
+        run: |
+          flutter build apk --debug --config-only --no-pub
+          cd android
+          bash gradlew :castlite_engine:testDebugUnitTest
 
       - name: Test native TV
-        working-directory: cinemax_tv/android
-        run: bash gradlew :app:testDebugUnitTest
+        working-directory: cinemax_tv
+        run: |
+          flutter build apk --debug --config-only --no-pub
+          cd android
+          bash gradlew :app:testDebugUnitTest
