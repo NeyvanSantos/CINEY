@@ -6,7 +6,7 @@ do repositório.
 
 | Variante | Pasta | Último lançamento mantido nesta organização |
 | --- | --- | --- |
-| Mobile | `mobile/` | `CiNey-v1.0.47.apk` |
+| Mobile | `mobile/` | `CiNey-v1.0.48.apk` |
 | Android TV | `tv/` | `CiNey-v1.0.47-TV.apk` |
 
 Os APKs anteriores foram substituídos após conferir os novos downloads, hashes
