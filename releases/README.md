@@ -7,7 +7,7 @@ do repositório.
 | Variante | Pasta | Último lançamento mantido nesta organização |
 | --- | --- | --- |
 | Mobile | `mobile/` | `CiNey-v1.0.48.apk` |
-| Android TV | `tv/` | `CiNey-v1.0.48-TV.apk` |
+| Android TV | `tv/` | `CiNey-v1.0.49-TV.apk` |
 
 Os APKs anteriores foram substituídos após conferir os novos downloads, hashes
 e assinatura oficial. Consulte a [verificação mobile e TV 1.0.48](../docs/historico/publicacao-2026-11-01-v48-tv48.md).
