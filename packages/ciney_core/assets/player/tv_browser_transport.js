@@ -5,30 +5,50 @@
   const jobs = new Map(), browserFetch = window.fetch.bind(window);
   let wasPlaying = [];
   let stoppedPlayer = null, stoppedPosition = 0;
+  let stopping = false, stopConfirmed = false;
+  const stopProvider = () => {
+    if (stopping) return;
+    stopping = true;
+    try {
+      document.querySelectorAll('video').forEach(v => v.pause());
+      const player = typeof window.jwplayer === 'function' ? window.jwplayer() : null;
+      if (player && typeof player.stop === 'function') {
+        if (!stoppedPlayer) {
+          stoppedPosition = Number(player.getPosition?.()) || 0;
+          stoppedPlayer = player;
+        }
+        player.stop();
+      }
+    } finally { stopping = false; }
+  };
+  // Providers can autoplay again after an asynchronous setup or source change.
+  // Keep their decoder stopped for the entire native session, not just once.
+  const guardPlayback = event => {
+    if (!window.__cineyNativeTransportActive || event.target?.tagName !== 'VIDEO') return;
+    try { stopProvider(); } catch (_) { event.target.pause(); }
+  };
+  document.addEventListener('play', guardPlayback, true);
+  document.addEventListener('playing', guardPlayback, true);
   const send = value => CineyNativeFetch.postMessage(JSON.stringify(value));
   send({kind:'hello',page:location.href});
   CineyNativeFetch.onmessage = event => {
     let message; try { message=JSON.parse(event.data); } catch (_) { return; }
     if (message.kind === 'pauseLocal') {
-      if (window.__cineyNativeTransportActive) return;
-      window.__cineyNativeTransportActive = true;
-      if (window.__cineyCancelStartup) window.__cineyCancelStartup();
-      wasPlaying = Array.from(document.querySelectorAll('video')).filter(v=>!v.paused);
-      wasPlaying.forEach(v=>v.pause());
-      // Pausing a video retains its MediaSource buffers and hardware decoder.
-      // Stop the provider engine before Media3 allocates the TV's decoder.
+      let success = true;
       try {
-        const player = typeof window.jwplayer === 'function' ? window.jwplayer() : null;
-        if (player && typeof player.stop === 'function') {
-          stoppedPosition = Number(player.getPosition?.()) || 0;
-          stoppedPlayer = player;
-          player.stop();
+        if (!window.__cineyNativeTransportActive) {
+          window.__cineyNativeTransportActive = true;
+          wasPlaying = Array.from(document.querySelectorAll('video')).filter(v=>!v.paused);
+          if (window.__cineyCancelStartup) window.__cineyCancelStartup();
         }
-      } catch (_) { stoppedPlayer = null; }
+        if (!stopConfirmed) { stopProvider(); stopConfirmed = true; }
+      } catch (_) { success = false; }
+      if (typeof message.id === 'string') send({kind:'localPaused',id:message.id,success});
       return;
     }
     if (message.kind === 'resumeLocal') {
       window.__cineyNativeTransportActive = false;
+      stopConfirmed = false;
       if (stoppedPlayer && wasPlaying.length) {
         const player = stoppedPlayer, position = stoppedPosition;
         stoppedPlayer = null;

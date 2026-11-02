@@ -22,6 +22,33 @@
     return !element.disabled && element.getAttribute('aria-disabled') !== 'true' &&
       style.display !== 'none' && style.visibility !== 'hidden' && element.getClientRects().length > 0;
   }
+  function menuHit(x, y) {
+    let hit = document.elementFromPoint(x, y);
+    // Some providers place an empty, transparent external link over the whole
+    // menu. It is not a player/control: let genuine pointer input reach the
+    // verified menu below it. Never alter frames, visible content or challenges.
+    for (let attempt = 0; hit && attempt < 3; attempt++) {
+      const style = getComputedStyle(hit);
+      const wrapper = hit.tagName === 'DIV' && !label(hit) && hit.children.length === 1 &&
+        style.position === 'fixed' && Number(style.opacity) <= 0.05;
+      const link = wrapper ? hit.children[0] : hit;
+      if (link.tagName !== 'A' || label(link) || link.children.length) break;
+      let destination;
+      try { destination = new URL(link.href, location.href); } catch (_) { break; }
+      if (!/^https?:$/.test(destination.protocol) ||
+          destination.hostname === location.hostname ||
+          /(^|\.)cloudflare\.com$/i.test(destination.hostname)) break;
+      const rect = hit.getBoundingClientRect();
+      if (rect.left > 10 || rect.top > 10 ||
+          rect.left + rect.width < window.innerWidth - 10 ||
+          rect.top + rect.height < window.innerHeight - 10 ||
+          (!wrapper && !['transparent', 'rgba(0, 0, 0, 0)'].includes(style.backgroundColor)) ||
+          style.backgroundImage !== 'none') break;
+      hit.style.setProperty('pointer-events', 'none', 'important');
+      hit = document.elementFromPoint(x, y);
+    }
+    return hit;
+  }
   function notify(action, element) {
     try { TvMediaBridge.postMessage(JSON.stringify({ event: 'remoteMenu', action,
       label: element ? label(element) : null })); } catch (_) {}
@@ -43,7 +70,7 @@
         !controls.some(element => ['Dublado', 'Legendado'].includes(label(element)))) { hidePointer(); return false; }
     if (mouseMode() && doc.elementFromPoint && !controls.some(element => {
       const rect = element.getBoundingClientRect();
-      const hit = doc.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      const hit = menuHit(rect.left + rect.width / 2, rect.top + rect.height / 2);
       return hit && (hit === element || element.contains(hit));
     })) { hidePointer(); return false; }
     for (const element of controls) {
@@ -107,6 +134,10 @@
             pointerY >= rect.top && pointerY <= rect.top + rect.height;
         });
         if (!target) return;
+        if (document.elementFromPoint) {
+          const hit = menuHit(pointerX, pointerY);
+          if (!hit || (hit !== target && !target.contains(hit))) return;
+        }
         if (label(target).startsWith('Servidor')) hidePointer();
         notify(label(target).startsWith('Servidor') ? 'selected' : 'audio', target);
         try {

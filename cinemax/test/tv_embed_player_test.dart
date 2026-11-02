@@ -35,6 +35,11 @@ class _Catalog extends PluginManager {
   ];
 }
 
+class _NativeSessionHost extends TvEmbedHost {
+  @override
+  int? get viewId => 77;
+}
+
 class _WebPlatform extends WebViewPlatform {
   final controllers = <_Controller>[];
   @override
@@ -204,6 +209,49 @@ void main() {
     WebViewPlatform.instance = platform;
     exits = sources = next = 0;
   });
+
+  test(
+    'provider session is persisted before handoff and before release',
+    () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(TvWebViewBridge.channel, (call) async {
+            calls.add(call);
+            if (call.method == 'playbackHeaders') return <String, String>{};
+            return call.method != 'release';
+          });
+      final host = _NativeSessionHost();
+      await host.playbackHeaders('https://provider.test/video.m3u8');
+      expect(calls.map((call) => call.method), [
+        'persistSession',
+        'playbackHeaders',
+      ]);
+      calls.clear();
+      await host.release();
+      expect(calls.map((call) => call.method), ['persistSession', 'release']);
+      calls.clear();
+      await host.release();
+      await host.playbackHeaders('https://provider.test/video.m3u8');
+      expect(calls, isEmpty);
+    },
+  );
+
+  test(
+    'cookie persistence failure still releases the provider WebView',
+    () async {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(TvWebViewBridge.channel, (call) async {
+            calls.add(call);
+            if (call.method == 'persistSession') {
+              throw PlatformException(code: 'storage_unavailable');
+            }
+            return false;
+          });
+      final host = _NativeSessionHost();
+      await host.release();
+      expect(calls.map((call) => call.method), ['persistSession', 'release']);
+      expect(platform.controllers.single.requests, contains('about:blank'));
+    },
+  );
 
   testWidgets('HLS handoff preserves session and ignores duplicate messages', (
     tester,

@@ -20,10 +20,33 @@ void main() {
         },
       ];
       final selected = AppUpdater.selectLatestRelease(releases, isTvApp: true);
-      expect(selected!['tag_name'], 'tv-v1.0.26');
+      expect(selected!['tag_name'], 'tv-v1.0.28');
     });
 
-    test('TV sem pré-lançamento publicado retorna nenhuma atualização', () {
+    test(
+      'TV prioriza release oficial sobre uma pré-release de versão maior',
+      () {
+        final selected = AppUpdater.selectLatestRelease([
+          {'tag_name': 'tv-v1.0.99', 'draft': false, 'prerelease': true},
+          {'tag_name': 'tv-v1.0.49', 'draft': false, 'prerelease': false},
+          {'tag_name': 'tv-v1.0.48', 'draft': false, 'prerelease': false},
+        ], isTvApp: true);
+        expect(selected!['tag_name'], 'tv-v1.0.49');
+      },
+    );
+
+    test(
+      'TV mantém compatibilidade quando só existem pré-releases antigas',
+      () {
+        final selected = AppUpdater.selectLatestRelease([
+          {'tag_name': 'tv-v1.0.9', 'draft': false, 'prerelease': true},
+          {'tag_name': 'tv-v1.0.47', 'draft': false, 'prerelease': true},
+        ], isTvApp: true);
+        expect(selected!['tag_name'], 'tv-v1.0.47');
+      },
+    );
+
+    test('TV sem lançamento publicado retorna nenhuma atualização', () {
       expect(
         AppUpdater.selectLatestRelease([
           {'tag_name': 'v1.0.99', 'draft': false, 'prerelease': false},

@@ -21,6 +21,7 @@ public final class BrowserMediaTransport implements Closeable {
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final Map<String, Frame> frames = new ConcurrentHashMap<>();
     private final Map<String, Pending> pending = new ConcurrentHashMap<>();
+    private final PlaybackPauseRequests pauses = new PlaybackPauseRequests();
     private final Semaphore slots = new Semaphore(6);
     private final ExecutorService writes = Executors.newSingleThreadExecutor();
     private final File directory;
@@ -78,6 +79,18 @@ public final class BrowserMediaTransport implements Closeable {
     }
     public boolean hasPage(String page) { return findFrame(page) != null; }
     public void pauseLocalPlayback() { broadcast("pauseLocal"); }
+    /** Wait for the supplying frame to stop playback before allocating native codecs. */
+    public void pauseLocalPlayback(String page, java.util.function.Consumer<Boolean> callback) {
+        ui.post(() -> {
+            Frame frame=findFrame(page);
+            if(closed || frame==null) { callback.accept(false); return; }
+            String id=UUID.randomUUID().toString();
+            pauses.add(id,frame.origin,callback);
+            ui.postDelayed(() -> pauses.timeout(id),3000);
+            try { frame.reply.postMessage(new JSONObject().put("kind","pauseLocal").put("id",id).toString()); }
+            catch(Exception error) { pauses.timeout(id); }
+        });
+    }
     public void resumeLocalPlayback() { broadcast("resumeLocal"); }
     private void broadcast(String kind) {
         ui.post(() -> { for(Frame frame:frames.values()) {
@@ -118,7 +131,12 @@ public final class BrowserMediaTransport implements Closeable {
                     frames.put(page,new Frame(source,reply));
                 return;
             }
-            String id=data.optString("id"); Pending request=pending.get(id);
+            String id=data.optString("id");
+            if("localPaused".equals(kind)) {
+                pauses.complete(id,source,Boolean.TRUE.equals(data.opt("success")));
+                return;
+            }
+            Pending request=pending.get(id);
             if(request==null || !request.frame.origin.equals(source)) return;
             switch(kind) {
                 case "start":
@@ -159,6 +177,7 @@ public final class BrowserMediaTransport implements Closeable {
     }
     @Override public void close() {
         closed=true; frames.clear();
+        ui.post(pauses::close);
         for(Map.Entry<String,Pending> entry:new ArrayList<>(pending.entrySet())) release(entry.getKey(),entry.getValue());
         writes.shutdownNow();
     }

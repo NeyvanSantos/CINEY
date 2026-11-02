@@ -24,9 +24,11 @@ class MainActivity : FlutterActivity() {
         findWebView(window.decorView)?.let { view ->
             if (activeTransport != null && retainBrowserSession) {
                 activeTransport?.pauseLocalPlayback()
-                // JavaScript and the message bridge remain our HLS transport.
-                // Pause the provider's video, not the WebView supplying bytes.
-                view.onResume()
+                // onPause stops dispensable visual processing, but does not
+                // pause JavaScript. Keep fetch/message transport without making
+                // the hidden provider compete with Media3 for rendering time.
+                // Do not call pauseTimers(), which would pause JS globally.
+                view.onPause()
             } else {
                 activeTransport?.close()
                 activeTransport = null
@@ -58,6 +60,11 @@ class MainActivity : FlutterActivity() {
         var activeTransport: BrowserMediaTransport? = null
     }
     private val handler = Handler(Looper.getMainLooper())
+
+    override fun onResume() {
+        super.onResume()
+        findWebView(window.decorView)?.onResume()
+    }
 
     override fun onPause() {
         super.onPause()

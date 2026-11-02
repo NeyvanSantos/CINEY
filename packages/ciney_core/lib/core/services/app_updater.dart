@@ -94,24 +94,30 @@ class AppUpdater {
     final tagPattern = RegExp(
       isTvApp ? r'^tv-v\d+\.\d+\.\d+$' : r'^v\d+\.\d+\.\d+$',
     );
-    final matchingReleases =
-        releases.whereType<Map<String, dynamic>>().where((release) {
-          final tag = release['tag_name'];
-          return tag is String &&
-              tagPattern.hasMatch(tag) &&
-              release['draft'] != true &&
-              (isTvApp
-                  ? release['prerelease'] == true
-                  : release['prerelease'] != true);
-        }).toList()..sort((first, second) {
-          final firstVersion = (first['tag_name'] as String).substring(
-            prefix.length,
-          );
-          final secondVersion = (second['tag_name'] as String).substring(
-            prefix.length,
-          );
-          return _compareVersions(secondVersion, firstVersion);
-        });
+    final matchingReleases = releases.whereType<Map<String, dynamic>>().where((
+      release,
+    ) {
+      final tag = release['tag_name'];
+      return tag is String &&
+          tagPattern.hasMatch(tag) &&
+          release['draft'] != true &&
+          (isTvApp || release['prerelease'] != true);
+    }).toList();
+    // TV used prereleases historically. Prefer the official channel once it
+    // exists, while allowing older installations to discover legacy releases.
+    if (isTvApp &&
+        matchingReleases.any((release) => release['prerelease'] != true)) {
+      matchingReleases.removeWhere((release) => release['prerelease'] == true);
+    }
+    matchingReleases.sort((first, second) {
+      final firstVersion = (first['tag_name'] as String).substring(
+        prefix.length,
+      );
+      final secondVersion = (second['tag_name'] as String).substring(
+        prefix.length,
+      );
+      return _compareVersions(secondVersion, firstVersion);
+    });
     return matchingReleases.isEmpty ? null : matchingReleases.first;
   }
 
@@ -161,7 +167,7 @@ class AppUpdater {
                   : RegExp(r'^v(\d+\.\d+\.\d+)$'))
               .firstMatch(tagName);
       if (tagMatch == null || data['draft'] == true) return null;
-      if (isTvApp ? data['prerelease'] != true : data['prerelease'] == true) {
+      if (!isTvApp && data['prerelease'] == true) {
         return null;
       }
       final latestVersion = tagMatch.group(1)!;

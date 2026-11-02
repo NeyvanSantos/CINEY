@@ -47,6 +47,7 @@ open class NativeTvPlayerActivity : Activity() {
     private var brightness = 0
     private var effectsEnabled = false
     private var pendingBrightnessRedraw: Runnable? = null
+    private var startGeneration = 0
     private val watchdog = Handler(Looper.getMainLooper())
     private val startupTimeout = Runnable {
         if (!playbackPrepared && !isFinishing) {
@@ -85,6 +86,21 @@ open class NativeTvPlayerActivity : Activity() {
         startPlayer(position, resumePlaying)
     }
     private fun startPlayer(startPosition: Long, startPlaying: Boolean) {
+        val generation = ++startGeneration
+        val browser = MainActivity.activeTransport
+        val page = intent.getStringExtra("pageUrl")
+        if (browser != null && page != null) {
+            browser.pauseLocalPlayback(page) { stopped ->
+                if (generation != startGeneration || isFinishing || isDestroyed) return@pauseLocalPlayback
+                Log.i("CINEY_NATIVE", "browserPlaybackStopped=$stopped")
+                if (!stopped) {
+                    failed = true
+                    finish()
+                } else preparePlayer(startPosition, startPlaying)
+            }
+        } else preparePlayer(startPosition, startPlaying)
+    }
+    private fun preparePlayer(startPosition: Long, startPlaying: Boolean) {
         firstFrameRendered = false
         playbackPrepared = false
         @Suppress("DEPRECATION", "UNCHECKED_CAST")
@@ -270,6 +286,7 @@ open class NativeTvPlayerActivity : Activity() {
         super.onSaveInstanceState(out)
     }
     override fun onStop() {
+        startGeneration++
         watchdog.removeCallbacks(startupTimeout)
         snapshot()
         releasePlayer()

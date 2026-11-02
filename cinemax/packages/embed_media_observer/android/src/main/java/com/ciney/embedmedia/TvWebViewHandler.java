@@ -46,6 +46,12 @@ final class TvWebViewHandler implements MethodChannel.MethodCallHandler {
             WebView view = WebViewFlutterAndroidExternalApi.getWebView(engine, id);
             if (view == null) { result.success(false); return; }
             switch (call.method) {
+                case "persistSession":
+                    if (!attached.containsKey(id)) { result.success(false); return; }
+                    // Persist the browser's existing cookies as issued. Never
+                    // export clearance cookies or extend their expiry.
+                    CookieManager.getInstance().flush();
+                    break;
                 case "playbackHeaders":
                     String mediaUrl = call.argument("url");
                     Uri mediaUri = mediaUrl == null ? null : Uri.parse(mediaUrl);
@@ -148,6 +154,12 @@ final class TvWebViewHandler implements MethodChannel.MethodCallHandler {
 
     void dispose() {
         channel.setMethodCallHandler(null);
+        if (!attached.isEmpty()) {
+            try { CookieManager.getInstance().flush(); }
+            catch (RuntimeException error) {
+                android.util.Log.w("CINEY_SESSION", "Cookie persistence unavailable during disposal");
+            }
+        }
         for (Long id : attached.keySet().toArray(new Long[0])) release(id);
     }
 }

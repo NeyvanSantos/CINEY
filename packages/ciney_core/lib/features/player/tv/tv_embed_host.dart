@@ -114,6 +114,9 @@ class TvEmbedHost {
     final id = viewId;
     if (id == null || _released) return {};
     try {
+      // Commit provider cookies before moving playback out of the WebView.
+      // Keep their original domain, partition and expiry in Android's store.
+      await TvWebViewBridge.invoke('persistSession', id);
       return await TvWebViewBridge.channel.invokeMapMethod<String, String>(
             'playbackHeaders',
             {'webViewId': id, 'url': url},
@@ -146,6 +149,7 @@ class TvEmbedHost {
     _released = true;
     final id = viewId;
     try {
+      if (id != null) await TvWebViewBridge.invoke('persistSession', id);
       if (id != null) await AppFrameObserver.remove(id);
     } finally {
       final released =

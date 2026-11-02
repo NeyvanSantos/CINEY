@@ -10,11 +10,46 @@ function setup(fetch, videos=[]) {
     if(value.kind==='chunk')queueMicrotask(()=>bridge.onmessage({data:JSON.stringify({kind:'ack',id:value.id})}));}};
   const context=vm.createContext({URL,AbortController,setTimeout,clearTimeout,btoa,
     location:{href:'https://provider.test/player'},fetch,
-    CineyNativeFetch:bridge,document:{querySelectorAll:()=>videos},
+    CineyNativeFetch:bridge,document:{querySelectorAll:()=>videos,
+      addEventListener:(name,fn)=>events[name]=fn},
     addEventListener:(name,fn)=>events[name]=fn});
   context.window=context;context.top={};vm.runInContext(script,context);
-  return {messages,context,send:message=>bridge.onmessage({data:JSON.stringify(message)})};
+  return {messages,context,events,send:message=>bridge.onmessage({data:JSON.stringify(message)})};
 }
+test('handoff acknowledges the request only after stopping browser playback',()=>{
+  const order=[];
+  const f=setup(async()=>new Response(''),[{paused:false,pause(){order.push('pause');}}]);
+  f.context.jwplayer=()=>({getPosition:()=>12,stop(){order.push('stop');}});
+  f.send({kind:'pauseLocal',id:'handoff'});
+  const ack=f.messages.find(m=>m.kind==='localPaused');
+  assert.ok(ack,'native player must receive a pause acknowledgement');
+  assert.equal(ack.id,'handoff');assert.equal(ack.success,true);
+  assert.deepEqual(order,['pause','stop']);
+  f.send({kind:'pauseLocal',id:'retry'});
+  assert.equal(f.messages.find(m=>m.id==='retry').success,true);
+});
+test('late provider autoplay stays stopped throughout native ownership',()=>{
+  let pauses=0,stops=0;
+  const video={tagName:'VIDEO',paused:false,pause(){this.paused=true;pauses++;},play(){return Promise.resolve();}};
+  const f=setup(async()=>new Response(''),[video]);
+  f.context.jwplayer=()=>({getPosition:()=>12,stop(){stops++;}});
+  f.send({kind:'pauseLocal'});
+  video.paused=false;
+  assert.equal(typeof f.events.play,'function','handoff must guard delayed autoplay');
+  f.events.play({target:video});
+  assert.equal(video.paused,true);assert.equal(pauses,2);assert.equal(stops,2);
+  f.send({kind:'resumeLocal'});
+  video.paused=false;f.events.play({target:video});
+  assert.equal(video.paused,false);
+});
+test('failed provider stop is not acknowledged as successful on retry',()=>{
+  const f=setup(async()=>new Response(''),[]);
+  f.context.jwplayer=()=>({stop(){throw Error('provider busy');}});
+  f.send({kind:'pauseLocal',id:'failed'});
+  f.send({kind:'pauseLocal',id:'retry'});
+  assert.equal(f.messages.find(m=>m.id==='failed').success,false);
+  assert.equal(f.messages.find(m=>m.id==='retry').success,false);
+});
 async function waitFor(f,kind){for(let i=0;i<50;i++){if(f.messages.some(m=>m.kind===kind))return;await new Promise(r=>setImmediate(r));}throw Error('No '+kind);}
 test('browser session streams binary with acknowledgements and forwards Range',async()=>{
   const bytes=Uint8Array.from({length:70000},(_,i)=>i%251);
