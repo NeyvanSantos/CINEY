@@ -10,7 +10,8 @@ do repositório.
 | Android TV | `tv/` | `CiNey-v1.0.49-TV.apk` |
 
 Os APKs anteriores foram substituídos após conferir os novos downloads, hashes
-e assinatura oficial. Consulte a [verificação mobile e TV 1.0.48](../docs/historico/publicacao-2026-11-01-v48-tv48.md).
+e assinatura oficial. Consulte a [verificação Mobile 1.0.48](../docs/historico/publicacao-2026-11-01-v48-tv48.md)
+e a [verificação TV 1.0.49](../docs/historico/publicacao-2026-11-01-tv49.md).
 
 Ao guardar uma nova versão publicada, substitua apenas o APK anterior da mesma
 variante e atualize a tabela. Mantenha um único APK em cada pasta, com o nome
